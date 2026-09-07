@@ -2,6 +2,8 @@
 
 # Qiaomu AI RSS · 乔木 RSS
 
+**[在 Obsidian 官方插件库安装 · Install](https://community.obsidian.md/plugins/qiaomu-ai-rss)**
+
 在 Obsidian 中阅读 [乔木 RSS](https://rss.qiaomu.ai/) 精选文章，也可以添加自己的 RSS / Atom 订阅，把值得记住的文章链接加入今日日记。
 
 Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian view, switch between original articles and available Chinese AI rewrites or translations, and add article links to your Daily Note.
