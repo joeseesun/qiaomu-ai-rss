@@ -123,7 +123,8 @@ export class DiscoveryView extends ItemView {
       button.onclick = () => {
         if (this.pending.has(feed.id)) return;
         this.pending.add(feed.id); this.errors.delete(feed.id); this.refresh();
-        void this.plugin.subscriptions.add(url, feed.category, this.contentEl.ownerDocument).then(() => {
+        void this.plugin.subscriptions.add(url, feed.category, this.contentEl.ownerDocument).then(async subscription => {
+          await this.plugin.activateSubscription(subscription.id);
           new Notice(`已订阅 ${feed.name}`);
         }).catch((error: unknown) => {
           this.errors.set(feed.id, error instanceof Error ? error.message : '添加失败，请重试。');

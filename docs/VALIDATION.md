@@ -1,4 +1,4 @@
-# Validation — 0.3.0
+# Validation — 0.4.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -41,7 +41,7 @@ Offline behavior is limited to already-cached lists, articles and images. Public
 
 `node scripts/subscription-smoke.mjs` passes 14 further integration checks in the same real Obsidian 1.13.7 test vault (27 together with the original reader suite):
 
-- Add the live Qiaomu blog RSS feed (50 cached articles) and Simon Willison Atom feed (30 articles) through the subscription form; reject a duplicate URL.
+- Add the live Reorx RSS feed (50 cached articles) and Simon Willison Atom feed (30 articles) through the subscription form; reject a duplicate URL. Qiaomu Blog is tested through its built-in service channel rather than as a personal subscription.
 - Edit source name/group, choose a group, and render original personal articles while replacing the Qiaomu API method with a throwing guard.
 - Export OPML through the UI into the vault; preview and import pasted OPML while skipping a duplicate and an unsafe URL. Import itself makes no feed requests.
 - Favorite/save personal articles, retain entries on simulated offline refresh, unsubscribe through the confirmation dialog and keep the favorite readable.
@@ -52,6 +52,14 @@ The native file-input path was also tested with an OPML File object. Desktop and
 Additional unit coverage includes RSS/Atom/RDF parsing, relative XML bases and images, plain-text content escaping, stable per-feed IDs, payload bounds, malformed XML/DTD rejection, OPML grouping/escaping/deduplication, upgrade defaults, service-origin changes preserving personal data, timeout/cache fallback, deletion during refresh, and progressive refresh with shared in-flight requests.
 
 The subscription smoke runner adds/removes its named public test sources, creates an OPML export and a note, and changes test read/favorite state. Run it only in a disposable test vault. No production server or personal vault is modified by these checks.
+
+## Subscription activation regression — 0.4.0
+
+The Qiaomu RSS QA vault reproduced the reported state: CoolShell was stored under the Independent Blogs group with 15 cached articles while the reader remained on Qiaomu Picks. Version 0.4.0 removes the duplicate Qiaomu Blog discovery card because `qiaomu-blog` is already returned by the built-in service source list. A discovery subscription now becomes the reader's active channel and is stored as the last source.
+
+The real Reorx discovery card fetched 50 articles and immediately changed the existing reader to that exact feed. A separate CoolShell check displayed all 15 cached articles, opened the first article as original content, then reloaded the plugin and reopened the reader; the CoolShell channel and 15 entries were restored. The featured discovery view contained 11 cards, no `qiaomu` card, and the reader channel picker still contained the built-in Qiaomu Blog source. Obsidian reported no developer errors. The desktop and 390px layout checks passed with no horizontal overflow and complete inset focus rings.
+
+The broader discovery smoke reached and passed the new Reorx activation assertion, then stopped when the third-party RSSHub 36kr endpoint timed out. This external endpoint result is not counted as a complete discovery-smoke pass for 0.4.0.
 
 ## Discovery and focus regression — 0.3.0
 

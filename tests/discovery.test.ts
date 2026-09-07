@@ -11,6 +11,7 @@ describe('local discovery catalog', () => {
       if (feed.site) expect(safeUrl(feed.site)).not.toBeNull();
     }
     expect(new Set(independentBlogs.map(feed => feed.url)).size).toBe(independentBlogs.length);
+    expect(entries.some(feed => feed.url === 'https://blog.qiaomu.ai/feed.xml')).toBe(false);
   });
   it('combines local text, category and RSSHub filters', () => {
     expect(filterDiscovery('github 英文', 'AI 与编程', true).map(feed => feed.id)).toEqual(['github']);
@@ -39,5 +40,6 @@ describe('local discovery catalog', () => {
     expect(next.settings.rsshubUrl).toBe('https://new.example');
     expect(next.subscriptions[0].url).toBe('https://old.example/36kr/newsflashes');
     expect(initialState({ settings: { rsshubUrl: 'malformed' } }).settings.rsshubUrl).toBe(DEFAULT_RSSHUB);
+    expect(initialState({ settings: {} }).settings.lastSource).toBe('');
   });
 });
