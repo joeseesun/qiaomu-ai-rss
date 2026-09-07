@@ -37,8 +37,10 @@ v.showSavedArticle({entry:{id:'qa-native-image',origin:'vault',sourceId:'@vault:
 for(let i=0;i<60;i++){img=v.reader.querySelector('.qrs-prose img');if(img?.ondragstart)break;await new Promise(r=>setTimeout(r,100));}
 const localDrag=new DataTransfer();img?.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:localDrag}));
 check('Vault Markdown attachment also drags as image bytes',localDrag.files.length===1&&localDrag.files[0].size===bytes.byteLength);
-window.__imageDragQA={results};leaf.detach();
+await leaf.view.save();
+window.__imageDragQA={results};
 }finally{
+for(const leaf of app.workspace.getLeavesOfType('markdown').filter(l=>l.view.file?.path.startsWith(folder+'/'))){await leaf.setViewState({type:'empty',state:{}});leaf.detach();}
 p.images.load=load;app.vault.setConfig('attachmentFolderPath',config);
 await app.vault.delete(app.vault.getAbstractFileByPath(folder),true);
 const v=app.workspace.getLeavesOfType('qiaomu-ai-rss-reader')[0]?.view;if(v?.entries[0])void v.openArticle(v.entries[0]);
