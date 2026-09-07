@@ -4,12 +4,14 @@ import { RssApi } from './api';
 import { folderPath, initialState, modeLabels, modeSchema, serviceUrl, withServiceOrigin, type Bundle, type Entry, type State } from './model';
 import { appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
+import { ReadingFonts } from './fonts';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
 import { SubscriptionManager } from './subscription-ui';
 import { DiscoveryView, DISCOVERY_VIEW_TYPE } from './discovery-view';
 
 export default class QiaomuRssPlugin extends Plugin {
+  fonts = new ReadingFonts();
   state: State = initialState(null);
   images!: LocalImages;
   subscriptions!: Subscriptions;
@@ -29,6 +31,7 @@ export default class QiaomuRssPlugin extends Plugin {
     this.addCommand({ id: 'open-reader', name: '打开阅读器', callback: () => { void this.openReader(); } });
     this.addSettingTab(new RssSettings(this.app, this));
   }
+  onunload() { this.fonts.dispose(); }
   api(): RssApi {
     return new RssApi(this.state.settings.baseUrl, async url => {
       const response = await requestUrl({ url, method: 'GET', headers: { Accept: 'application/json' }, throw: false });

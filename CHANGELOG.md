@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 — 2026-09-07
+
+- Bundle Source Han Serif, Source Han Sans, LXGW WenKai Screen, LXGW ZhenKai and Zhuque Fangsong for offline reading.
+- Offer all five fonts alongside the existing system choices, loading them on demand and preserving article content and saved settings.
+- Include complete SIL OFL notices in three-file releases.
+
 ## 0.7.0 — 2026-09-07
 
 - Replace the flat channel search with a grouped picker, source icons, monograms, counts and cleaner active-channel labels.

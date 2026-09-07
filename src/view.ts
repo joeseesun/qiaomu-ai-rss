@@ -1,5 +1,6 @@
 import { ItemView, Menu, Modal, Notice, setIcon, type App, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
+import { readingFonts } from './fonts';
 import { articleFragment } from './content';
 import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type Bundle, type Entry, type Mode } from './model';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
@@ -109,6 +110,11 @@ export class ReaderView extends ItemView {
   private applyAppearance() {
     const settings = this.plugin.state.settings;
     this.contentEl.dataset.readingFont = settings.fontFamily;
+    const font = readingFonts.find(font => font.id === settings.fontFamily)!;
+    this.contentEl.setCssProps({ '--qrs-font-family': font.data ? `"${font.family}",serif` : font.family });
+    void this.plugin.fonts.load(this.contentEl.ownerDocument, settings.fontFamily).catch(() => {
+      if (!this.closed && this.plugin.state.settings.fontFamily === font.id) new Notice('字体加载失败，请重新选择重试。');
+    });
     this.contentEl.setCssProps({
       '--qrs-font-size': `${settings.fontSize}px`, '--qrs-line-height': String(settings.lineHeight),
       '--qrs-article-width': `${settings.fontSize * settings.lineWidth + 120}px`,
@@ -482,7 +488,8 @@ export class ReaderView extends ItemView {
     const row = (label: string) => { const el = fields.createEl('label', { cls: 'qrs-reading-setting' }); el.createSpan({ text: label }); return el; };
     const fontRow = row('字体');
     const font = fontRow.createEl('select', { attr: { 'data-qrs-field': '正文字体' } });
-    font.createEl('option', { value: 'serif', text: '宋体' }); font.createEl('option', { value: 'sans', text: '黑体' }); font.value = settings.fontFamily;
+    for (const choice of readingFonts) font.createEl('option', { value: choice.id, text: choice.name });
+    font.value = settings.fontFamily;
     const sizeRow = row('字号'); const sizeValue = sizeRow.createEl('output', { text: `${settings.fontSize} px` });
     const size = sizeRow.createEl('input', { type: 'range', value: String(settings.fontSize), attr: { min: '14', max: '32', step: '1', 'data-qrs-field': '正文字号' } });
     const heightRow = row('行距'); const heightValue = heightRow.createEl('output', { text: `${settings.lineHeight.toFixed(1)} 倍` });

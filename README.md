@@ -13,7 +13,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 - 阅读优先双栏：紧凑工具栏、可拖动调宽的列表、一键专注阅读；有配图的文章在列表中显示本地缓存缩略图。
 - 分组频道选择器：聚合、个人分组、乔木频道和订阅源各自归类，使用图标或名称缩写快速识别。
-- 正文工具栏提供按需展开的阅读设置：宋体/黑体、14–32px 字号、1.5–2.4 倍行距和 28/36/44 字版心宽度；调整立即生效并在重启后保留。
+- 正文工具栏提供按需展开的阅读设置：思源宋体、思源黑体、霞鹜文楷屏幕版、霞鹜臻楷、朱雀仿宋，以及系统宋体/黑体；支持 14–32px 字号、1.5–2.4 倍行距和 28/36/44 字版心宽度；调整立即生效并在重启后保留。
 - 浏览所有频道的最近 100 篇文章；单个频道按游标加载更早文章。
 - 搜索当前载入的文章，按未读、收藏筛选。
 - 切换乔木改写、中文翻译、原文。没有生成的版本会明确显示缺失，不自动调用 AI。
@@ -44,7 +44,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 3. 在 Obsidian 的第三方插件设置中启用 **Qiaomu AI RSS**。
 4. 点击侧边栏 RSS 图标，或运行命令 **Qiaomu AI RSS: 打开阅读器**。
 
-2026-09-07 完成官方自动审核并发布。当前版本为 0.7.0。
+2026-09-07 完成官方自动审核并发布。当前版本为 0.8.0。
 
 ## 使用
 
@@ -130,3 +130,5 @@ MIT. Copyright (c) 2026 向阳乔木.
 Bundled dependencies retain their licenses: DOMPurify (Apache-2.0 OR MPL-2.0), marked (MIT), and Zod (MIT). See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 [X / 向阳乔木](https://x.com/vista8) · [GitHub](https://github.com/joeseesun)
+
+内置字体随插件打包，离线可用，按选择加载；完整字体使 `main.js` 约为 64 MB。字体来自乔木 EPUB 阅读器使用的相同上游字库，采用 SIL OFL 1.1 授权，见 [字体来源与授权](fonts/README.md)。

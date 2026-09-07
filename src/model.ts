@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const modeSchema = z.enum(['rewrite', 'translation', 'original']);
 export type Mode = z.infer<typeof modeSchema>;
 export const modeLabels: Record<Mode, string> = { rewrite: '乔木改写', translation: '中文翻译', original: '原文' };
-export const readingFontSchema = z.enum(['serif', 'sans']);
+export const readingFontSchema = z.enum(['serif', 'sans', 'sourceHanSerif', 'sourceHanSans', 'wenkai', 'zhenkai', 'fangsong']);
 export type ReadingFont = z.infer<typeof readingFontSchema>;
 const optionalText = z.string().nullish();
 export const rewriteSchema = z.object({ title: optionalText, body: z.string() });
