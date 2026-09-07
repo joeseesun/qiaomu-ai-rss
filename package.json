@@ -1,6 +1,6 @@
 {
   "name": "qiaomu-ai-rss",
-  "version": "0.18.1",
+  "version": "0.18.2",
   "description": "Read Qiaomu and personal RSS feeds, then add article links to your Daily Note.",
   "license": "GPL-3.0-only",
   "private": true,

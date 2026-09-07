@@ -1,10 +1,12 @@
+<img src="docs/images/qiaomu-rss-icon.png" alt="Qiaomu AI RSS" width="80" />
+
 # Qiaomu AI RSS · 乔木 RSS
 
 在 Obsidian 中阅读 [乔木 RSS](https://rss.qiaomu.ai/) 精选文章，也可以添加自己的 RSS / Atom 订阅，把值得记住的文章链接加入今日日记。
 
 Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian view, switch between original articles and available Chinese AI rewrites or translations, and add article links to your Daily Note.
 
-![Qiaomu AI RSS 缩略图列表与今日日记分屏](docs/images/reader-thumbnails-daily-note.png)
+![Qiaomu AI RSS 缩略图列表与今日日记分屏](docs/images/listing-2026-09/reading-notes.png)
 
 ## 功能
 
@@ -56,7 +58,7 @@ GitHub 发布和官方目录审核是独立流程；每个版本的审核结果�
 
 ### 探索订阅
 
-![独立博客目录](docs/images/discovery-blogs.png)
+![探索订阅](docs/images/listing-2026-09/explore.png)
 
 点击列表顶部 **+ → 探索**，或运行命令 **Qiaomu AI RSS: 探索订阅**。
 
@@ -65,13 +67,9 @@ GitHub 发布和官方目录审核是独立流程；每个版本的审核结果�
 - 点击“订阅”会读取并验证源，按主题加入“我的订阅”，并让阅读器记住这个新频道；切回阅读器即可看到文章。已经添加的源显示“已订阅”，点击“开始阅读”可查看全部个人订阅。
 - 目录离线内置，不会在浏览时请求所有网站。独立博客是社区目录快照，部分旧地址可能失效；添加失败时显示原因和重试入口。
 
-[目录来源、授权与可用性记录](docs/DISCOVERY.md) · [精选目录截图](docs/images/discovery-featured.png)
+[目录来源、授权与可用性记录](docs/DISCOVERY.md) · [精选目录截图](docs/images/listing-2026-09/explore.png)
 
 ### 添加自己的订阅
-
-![个人订阅管理](docs/images/subscriptions-manager.png)
-
-[个人阅读界面](docs/images/personal-reader.png) · [窄屏订阅管理](docs/images/subscriptions-narrow.png)
 
 1. 点击列表顶部 **+**，或运行命令 **Qiaomu AI RSS: 管理我的订阅**。
 2. 粘贴完整的 RSS / Atom 订阅地址，填写可选分组，点击“添加”。名称和文章会从订阅源读取。
@@ -86,9 +84,7 @@ GitHub 发布和官方目录审核是独立流程；每个版本的审核结果�
 
 ### 阅读与保存
 
-![正文阅读设置](docs/images/reading-settings.png)
-
-![分组频道选择器](docs/images/channel-picker.png)
+![正文阅读设置](docs/images/listing-2026-09/typography.png)
 
 点击列表顶部的当前频道，按聚合、分组、乔木频道和个人订阅源浏览或搜索。正文顶部的版本菜单切换原文、中文翻译和乔木改写；点击字体图标可调整正文字体、字号、行距与版心宽度，所见即所得并自动保存，点击面板外部关闭。拖动两栏之间的分隔线调整列表宽度，双击复位；按 `[` 或点击侧栏图标专注阅读，按 `j` / `k` 切换文章。点击笔记图标后，插件会遵循 Obsidian 核心“日记”插件的文件夹、日期格式和模板设置，以普通段落追加文章标题的内部回跳链接 并分屏打开该文件。
 
@@ -144,7 +140,7 @@ Bundled dependencies retain their licenses: DOMPurify (Apache-2.0 OR MPL-2.0), m
 
 [X / 向阳乔木](https://x.com/vista8) · [GitHub](https://github.com/joeseesun)
 
-内置字体随插件打包，离线可用，按选择加载；完整字体使 `main.js` 约为 64 MB。字体来自乔木 EPUB 阅读器使用的相同上游字库，采用 SIL OFL 1.1 授权，见 [字体来源与授权](fonts/README.md)。
+仅内置朱雀仿宋常用字集，离线可用，按选择加载；`main.js` 小于 5 MB。其他字体使用设备已安装字体。朱雀仿宋采用 SIL OFL 1.1 授权，见 [字体来源与授权](fonts/README.md)。
 
 ### 库内文件夹来源
 
