@@ -1,4 +1,4 @@
-.workspace-leaf-content.qrs-root { --qrs-list-width:300px; --qrs-font-size:19px; --qrs-line-height:1.9; --qrs-article-width:804px; display:flex; flex-direction:column; height:100%; padding:0; container-type:inline-size; color:var(--text-normal); background:var(--background-primary); outline:none; }
+.view-content.qrs-root { --qrs-list-width:300px; --qrs-font-size:19px; --qrs-line-height:1.9; --qrs-article-width:804px; display:flex; flex-direction:column; height:100%; padding:0; container-type:inline-size; color:var(--text-normal); background:var(--background-primary); outline:none; }
 .qrs-root * { box-sizing:border-box; }
 .qrs-visually-hidden.qrs-visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .qrs-layout { flex:1; min-height:0; display:grid; grid-template-columns:min(var(--qrs-list-width),calc(100cqw - 330px)) 1px minmax(0,1fr); }
