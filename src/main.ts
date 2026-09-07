@@ -94,6 +94,13 @@ export default class QiaomuRssPlugin extends Plugin {
       if (leaf.view instanceof DiscoveryView) leaf.view.refresh();
     }
   }
+  async activateSubscription(id: string) {
+    if (!this.state.subscriptions.some(feed => feed.id === id)) return;
+    this.state.settings.lastSource = id; await this.persist();
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+      if (leaf.view instanceof ReaderView) leaf.view.showSubscription(id);
+    }
+  }
   async readSubscriptions() {
     await this.openReader();
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;

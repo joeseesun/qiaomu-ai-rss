@@ -1,6 +1,6 @@
-# Discovery catalog — 0.3.0
+# Discovery catalog — 0.4.0
 
-The Explore subscriptions view bundles 12 featured feeds and 1,342 Chinese independent blogs. Catalog search, category/theme filtering, and pagination are local. Selecting a source fetches and validates it through the existing subscription service before storing it. Blogs are rendered in batches of 60; discovery never subscribes to the entire directory automatically. Existing limits of 100 personal subscriptions and 50 cached articles per feed apply.
+The Explore subscriptions view bundles 11 featured feeds and 1,342 Chinese independent blogs. Catalog search, category/theme filtering, and pagination are local. Selecting a source fetches and validates it through the existing subscription service before storing it, then stages that source as the reader's active channel. Blogs are rendered in batches of 60; discovery never subscribes to the entire directory automatically. Existing limits of 100 personal subscriptions and 50 cached articles per feed apply. Qiaomu Blog is already a built-in service channel and is intentionally not offered as a duplicate personal subscription.
 
 ## Chinese independent blogs
 
@@ -21,11 +21,10 @@ This script is a development tool; the plugin does not fetch remote catalog code
 
 ## Featured feeds and live probes
 
-All 12 featured endpoints returned parseable RSS/Atom with articles on 2026-09-07. This is a point-in-time check, not a future availability promise.
+All 11 featured endpoints returned parseable RSS/Atom with articles on 2026-09-07. This is a point-in-time check, not a future availability promise.
 
 | Source | Feed | Observed items |
 | --- | --- | ---: |
-| 乔木博客 | https://blog.qiaomu.ai/feed.xml | 50 cached |
 | Simon Willison | https://simonwillison.net/atom/everything/ | 30 |
 | 少数派 | https://sspai.com/feed | 10 |
 | 爱范儿 | https://www.ifanr.com/feed | 20 |

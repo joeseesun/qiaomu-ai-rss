@@ -52,8 +52,13 @@ export class ReaderView extends ItemView {
   }
   reset() {
     this.closed = false; this.listVersion++; this.articleVersion++;
-    this.focused = false; this.source = ''; this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
-    this.mode = this.plugin.state.settings.defaultMode; this.entries = this.plugin.state.entries;
+    const remembered = this.plugin.state.settings.lastSource;
+    const localExists = this.plugin.state.subscriptions.some(feed => feed.id === remembered);
+    const groupExists = remembered.startsWith('@group:') && this.plugin.state.subscriptions.some(feed => feed.group === remembered.slice(7));
+    this.focused = false; this.source = remembered === '@local' || groupExists || localExists || this.plugin.state.sources.some(source => source.id === remembered) ? remembered : '';
+    this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
+    this.mode = this.plugin.state.settings.defaultMode;
+    this.entries = this.personalScope() ? this.localEntries() : this.source ? [] : this.plugin.state.entries;
     this.build(); this.renderList(); this.renderReader(); void this.loadEntries();
   }
   private run(action: () => Promise<void>) {
@@ -115,6 +120,9 @@ export class ReaderView extends ItemView {
   }
   private localEntries() { return this.selectedFeeds().flatMap(feed => feed.entries).sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0)); }
   showSubscriptions() { this.selectSource('@local', false); }
+  showSubscription(id: string) {
+    if (this.plugin.state.subscriptions.some(feed => feed.id === id)) this.selectSource(id, false);
+  }
   private pickChannel() {
     new ChannelPicker(this.app, this.channelChoices(), source => this.selectSource(source.id)).open();
   }
@@ -122,6 +130,7 @@ export class ReaderView extends ItemView {
     this.listVersion++; this.loading = false; this.refreshButton.removeClass('is-loading');
     this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
     this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
+    this.plugin.state.settings.lastSource = source; this.run(() => this.plugin.persist());
     this.bundle = null; this.articleVersion++; this.focused = false;
     this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
     this.entries = this.personalScope() ? this.localEntries() : source ? [] : this.plugin.state.entries;

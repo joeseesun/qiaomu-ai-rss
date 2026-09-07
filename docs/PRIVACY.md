@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective: 2026-09-07 (0.3.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
+Effective: 2026-09-07 (0.4.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
 
 Qiaomu AI RSS is a local reader for a remote Qiaomu RSS API. It requests public sources, entry lists, article details, and existing translation/rewrite assets. The default server is `rss.qiaomu.ai`. A user-configured server is governed by its own operator's policy.
 

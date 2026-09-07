@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 — 2026-09-07
+
+- Open a newly added discovery subscription in the reader automatically and remember that channel across reloads.
+- Keep Qiaomu Blog as a built-in service channel and remove its duplicate discovery subscription card.
+
 ## 0.3.0 — 2026-09-07
 
 - Fix clipped input focus borders with an inset ring in subscription dialogs.
