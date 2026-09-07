@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.2 — 2026-09-07
+
+- Use a calm sage article selection palette with separate dark-mode and hover states; preserve row density and remove the tinted inset frame.
+
 ## 0.18.1 — 2026-09-07
 
 - Prevent duplicated settings tab bars when Obsidian reuses a setting row.
