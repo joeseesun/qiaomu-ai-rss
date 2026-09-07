@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.0 — 2026-09-07
+
+- Replace the centered channel prompt with an anchored desktop picker and mobile bottom sheet. Group feeds under their subscription folders, with compact rows, search, keyboard navigation and current-channel checks.
+- Persist each channel’s article, reading mode, list/body offsets, loaded pages and filter/search state in the vault. Restore on return and view reopening, including delayed content layout and interrupted article requests.
+- Choosing the current channel only closes the picker. Restored channels keep their loaded list until explicit refresh.
+
 ## 0.16.0 — 2026-09-07
 
 - Remove website/WeChat exploration, provider recommendations and RSSHub instance controls. Preserve existing personal subscriptions.

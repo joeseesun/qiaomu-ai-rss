@@ -34,3 +34,10 @@ describe('local discovery catalog', () => {
     expect(initialState({ settings: {} }).settings.lastSource).toBe('');
   });
 });
+
+it('preserves channel reading checkpoints across saved-state parsing', () => {
+  const checkpoint = { entries: [], bundle: null, mode: 'original', filter: 'unread', query: '文章', unread: ['a'], cursor: 'page-2', hasMore: true, listTop: 620, readerTop: 1420, articlePending: false };
+  const state = initialState({ channelStates: { channel: checkpoint } });
+  expect(initialState(JSON.parse(JSON.stringify(state))).channelStates.channel).toEqual(checkpoint);
+  expect(initialState({ channelStates: { invalid: { listTop: -1 } } }).channelStates).toEqual({});
+});

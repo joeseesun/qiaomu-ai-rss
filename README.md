@@ -8,6 +8,8 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ## 功能
 
+- **频道切换**：桌面端就近弹出分组菜单，手机端使用底部面板；支持搜索、键盘选择和订阅分组展开。每个频道独立保存文章、列表/正文位置及筛选搜索条件；切回或重开插件时恢复，重复选择当前频道不会重置。已访问频道保留加载的列表，点击刷新获取新内容。
+
 - **探索订阅**：9 个精选作者与 1,342 个中文独立博客，支持搜索和一键订阅。乔木博客作为内置频道提供。
 
 - **库内 Markdown**：在插件设置中通过原生文件夹搜索选择剪藏目录或其他文件夹，频道菜单即可阅读其中及子目录的 Markdown。正文使用 Obsidian 原生渲染，支持本地附件和内部链接；刷新列表或重新打开文章可读取变化。
@@ -48,7 +50,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 3. 在 Obsidian 的第三方插件设置中启用 **Qiaomu AI RSS**。
 4. 点击侧边栏 RSS 图标，或运行命令 **Qiaomu AI RSS: 打开乔木 RSS 阅读器**。
 
-2026-09-07 完成官方自动审核并发布。当前版本为 0.16.0。
+2026-09-07 完成官方自动审核并发布。当前版本为 0.17.0。
 
 ## 使用
 

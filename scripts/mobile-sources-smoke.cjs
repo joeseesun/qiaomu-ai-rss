@@ -25,9 +25,9 @@ check('Selection changes alone show popup without mouse release',document.queryS
 const touchMenu=new PointerEvent('contextmenu',{bubbles:true,cancelable:true,pointerType:'touch'});prose.dispatchEvent(touchMenu);check('Touch long-press keeps native text-selection menu',!touchMenu.defaultPrevented);
 check('WebKit text selection explicitly enabled',getComputedStyle(prose).webkitUserSelect==='text');selection.removeAllRanges();
 v.pickChannel();await wait(100);
-let prompt=document.querySelector('.qrs-channel-modal');
-check('Channel uses native searchable suggestions',prompt?.classList.contains('prompt')&&!!prompt.querySelector('.prompt-input')&&!!prompt.querySelector('.suggestion-item'));
-const selected=prompt.querySelector('.suggestion-item.is-selected');
+let prompt=document.querySelector('.qrs-channel-picker');
+check('Channel uses anchored searchable choices',!!prompt&&!!prompt.querySelector('input[type=search]')&&!!prompt.querySelector('.qrs-channel-option'));
+const selected=prompt.querySelector('.qrs-channel-option[aria-current=true]');
 check('Selected channel keeps readable text',!!selected&&getComputedStyle(selected).color!==getComputedStyle(selected).backgroundColor);
 prompt.querySelector('input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait(100);
 p.manageSubscriptions();await wait(100);let modal=document.querySelector('.qrs-subscription-modal');
