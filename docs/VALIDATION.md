@@ -1,4 +1,4 @@
-# Validation — 0.9.1
+# Validation — 0.10.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -103,3 +103,7 @@ Version 0.4.0 completed the directory's automatic review and was published. The 
 ## 0.9.1 regression correction
 
 The 0.9.0 shell protocol check used a hand-encoded URL and missed the generated URLSearchParams plus-sign encoding. New unit coverage explicitly rejects plus signs for spaces. Real Obsidian checks clicked both a generated link and the user-reported legacy note link; both returned to the saved article without a vault error. A real CodeMirror drop event inserted selected text and discarded HTML. Native physical pointer dragging and mobile touch were not manually verified. Grouped repeated excerpts produced only one source title.
+
+## 0.10.0 settings and vault sources
+
+Real Obsidian 1.13.7: all 16 vault-source/settings smoke checks pass. Native folder typeahead selects and activates the source, recursively lists two fixture Markdown files without API access, renders Markdown and wiki links, recognizes Web Clipper-style frontmatter, persists preferences, and rereads edited files. Popup defaults off, opt-in works, and turning it off clears an existing popup. The appearance panel remains aligned below the sticky toolbar at a 900px article scroll position. Fixtures are removed after checks. Remote API entries cannot impersonate local Markdown sources.

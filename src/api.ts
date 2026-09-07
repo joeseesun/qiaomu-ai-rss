@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { bundleSchema, entrySchema, pageSchema, rewriteSchema, serviceUrl, sourceSchema, translationSchema, type Bundle } from './model';
+const remoteEntrySchema = entrySchema.transform(entry => ({ ...entry, origin: 'qiaomu' as const, markdown: undefined, markdownPath: undefined }));
 export interface HttpResponse { status: number; text: string }
 export type Transport = (url: string) => Promise<HttpResponse>;
 export class RssApi {
@@ -24,12 +25,12 @@ export class RssApi {
     const query = new URLSearchParams({ limit: source ? '40' : '100', ready: 'rewrite' });
     if (cursor) query.set('cursor', cursor);
     const path = source ? `/api/sources/${encodeURIComponent(source)}/entries` : '/api/entries';
-    return this.get(`${path}?${query}`, pageSchema);
+    return this.get(`${path}?${query}`, pageSchema.extend({ entries: z.array(remoteEntrySchema) }));
   }
   async article(id: string): Promise<{ bundle: Bundle; warnings: string[] }> {
     const path = `/api/entry/${encodeURIComponent(id)}`;
     const [detail, rewrite, translation] = await Promise.allSettled([
-      this.get(path, z.object({ entry: entrySchema })),
+      this.get(path, z.object({ entry: remoteEntrySchema })),
       this.get(`${path}/rewrite`, z.object({ rewrite: rewriteSchema.nullable() })),
       this.get(`${path}/translation`, z.object({ translation: translationSchema.nullable() })),
     ]);

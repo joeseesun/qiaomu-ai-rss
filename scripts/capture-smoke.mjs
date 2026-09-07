@@ -12,6 +12,7 @@ for (let i=0;i<60;i++) {
 }
 evaluate(`(()=>{window.__qrsCaptureQA=null;void(async()=>{
 const p=app.plugins.plugins['qiaomu-ai-rss'];await p.openReader();
+const popupEnabled=p.state.settings.selectionPopup;p.state.settings.selectionPopup=true;
 const v=app.workspace.getLeavesOfType('qiaomu-ai-rss-reader')[0].view;
 const results=[],check=(name,ok)=>{if(!ok)throw Error(name);results.push(name);};
 const bundle={entry:{id:'qa-capture',sourceId:'qa',origin:'local',title:'Selection QA',link:'https://example.com/qa',content:'<p>Selection capture QA paragraph.</p><p>Second paragraph.</p>'},rewrite:null,translation:null,fetchedAt:Date.now()};
@@ -43,7 +44,7 @@ document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
 check('Escape dismisses action',!document.querySelector('.qrs-selection-popup'));
 sel.removeAllRanges();
 window.__qrsCaptureQA={results};
-}finally{p.noteArticle=original;}
+}finally{p.noteArticle=original;p.state.settings.selectionPopup=popupEnabled;}
 })().catch(error=>window.__qrsCaptureQA={error:String(error)});return JSON.stringify(true);})()`);
 let result;
 for(let i=0;i<120;i++) {

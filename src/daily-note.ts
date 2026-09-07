@@ -39,7 +39,8 @@ export function dailyNoteLink(entry: Entry, options: CaptureOptions = {}): strin
   const link = options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
   if (!link) throw new Error('这篇文章没有可用的链接。');
   const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || '未命名文章');
-  return `[${title}](<${link}>)`;
+  const original = (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
+  return `[${title}](<${link}>)` + (options.article && original ? ` · [原文](<${original}>)` : '');
 }
 export function repairArticleLinks(content: string): string {
   return content.replace(/obsidian:\/\/qiaomu-ai-rss\?[^\s<>)]*/g, url => url.replace(/\+/g, '%20'));
@@ -52,6 +53,13 @@ export function appendDailyNoteLink(content: string, entry: Entry, options: Capt
   // An invisible section boundary keeps later excerpts under their original article.
   const identity = options.article || entry.link || entry.id;
   const marker = `<!-- qrs-article:${encodeURIComponent(identity)} -->`;
+  // Upgrade an existing capture's header without changing its title or reading-version link.
+  const originalSuffix = title.slice(title.indexOf('>)') + 2);
+  if (options.article && originalSuffix) {
+    content = content.replace(/^(\[[^\n]*?\]\(<(obsidian:\/\/qiaomu-ai-rss\?[^\n>]+)>\))(?! · \[原文\])/gm, (whole: string, header: string, url: string) => {
+      try { return new URL(url).searchParams.get('article') === options.article ? header + originalSuffix : whole; } catch { return whole; }
+    });
+  }
   const markerIndex = content.indexOf(marker);
   if (markerIndex >= 0) {
     const previousMarker = content.lastIndexOf('<!-- qrs-article:', markerIndex - 1);
@@ -60,7 +68,7 @@ export function appendDailyNoteLink(content: string, entry: Entry, options: Capt
     return { content: content.slice(0, markerIndex).trimEnd() + '\n\n' + text + '\n\n' + content.slice(markerIndex), added: true };
   }
   // Recognize 0.9.0 captures, including its form-encoded spaces and other reading modes.
-  const links = [...content.matchAll(/^\[[^\n]*\]\(<(obsidian:\/\/qiaomu-ai-rss\?[^\n>]+)>\)$/gm)];
+  const links = [...content.matchAll(/^\[[^\n]*\]\(<(obsidian:\/\/qiaomu-ai-rss\?[^\n>]+)>\)(?: · \[原文\]\(<[^\n>]+>\))?$/gm)];
   const existing = links.find(match => {
     try { return new URL(match[1]).searchParams.get('article') === options.article; } catch { return false; }
   });
