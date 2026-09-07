@@ -60,6 +60,11 @@ describe('paths and persistence', () => {
     const state = initialState({ favorites: { abc123: bundle }, cache: { abc123: bundle }, readIds: ['abc123'] });
     expect(initialState(JSON.parse(JSON.stringify(state))).favorites.abc123.entry.id).toBe('abc123');
   });
+  it('migrates and persists compact reading appearance settings', () => {
+    expect(initialState({ settings: {} }).settings).toMatchObject({ fontSize: 19, fontFamily: 'serif', lineHeight: 1.9, lineWidth: 36 });
+    const state = initialState({ settings: { fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 } });
+    expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 });
+  });
 });
 describe('API contract and failures', () => {
   it('uses encoded channel paths and cursor query', async () => {

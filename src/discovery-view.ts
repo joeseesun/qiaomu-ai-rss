@@ -30,7 +30,7 @@ export class DiscoveryView extends ItemView {
     const actions = header.createDiv('qrs-discovery-actions');
     actions.createEl('button', { text: '管理订阅' }).onclick = () => this.plugin.manageSubscriptions();
     actions.createEl('button', { text: '开始阅读', cls: 'mod-cta' }).onclick = () => { void this.plugin.readSubscriptions(); };
-    const collections = page.createDiv({ cls: 'qrs-discovery-collections', attr: { 'aria-label': '目录选择' } });
+    const collections = page.createDiv({ cls: 'qrs-discovery-collections' });
     const featured = collections.createEl('button', { text: `精选订阅 · ${discoveryFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'featured') } });
     const blogs = collections.createEl('button', { text: `独立博客 · ${independentBlogs.length}`, attr: { 'aria-pressed': String(this.collection === 'blogs') } });
     const rsshub = collections.createEl('button', { text: `RSSHub · ${rsshubFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'rsshub') } });
@@ -39,9 +39,10 @@ export class DiscoveryView extends ItemView {
     attribution.createSpan({ text: '目录来自 ' });
     attribution.createEl('a', { text: '中文独立博客列表', href: blogCatalogSource, attr: { target: '_blank', rel: 'noopener noreferrer' } });
     attribution.createSpan({ text: '，由 Tim Qian 与社区维护（MIT）。收录不代表持续可用，添加时会验证。' });
-    const search = page.createEl('input', { type: 'search', cls: 'qrs-discovery-search', placeholder: '搜索名称、主题或语言…', attr: { 'aria-label': '搜索订阅目录' } });
+    const fieldId = crypto.randomUUID(); page.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索订阅目录', attr: { for: `qrs-discovery-search-${fieldId}` } });
+    const search = page.createEl('input', { type: 'search', cls: 'qrs-discovery-search', placeholder: '搜索名称、主题或语言…', attr: { id: `qrs-discovery-search-${fieldId}` } });
     search.value = this.query; search.oninput = () => { this.query = search.value; this.limit = 60; this.refresh(); };
-    const filters = page.createDiv({ cls: 'qrs-discovery-filters', attr: { 'aria-label': '订阅分类' } });
+    const filters = page.createDiv({ cls: 'qrs-discovery-filters' });
     for (const category of categories) {
       const button = filters.createEl('button', { text: category, attr: { 'aria-pressed': String(this.category === category) } });
       button.onclick = () => {
@@ -50,7 +51,8 @@ export class DiscoveryView extends ItemView {
         this.refresh();
       };
     }
-    const tags = page.createEl('select', { cls: 'qrs-discovery-tags dropdown', attr: { 'aria-label': '博客主题' } });
+    page.createEl('label', { cls: 'qrs-visually-hidden', text: '博客主题', attr: { for: `qrs-discovery-tags-${fieldId}` } });
+    const tags = page.createEl('select', { cls: 'qrs-discovery-tags dropdown', attr: { id: `qrs-discovery-tags-${fieldId}` } });
     tags.createEl('option', { value: '', text: '全部主题' });
     for (const tag of blogTags) tags.createEl('option', { value: tag, text: tag });
     tags.value = this.tag; tags.onchange = () => { this.tag = tags.value; this.limit = 60; this.refresh(); };
@@ -60,7 +62,8 @@ export class DiscoveryView extends ItemView {
     const summary = details.createEl('summary', { text: `RSSHub 实例 · ${new URL(this.plugin.state.settings.rsshubUrl).hostname}` });
     details.createEl('p', { text: 'RSSHub 将网站内容转换成订阅。默认使用第三方公共实例，也可使用自己的 HTTPS 实例。仅影响以后添加的订阅。' });
     const form = details.createEl('form', { cls: 'qrs-discovery-instance-form' });
-    const instance = form.createEl('input', { type: 'url', value: this.plugin.state.settings.rsshubUrl, attr: { 'aria-label': 'RSSHub 实例地址', required: '' } });
+    form.createEl('label', { cls: 'qrs-visually-hidden', text: 'RSSHub 实例地址', attr: { for: `qrs-rsshub-${fieldId}` } });
+    const instance = form.createEl('input', { type: 'url', value: this.plugin.state.settings.rsshubUrl, attr: { id: `qrs-rsshub-${fieldId}`, required: '' } });
     form.createEl('button', { text: '应用', type: 'submit' });
     const message = details.createDiv({ cls: 'qrs-subscription-message', attr: { role: 'status' } });
     form.onsubmit = event => {
@@ -115,8 +118,8 @@ export class DiscoveryView extends ItemView {
       card.createDiv({ cls: 'qrs-discovery-meta', text: `${feed.category} · ${feed.language}${feed.route ? ' · RSSHub' : ''}` });
       card.createEl('p', { text: feed.description });
       const footer = card.createDiv('qrs-discovery-card-footer');
-      footer.createEl('a', { text: feed.route ? 'RSSHub 订阅地址' : new URL(feed.site ?? url).hostname, href: feed.site ?? url, attr: { 'aria-label': `${feed.name} 的${feed.site ? '博客主页' : '订阅地址'}`, target: '_blank', rel: 'noopener noreferrer' } });
-      const button = footer.createEl('button', { text: subscribed ? '已订阅' : this.pending.has(feed.id) ? '添加中…' : this.errors.has(feed.id) ? '重试' : '订阅', attr: { 'aria-label': `${subscribed ? '已订阅' : '订阅'} ${feed.name}` } });
+      footer.createEl('a', { text: feed.route ? 'RSSHub 订阅地址' : new URL(feed.site ?? url).hostname, href: feed.site ?? url, attr: { target: '_blank', rel: 'noopener noreferrer' } });
+      const button = footer.createEl('button', { text: subscribed ? '已订阅' : this.pending.has(feed.id) ? '添加中…' : this.errors.has(feed.id) ? '重试' : '订阅' });
       button.disabled = subscribed || this.pending.has(feed.id);
       button.onclick = () => {
         if (this.pending.has(feed.id)) return;

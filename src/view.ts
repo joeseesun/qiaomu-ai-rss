@@ -1,7 +1,7 @@
-import { FuzzySuggestModal, ItemView, Menu, Notice, setIcon, setTooltip, type App, type WorkspaceLeaf } from 'obsidian';
+import { FuzzySuggestModal, ItemView, Menu, Notice, setIcon, type App, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { articleFragment } from './content';
-import { modeLabels, modeSchema, safeUrl, titleOf, type Bundle, type Entry, type Mode, type Source } from './model';
+import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type Bundle, type Entry, type Mode, type Source } from './model';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
 class ChannelPicker extends FuzzySuggestModal<Source> {
@@ -30,6 +30,8 @@ export class ReaderView extends ItemView {
   private loading = false;
   private articleLoading = false;
   private focused = false;
+  private appearanceOpen = false;
+  private appearanceId = `qrs-reading-settings-${crypto.randomUUID()}`;
   private listVersion = 0;
   private articleVersion = 0;
   private renderVersion = 0;
@@ -65,32 +67,41 @@ export class ReaderView extends ItemView {
     void action().catch(error => { if (!this.closed) new Notice(error instanceof Error ? error.message : '操作失败，请重试。'); });
   }
   private addIconButton(parent: HTMLElement, icon: string, label: string, action: () => void): HTMLButtonElement {
-    const button = parent.createEl('button', { cls: 'qrs-icon', attr: { 'aria-label': label } });
-    setIcon(button, icon); setTooltip(button, label); button.addEventListener('click', action); return button;
+    const button = parent.createEl('button', { cls: 'qrs-icon', attr: { 'data-qrs-label': label } });
+    setIcon(button, icon); button.createSpan({ cls: 'qrs-visually-hidden', text: label }); button.addEventListener('click', action); return button;
+  }
+  private applyAppearance() {
+    const settings = this.plugin.state.settings;
+    this.contentEl.dataset.readingFont = settings.fontFamily;
+    this.contentEl.setCssProps({
+      '--qrs-font-size': `${settings.fontSize}px`, '--qrs-line-height': String(settings.lineHeight),
+      '--qrs-article-width': `${settings.fontSize * settings.lineWidth + 120}px`,
+    });
   }
   private build() {
     const root = this.contentEl; root.empty(); root.addClass('qrs-root'); root.removeClass('qrs-has-article');
     root.toggleClass('qrs-focus', this.focused); root.tabIndex = 0;
-    root.setCssProps({ '--qrs-list-width': `${this.plugin.state.settings.listWidth}px` });
+    root.setCssProps({ '--qrs-list-width': `${this.plugin.state.settings.listWidth}px` }); this.applyAppearance();
     const body = root.createDiv('qrs-layout');
-    const sidebar = body.createEl('aside', { cls: 'qrs-sidebar', attr: { 'aria-label': '文章导航' } });
+    const sidebar = body.createEl('aside', { cls: 'qrs-sidebar' });
     const bar = sidebar.createDiv('qrs-sidebar-toolbar');
-    this.channelButton = bar.createEl('button', { cls: 'qrs-channel', attr: { 'aria-label': '选择频道', 'aria-haspopup': 'dialog' } });
+    this.channelButton = bar.createEl('button', { cls: 'qrs-channel', attr: { 'aria-haspopup': 'dialog' } });
     this.renderChannel(); this.channelButton.addEventListener('click', () => this.pickChannel());
     this.addIconButton(bar, 'plus', '添加或管理订阅', () => this.plugin.manageSubscriptions());
     this.addIconButton(bar, 'search', '搜索文章 /', () => this.toggleSearch());
     this.refreshButton = this.addIconButton(bar, 'refresh-cw', '刷新文章', () => { void this.loadEntries(false, true); });
-    this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group', 'aria-label': '阅读筛选' } });
+    this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group' } });
     this.renderFilters();
     this.searchBox = sidebar.createDiv('qrs-search-box'); this.searchBox.toggleClass('is-hidden', !this.query);
-    this.searchInput = this.searchBox.createEl('input', { type: 'search', placeholder: '搜索当前列表…', attr: { 'aria-label': '搜索已载入文章' } });
+    const searchId = `${this.appearanceId}-search`; this.searchBox.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索已载入文章', attr: { for: searchId } });
+    this.searchInput = this.searchBox.createEl('input', { type: 'search', placeholder: '搜索当前列表…', attr: { id: searchId } });
     this.searchInput.value = this.query;
     this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.renderList(); });
     this.searchInput.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); this.toggleSearch(false); } });
     this.status = sidebar.createDiv({ cls: 'qrs-status', attr: { role: 'status', 'aria-live': 'polite' } });
-    this.list = sidebar.createDiv({ cls: 'qrs-list', attr: { 'aria-label': '文章列表' } });
+    this.list = sidebar.createDiv({ cls: 'qrs-list' });
     this.createResizeHandle(body);
-    this.reader = body.createEl('section', { cls: 'qrs-reader', attr: { 'aria-label': '文章阅读区', tabindex: '0' } });
+    this.reader = body.createEl('section', { cls: 'qrs-reader', attr: { tabindex: '0' } });
     root.onkeydown = event => this.onReaderKey(event);
   }
   private renderChannel() {
@@ -144,7 +155,8 @@ export class ReaderView extends ItemView {
     else { this.query = ''; this.searchInput.value = ''; this.renderList(); this.contentEl.focus(); }
   }
   private createResizeHandle(parent: HTMLElement) {
-    const handle = parent.createDiv({ cls: 'qrs-resize', attr: { role: 'separator', tabindex: '0', 'aria-label': '调整文章列表宽度', 'aria-orientation': 'vertical', 'aria-valuemin': '220', 'aria-valuemax': '520', 'aria-valuenow': String(this.plugin.state.settings.listWidth) } });
+    const labelId = `${this.appearanceId}-resize`; const handle = parent.createDiv({ cls: 'qrs-resize', attr: { role: 'separator', tabindex: '0', 'aria-labelledby': labelId, 'aria-orientation': 'vertical', 'aria-valuemin': '220', 'aria-valuemax': '520', 'aria-valuenow': String(this.plugin.state.settings.listWidth) } });
+    handle.createSpan({ cls: 'qrs-visually-hidden', text: '调整文章列表宽度', attr: { id: labelId } });
     const resize = (width: number) => {
       const next = Math.round(Math.max(220, Math.min(520, width)));
       this.plugin.state.settings.listWidth = next;
@@ -172,6 +184,9 @@ export class ReaderView extends ItemView {
   }
   private onReaderKey(event: KeyboardEvent) {
     const target = event.target as HTMLElement | null;
+    if (event.key === 'Escape' && this.appearanceOpen) {
+      event.preventDefault(); event.stopPropagation(); this.appearanceOpen = false; this.renderReader(true); return;
+    }
     if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
       (target?.closest?.('input,textarea,select,[contenteditable=true]'))) return;
     if (event.key === 'j' || event.key === 'k') { event.preventDefault(); this.navigate(event.key === 'j' ? 1 : -1); }
@@ -238,7 +253,7 @@ export class ReaderView extends ItemView {
     if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
     for (const entry of entries) {
       const read = this.plugin.state.readIds.includes(entry.id);
-      const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'aria-label': titleOf(entry), 'data-entry-id': entry.id } });
+      const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
       row.toggleClass('qrs-selected', this.bundle?.entry.id === entry.id);
       row.setAttribute('aria-pressed', String(this.bundle?.entry.id === entry.id)); row.toggleClass('qrs-read', read);
       const meta = row.createSpan('qrs-entry-meta');
@@ -246,7 +261,8 @@ export class ReaderView extends ItemView {
       const date = entry.publishedTs ? new Date(entry.publishedTs) : entry.published ? new Date(entry.published) : null;
       meta.createSpan({ cls: 'qrs-date', text: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '' });
       const title = row.createDiv('qrs-entry-title');
-      title.createSpan({ cls: read ? 'qrs-read-dot' : 'qrs-unread-dot', attr: { 'aria-label': read ? '已读' : '未读' } });
+      title.createSpan({ cls: read ? 'qrs-read-dot' : 'qrs-unread-dot', attr: { 'aria-hidden': 'true' } });
+      title.createSpan({ cls: 'qrs-visually-hidden', text: read ? '已读' : '未读' });
       title.createEl('h3', { text: titleOf(entry) });
       if (this.plugin.state.favorites[entry.id]) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
       const summary = this.excerpt(entry); if (summary) row.createEl('p', { text: summary, cls: 'qrs-summary' });
@@ -334,10 +350,13 @@ export class ReaderView extends ItemView {
     }
     const toolbar = this.reader.createDiv('qrs-reader-toolbar');
     this.addIconButton(toolbar, this.focused ? 'panel-left-open' : 'panel-left-close', '显示或收起文章列表 [', () => this.toggleFocus());
-    const select = toolbar.createEl('select', { cls: 'qrs-mode-select', attr: { 'aria-label': '阅读版本' } });
+    const modeId = `${this.appearanceId}-mode`; toolbar.createEl('label', { cls: 'qrs-visually-hidden', text: '阅读版本', attr: { for: modeId } });
+    const select = toolbar.createEl('select', { cls: 'qrs-mode-select', attr: { id: modeId, 'data-qrs-field': '阅读版本' } });
     for (const [mode, label] of Object.entries(modeLabels).filter(([mode]) => bundle.entry.origin !== 'local' || mode === 'original')) select.createEl('option', { value: mode, text: label });
     select.disabled = bundle.entry.origin === 'local';
     select.value = this.mode; select.onchange = () => { this.mode = modeSchema.parse(select.value); this.renderReader(); };
+    const appearance = this.addIconButton(toolbar, 'type', '阅读设置', () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
+    appearance.setAttribute('aria-expanded', String(this.appearanceOpen)); appearance.setAttribute('aria-controls', this.appearanceId);
     const nav = toolbar.createDiv('qrs-reader-nav');
     this.addIconButton(nav, 'chevron-up', '上一篇 K', () => this.navigate(-1));
     this.addIconButton(nav, 'chevron-down', '下一篇 J', () => this.navigate(1));
@@ -363,13 +382,14 @@ export class ReaderView extends ItemView {
       menu.addItem(item => item.setTitle('选择频道').setIcon('rss').onClick(() => this.pickChannel()));
       const rect = more.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });
+    if (this.appearanceOpen) this.renderAppearanceSettings();
     if (previous) { this.reader.append(previous); this.reader.scrollTop = scroll; return; }
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
     const metadata = article.createDiv('qrs-article-meta');
     metadata.createSpan({ text: this.sourceName(bundle.entry) });
     const date = bundle.entry.publishedTs ? new Date(bundle.entry.publishedTs) : null;
     if (date) metadata.createSpan({ text: date.toLocaleDateString() });
-    if (this.mode !== 'original') { const ai = metadata.createSpan({ text: 'AI ' + (this.mode === 'rewrite' ? '改写' : '翻译'), cls: 'qrs-ai-label' }); setTooltip(ai, 'AI 生成内容，请结合原文核对。'); }
+    if (this.mode !== 'original') metadata.createSpan({ text: 'AI ' + (this.mode === 'rewrite' ? '改写' : '翻译'), cls: 'qrs-ai-label' });
     article.createEl('h1', { text: titleOf(bundle.entry) });
     if (this.message) article.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
     try {
@@ -378,5 +398,37 @@ export class ReaderView extends ItemView {
       else article.createDiv({ cls: 'qrs-empty', text: this.articleLoading ? '正在获取正文…' : `${modeLabels[this.mode]}暂无正文。可以切换版本，或从“更多”中打开原文。` });
     } catch { article.createDiv({ cls: 'qrs-empty', text: '正文无法显示，请打开原文阅读。' }); }
     this.reader.scrollTop = scroll;
+  }
+  private renderAppearanceSettings() {
+    const settings = this.plugin.state.settings;
+    const headingId = `${this.appearanceId}-heading`;
+    const panel = this.reader.createEl('section', { cls: 'qrs-reading-settings', attr: { id: this.appearanceId, 'aria-labelledby': headingId } });
+    const header = panel.createDiv('qrs-reading-settings-head'); header.createEl('strong', { text: '阅读设置', attr: { id: headingId } });
+    const close = header.createEl('button', { text: '完成' }); close.onclick = () => { this.appearanceOpen = false; this.renderReader(true); };
+    const fields = panel.createDiv('qrs-reading-settings-fields');
+    const row = (label: string) => { const el = fields.createEl('label', { cls: 'qrs-reading-setting' }); el.createSpan({ text: label }); return el; };
+    const fontRow = row('字体');
+    const font = fontRow.createEl('select', { attr: { 'data-qrs-field': '正文字体' } });
+    font.createEl('option', { value: 'serif', text: '宋体' }); font.createEl('option', { value: 'sans', text: '黑体' }); font.value = settings.fontFamily;
+    const sizeRow = row('字号'); const sizeValue = sizeRow.createEl('output', { text: `${settings.fontSize} px` });
+    const size = sizeRow.createEl('input', { type: 'range', value: String(settings.fontSize), attr: { min: '14', max: '32', step: '1', 'data-qrs-field': '正文字号' } });
+    const heightRow = row('行距'); const heightValue = heightRow.createEl('output', { text: `${settings.lineHeight.toFixed(1)} 倍` });
+    const height = heightRow.createEl('input', { type: 'range', value: String(settings.lineHeight), attr: { min: '1.5', max: '2.4', step: '0.1', 'data-qrs-field': '正文行距' } });
+    const widthRow = row('版心宽度');
+    const width = widthRow.createEl('select', { attr: { 'data-qrs-field': '正文宽度' } });
+    for (const [value, label] of [['28', '紧凑 · 28 字'], ['36', '适中 · 36 字'], ['44', '宽松 · 44 字']] as const) width.createEl('option', { value, text: label });
+    width.value = String(settings.lineWidth);
+    const update = () => { sizeValue.setText(`${settings.fontSize} px`); heightValue.setText(`${settings.lineHeight.toFixed(1)} 倍`); this.applyAppearance(); };
+    font.onchange = () => { settings.fontFamily = readingFontSchema.parse(font.value); update(); this.run(() => this.plugin.persist()); };
+    size.oninput = () => { settings.fontSize = Number(size.value); update(); }; size.onchange = () => this.run(() => this.plugin.persist());
+    height.oninput = () => { settings.lineHeight = Number(height.value); update(); }; height.onchange = () => this.run(() => this.plugin.persist());
+    width.onchange = () => { settings.lineWidth = Number(width.value) as 28 | 36 | 44; update(); this.run(() => this.plugin.persist()); };
+    const reset = panel.createEl('button', { text: '恢复默认', cls: 'qrs-reading-reset' });
+    reset.onclick = () => {
+      settings.fontFamily = 'serif'; settings.fontSize = 19; settings.lineHeight = 1.9; settings.lineWidth = 36;
+      font.value = settings.fontFamily; size.value = String(settings.fontSize); height.value = String(settings.lineHeight); width.value = String(settings.lineWidth);
+      update(); this.run(() => this.plugin.persist());
+    };
+    panel.onkeydown = event => { if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.appearanceOpen = false; this.renderReader(true); } };
   }
 }

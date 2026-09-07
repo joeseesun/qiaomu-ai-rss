@@ -1,7 +1,7 @@
 {
   "id": "qiaomu-ai-rss",
   "name": "Qiaomu AI RSS",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "minAppVersion": "1.13.0",
   "description": "Read Qiaomu articles and your own RSS or Atom subscriptions, and save articles as Markdown notes.",
   "author": "向阳乔木",
