@@ -22,7 +22,7 @@ Canceling a subscription removes its list/cache, but keeps favorited article sna
 
 ## Discovery and RSSHub
 
-The bundled catalog is read locally. Search terms, topic filters and browsing behavior are not sent to GitHub, Qiaomu, RSSHub or the blogs. There are no remote favicons or live catalog requests. Clicking Subscribe fetches the selected feed. RSSHub routes use the displayed instance (default `https://rsshub.rssforever.com`, operated by a third party); it sees the requested route and standard request metadata, and obtains content from upstream sites. Users can configure another HTTPS instance. The plugin never silently switches providers, and previously saved feed URLs are unchanged. Clicking a blog home-page or catalog-source link opens that destination in the browser.
+The bundled catalog is read locally. Search terms, topic filters and browsing behavior are not sent to GitHub, Qiaomu, RSSHub or the blogs. There are no remote favicons or live catalog requests. Clicking Subscribe fetches the selected feed. The website/WeChat service category and provider recommendations were removed in 0.16.0. Existing user subscriptions retain their saved URLs. Clicking a blog home-page or catalog-source link opens that destination in the browser.
 
 ## Vault Markdown folders
 

@@ -1,5 +1,5 @@
 import { EditorView } from '@codemirror/view';
-import { MarkdownView, Notice, Platform, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
+import { MarkdownView, Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
 import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
@@ -204,15 +204,22 @@ export default class QiaomuRssPlugin extends Plugin {
     return result;
   }
   async noteArticle(entry: Entry, excerpt = '', mode: Mode = 'original'): Promise<{ file: TFile; added: boolean }> {
+    const reader = this.app.workspace.getLeavesOfType(VIEW_TYPE).find(leaf => leaf === this.app.workspace.getMostRecentLeaf())
+      ?? this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
     const result = await this.appendToDailyNote(entry, excerpt, mode);
-    let leaf = this.app.workspace.getLeavesOfType('markdown').find(candidate => candidate.view instanceof MarkdownView && candidate.view.file?.path === result.file.path);
-    if (!leaf) leaf = Platform.isMobileApp ? this.app.workspace.getLeaf('tab') : this.app.workspace.getLeaf('split', 'vertical');
+    let leaf = this.app.workspace.getLeavesOfType('markdown').find(candidate => candidate.view instanceof MarkdownView && candidate.view.file?.path === result.file.path
+      && (!reader || (candidate.parent !== reader.parent && candidate.getRoot() === reader.getRoot())));
+    if (!leaf) leaf = reader ? this.app.workspace.createLeafBySplit(reader, 'vertical') : this.app.workspace.getLeaf('split', 'vertical');
     await leaf.openFile(result.file, { active: true }); await this.app.workspace.revealLeaf(leaf);
     if (leaf.view instanceof MarkdownView) {
       const lastLine = Math.max(0, leaf.view.editor.lineCount() - 1);
       leaf.view.editor.setCursor(lastLine, leaf.view.editor.getLine(lastLine).length); leaf.view.editor.focus();
     }
     return result;
+  }
+  openSettings() {
+    const app = this.app as App & { setting: { open(): void; openTabById(id: string): void } };
+    app.setting.open(); app.setting.openTabById(this.manifest.id);
   }
   manageSubscriptions(tab: SubscriptionTab = 'mine') {
     this.subscriptionManager?.close();

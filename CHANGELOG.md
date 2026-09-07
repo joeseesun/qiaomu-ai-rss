@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.0 — 2026-09-07
+
+- Remove website/WeChat exploration, provider recommendations and RSSHub instance controls. Preserve existing personal subscriptions.
+- Always open Daily Notes beside the reader; reuse an adjacent split rather than switching to a note in the same tab group.
+- Add a plugin-settings gear on the right of the article filters.
+- Remove source/date/version metadata above article titles.
+
 ## 0.15.0 — 2026-09-07
 
 - Open captured article links directly in the reader from Reading View and Live Preview; load deferred reader tabs before navigating.
