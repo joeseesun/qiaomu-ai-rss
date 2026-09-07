@@ -1,0 +1,36 @@
+name: Release
+on:
+  push:
+    tags: ['[0-9]*']
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Verify release version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e 'if (require("./manifest.json").version !== process.env.RELEASE_TAG) process.exit(1)'
+      - uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" main.js manifest.json styles.css --verify-tag --title "$RELEASE_TAG" --notes-file docs/release-notes.md

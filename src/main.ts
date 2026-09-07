@@ -6,7 +6,7 @@ import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, ty
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
-import { readingFonts, ReadingFonts } from './fonts';
+import { readingFonts, selectableFonts, ReadingFonts } from './fonts';
 import { registerImageDrops } from './image-drag';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
@@ -274,19 +274,21 @@ export default class QiaomuRssPlugin extends Plugin {
   }
 }
 class RssSettings extends PluginSettingTab {
+  private section = '阅读';
   constructor(app: App, private plugin: QiaomuRssPlugin) { super(app, plugin); }
   getSettingDefinitions(): SettingDefinitionItem[] {
     const settings = this.plugin.state.settings;
     const saveReading = async () => { this.plugin.refreshPreferences(); await this.plugin.persist(); };
-    return [
+    const definitions: SettingDefinitionItem[] = [
       { type: 'group', heading: '阅读与摘录', items: [
         { name: '选中文字时显示摘录浮层', desc: '默认开启。选中文字后可追加到今日日记或当前笔记。', render: setting => {
           setting.addToggle(toggle => toggle.setValue(settings.selectionPopup).onChange(async value => { settings.selectionPopup = value; await saveReading(); }));
         } },
         { name: '正文字体', render: setting => { setting.addDropdown(drop => {
-          for (const font of readingFonts) drop.addOption(font.id, font.name);
-          drop.setValue(settings.fontFamily).onChange(async value => { settings.fontFamily = readingFontSchema.parse(value); await saveReading(); });
+          for (const font of selectableFonts.concat(readingFonts.filter(f => f.id === settings.fontFamily && !selectableFonts.includes(f)))) drop.addOption(font.id, font.name);
+          drop.setValue(settings.fontFamily).onChange(async value => { settings.fontFamily = readingFontSchema.parse(value); await saveReading(); this.update(); });
         }); } },
+        { name: '设备字体名称', desc: '填写本机已安装的字体名称；其他设备没有此字体时使用系统衬线字体。', visible: () => settings.fontFamily === 'custom', render: setting => { setting.addText(text => text.setPlaceholder('填写设备中的字体名称').setValue(settings.customFont).onChange(async value => { settings.customFont = value.slice(0, 200); await saveReading(); })); } },
         { name: '正文字号', render: setting => { setting.addDropdown(drop => {
           for (let size = 14; size <= 32; size++) drop.addOption(String(size), size + ' px');
           drop.setValue(String(settings.fontSize)).onChange(async value => { settings.fontSize = Number(value); await saveReading(); });
@@ -353,6 +355,38 @@ class RssSettings extends PluginSettingTab {
       ] },
       { name: '本地数据', desc: '已读、收藏与缓存保存在当前库。浏览频道、切换文章或刷新时请求服务，不会上传你的笔记。' },
     ];
+    const reading = definitions[0];
+    if (!('type' in reading) || reading.type !== 'group') return definitions;
+    const excerpt = reading.items!.shift()!;
+    reading.heading = '阅读';
+    const buckets: Record<string, SettingDefinitionItem[]> = {
+      '阅读': [reading, definitions[4], definitions[5]],
+      '来源': [definitions[2], definitions[1], definitions[3]],
+      '摘录': [excerpt, definitions[7]],
+      '关于': [definitions[6], ...[
+        ['建议与问题反馈', 'GitHub Issues', 'https://github.com/joeseesun/qiaomu-ai-rss/issues'],
+        ['使用说明', '打开说明', 'https://github.com/joeseesun/qiaomu-ai-rss#readme'],
+        ['向阳乔木', 'qiaomu.ai', 'https://qiaomu.ai/'],
+        ['乔木博客', 'blog.qiaomu.ai', 'https://blog.qiaomu.ai/'],
+        ['X', '@vista8', 'https://x.com/vista8'],
+        ['GitHub', '@joeseesun', 'https://github.com/joeseesun'],
+      ].map(([name, label, href]) => ({ name, render: (setting: import('obsidian').Setting) => {
+        setting.controlEl.createEl('a', { text: label, href, attr: { target: '_blank', rel: 'noopener noreferrer' } });
+      } })), { name: '开源许可', desc: 'Copyright © 向阳乔木 · GPL-3.0-only。内置朱雀仿宋遵循 SIL OFL 1.1。' }],
+    };
+    return [{ name: 'Qiaomu AI RSS', searchable: false, render: setting => {
+      setting.settingEl.addClass('qrs-settings-header');
+      const nav = setting.settingEl.createDiv({ cls: 'qrs-settings-tabs', attr: { role: 'tablist' } });
+      for (const section of Object.keys(buckets)) {
+        const button = nav.createEl('button', { text: section, attr: { role: 'tab', 'aria-selected': String(section === this.section), tabindex: section === this.section ? '0' : '-1' } });
+        button.onclick = () => { this.section = section; this.update(); this.containerEl.querySelector<HTMLElement>('[role=tab][aria-selected=true]')?.focus(); };
+        button.onkeydown = event => {
+          const names = Object.keys(buckets), i = names.indexOf(section);
+          const next = event.key === 'ArrowRight' ? (i + 1) % names.length : event.key === 'ArrowLeft' ? (i + names.length - 1) % names.length : event.key === 'Home' ? 0 : event.key === 'End' ? names.length - 1 : -1;
+          if (next >= 0) { event.preventDefault(); this.section = names[next]; this.update(); this.containerEl.querySelector<HTMLElement>('[role=tab][aria-selected=true]')?.focus(); }
+        };
+      }
+    } }, ...buckets[this.section]];
   }
   private pendingFolder?: string;
 }

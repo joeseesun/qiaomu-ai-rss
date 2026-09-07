@@ -9,7 +9,7 @@ const test=(input,name)=>{const button=input.parentElement.querySelector('.qrs-s
 v.toggleSearch(true);test(v.searchInput,'Article');v.searchInput.value=old;v.searchInput.dispatchEvent(new Event('input',{bubbles:true}));v.toggleSearch(!!old);
 v.channelButton.click();test(document.querySelector('.qrs-channel-picker input'),'Channel');document.querySelector('.qrs-channel-picker input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
 p.manageSubscriptions('explore');test(document.querySelector('.qrs-discovery-search'),'Discovery');p.subscriptionManager.close();
-p.openSettings();const el=app.setting.activeTab.containerEl;check('Version and release notes shown',el.textContent.includes('当前版本')&&el.textContent.includes('查看本次更新'));const update=[...el.querySelectorAll('button')].find(b=>b.textContent==='管理插件更新');update.click();check('Native update settings opened',app.setting.activeTab.id==='community-plugins');app.setting.close();
+p.openSettings();app.setting.activeTab.containerEl.querySelectorAll('[role=tab]')[3].click();const el=app.setting.activeTab.containerEl;check('Version and release notes shown',el.textContent.includes('当前版本')&&el.textContent.includes('查看本次更新'));const update=[...el.querySelectorAll('button')].find(b=>b.textContent==='管理插件更新');update.click();check('Native update settings opened',app.setting.activeTab.id==='community-plugins');app.setting.close();
 window.__searchQA={results};})().catch(e=>window.__searchQA={error:String(e)});return true})()`);
 let result;for(let i=0;i<30;i++){result=ev('JSON.stringify(window.__searchQA)');if(result)break;Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,300);}
 console.log(result);if(!result||result.error)process.exitCode=1;

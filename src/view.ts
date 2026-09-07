@@ -5,7 +5,7 @@ import type QiaomuRssPlugin from './main';
 import { vaultSourceId } from './vault-source';
 import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
-import { readingFonts } from './fonts';
+import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
 import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
@@ -100,7 +100,7 @@ export class ReaderView extends ItemView {
     });
     this.registerDomEvent(this.contentEl, 'contextmenu', event => {
       // Let mobile WebViews open their native text-selection handles.
-      if (Platform.isMobileApp || (event as PointerEvent).pointerType === 'touch') return;
+      if (Platform.isMobileApp || ('pointerType' in event && event.pointerType === 'touch')) return;
       const target = event.target;
       if (!(target instanceof this.contentEl.ownerDocument.defaultView!.HTMLElement) || !target.closest('.qrs-article') || !this.bundle) return;
       event.preventDefault();
@@ -176,7 +176,7 @@ export class ReaderView extends ItemView {
     const settings = this.plugin.state.settings;
     this.contentEl.dataset.readingFont = settings.fontFamily;
     const font = readingFonts.find(font => font.id === settings.fontFamily)!;
-    this.contentEl.setCssProps({ '--qrs-font-family': font.data ? `"${font.family}",serif` : font.family });
+    this.contentEl.setCssProps({ '--qrs-font-family': fontFamily(settings.fontFamily, settings.customFont) });
     void this.plugin.fonts.load(this.contentEl.ownerDocument, settings.fontFamily).catch(() => {
       if (!this.closed && this.plugin.state.settings.fontFamily === font.id) new Notice('字体加载失败，请重新选择重试。');
     });
@@ -604,8 +604,12 @@ export class ReaderView extends ItemView {
     const row = (label: string) => { const el = fields.createEl('label', { cls: 'qrs-reading-setting' }); el.createSpan({ text: label }); return el; };
     const fontRow = row('字体');
     const font = fontRow.createEl('select', { attr: { 'data-qrs-field': '正文字体' } });
-    for (const choice of readingFonts) font.createEl('option', { value: choice.id, text: choice.name });
+    for (const choice of selectableFonts.concat(readingFonts.filter(f => f.id === settings.fontFamily && !selectableFonts.includes(f)))) font.createEl('option', { value: choice.id, text: choice.name });
     font.value = settings.fontFamily;
+    const customRow = row('设备字体名称');
+    const custom = customRow.createEl('input', { type: 'text', value: settings.customFont, placeholder: '例如 PingFang SC' });
+    customRow.hidden = settings.fontFamily !== 'custom';
+    custom.oninput = () => { settings.customFont = custom.value.slice(0, 200); this.applyAppearance(); this.run(() => this.plugin.persist()); };
     const sizeRow = row('字号'); const sizeValue = sizeRow.createEl('output', { text: `${settings.fontSize} px` });
     const size = sizeRow.createEl('input', { type: 'range', value: String(settings.fontSize), attr: { min: '14', max: '32', step: '1', 'data-qrs-field': '正文字号' } });
     const heightRow = row('行距'); const heightValue = heightRow.createEl('output', { text: `${settings.lineHeight.toFixed(1)} 倍` });
@@ -615,7 +619,7 @@ export class ReaderView extends ItemView {
     for (const [value, label] of [['28', '紧凑 · 28 字'], ['36', '适中 · 36 字'], ['44', '宽松 · 44 字']] as const) width.createEl('option', { value, text: label });
     width.value = String(settings.lineWidth);
     const update = () => { sizeValue.setText(`${settings.fontSize} px`); heightValue.setText(`${settings.lineHeight.toFixed(1)} 倍`); this.applyAppearance(); };
-    font.onchange = () => { settings.fontFamily = readingFontSchema.parse(font.value); update(); this.run(() => this.plugin.persist()); };
+    font.onchange = () => { settings.fontFamily = readingFontSchema.parse(font.value); customRow.hidden = settings.fontFamily !== 'custom'; update(); this.run(() => this.plugin.persist()); };
     size.oninput = () => { settings.fontSize = Number(size.value); update(); this.run(() => this.plugin.persist()); }; size.onchange = () => this.run(() => this.plugin.persist());
     height.oninput = () => { settings.lineHeight = Number(height.value); update(); this.run(() => this.plugin.persist()); }; height.onchange = () => this.run(() => this.plugin.persist());
     width.onchange = () => { settings.lineWidth = Number(width.value) as 28 | 36 | 44; update(); this.run(() => this.plugin.persist()); };

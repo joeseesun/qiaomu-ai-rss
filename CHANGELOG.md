@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.18.0 — 2026-09-07
 
+- Reduce the offline reading font to a licensed 7,554-codepoint WOFF2 subset; use device fonts for other choices. Enforce a 5 MB asset budget and publish artifact attestations.
+- Organize settings into Reading, Sources, Excerpts and About with author, help and issue links.
 - Add consistent clear buttons to article, channel and discovery search fields.
 - Add installed version, release notes and the native plugin update settings entry.
 - Correct marketplace installation instructions after confirming automated review timeouts.
