@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.0 — 2026-09-07
+
+- Drag loaded RSS and vault Markdown raster images into editable notes as native image files.
+- Use Obsidian native attachment handling for configured folders, note-relative paths, filename conflicts and local embeds.
+
 ## 0.10.0 — 2026-09-07
 
 - Default selection popup off and add an immediate settings toggle, independent of text dragging.

@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective: 2026-09-07 (0.10.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
+Effective: 2026-09-07 (0.11.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
 
 Qiaomu AI RSS is a local reader for a remote Qiaomu RSS API. It requests public sources, entry lists, article details, and existing translation/rewrite assets. The default server is `rss.qiaomu.ai`. A user-configured server is governed by its own operator's policy.
 
@@ -29,3 +29,5 @@ The bundled catalog is read locally. Search terms, topic filters and browsing be
 Only explicitly selected vault folders (including their descendants) are listed as local Markdown sources. File names, modification times and frontmatter are used locally; bodies are read when opened and recent/favorite/captured snapshots remain in plugin data. They are never sent to Qiaomu. Removing a folder source does not delete files or existing saved snapshots. Native Obsidian Markdown rendering resolves internal links and attachments and follows native/plugin rendering behavior, including requests for remote embeds present in the selected note. The RSS image-cache setting applies to RSS HTML, not native Markdown embeds.
 
 The selection popup is disabled by default. Turning it on and typography preferences are stored in the vault plugin settings.
+
+Dragging an image transfers its local raster bytes to Obsidian. Dropping into a note uses native attachment handling and the configured attachment location; it creates a normal vault attachment, which is independent of the RSS image cache. Native Markdown attachment bytes may be read locally to prepare a drag. Canceling a drag does not create an attachment.

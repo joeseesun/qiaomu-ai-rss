@@ -1,6 +1,7 @@
 import { Component, MarkdownRenderer, ItemView, Menu, Modal, Notice, setIcon, type App, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { vaultSourceId } from './vault-source';
+import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
 import { readingFonts } from './fonts';
 import { articleFragment } from './content';
@@ -433,6 +434,7 @@ export class ReaderView extends ItemView {
       try {
         const blob = await this.plugin.images.load(url);
         if (this.closed || version !== this.renderVersion) return;
+        enableImageDrag(img, blob);
         const local = URL.createObjectURL(blob); this.blobUrls.push(local); img.src = local;
         img.onload = () => holder.removeClass('is-loading');
       } catch {
@@ -524,6 +526,7 @@ export class ReaderView extends ItemView {
         const prose = article.createDiv('qrs-prose');
         this.markdownComponent = new Component(); this.markdownComponent.load();
         void MarkdownRenderer.render(this.app, bundle.entry.markdown, prose, bundle.entry.markdownPath || '', this.markdownComponent)
+          .then(() => prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || ''))
           .catch(() => { prose.setText('Markdown 无法显示，请打开源文件。'); });
       } else {
       const fragment = articleFragment(bundle, this.mode, article.ownerDocument, this.plugin.state.settings.remoteImages);
