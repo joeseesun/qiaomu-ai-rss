@@ -1,7 +1,7 @@
 import { MarkdownView, Notice, Platform, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, serviceUrl, withServiceOrigin, type Bundle, type Entry, type Mode, type State } from './model';
+import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
 import { repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
@@ -17,9 +17,14 @@ export default class QiaomuRssPlugin extends Plugin {
   state: State = initialState(null);
   images!: LocalImages;
   subscriptions!: Subscriptions;
+  private lastNote: TFile | null = null;
   private saving: Promise<void> = Promise.resolve();
   private dailyNoteWrite: Promise<unknown> = Promise.resolve();
   async onload() {
+    this.lastNote = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? null;
+    this.registerEvent(this.app.workspace.on('active-leaf-change', leaf => {
+      if (leaf?.view instanceof MarkdownView && leaf.view.file) this.lastNote = leaf.view.file;
+    }));
     const data: unknown = await this.loadData();
     try { this.state = initialState(data); }
     catch { new Notice('RSS 配置不兼容，已使用默认设置。'); }
@@ -82,7 +87,11 @@ export default class QiaomuRssPlugin extends Plugin {
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
     if (view instanceof ReaderView) view.showSavedArticle(bundle, modeSchema.parse(mode));
   }
-  async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original'): Promise<{ file: TFile; added: boolean }> {
+  currentNote(): TFile | null {
+    const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.lastNote;
+    return file && this.app.vault.getAbstractFileByPath(file.path) === file ? file : null;
+  }
+  async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original', target?: TFile): Promise<{ file: TFile; added: boolean }> {
     let result!: { file: TFile; added: boolean };
     const write = async () => {
       const id = `${entry.origin === 'local' ? 'local' : entry.origin === 'vault' ? 'vault' : this.state.settings.baseUrl}|${entry.id}`;
@@ -90,8 +99,9 @@ export default class QiaomuRssPlugin extends Plugin {
       this.state.savedArticles[id] = bundle;
       await this.persist();
       const options = { vault: this.app.vault.getName(), article: id, mode, excerpt };
-      const settings = await readDailyNoteSettings(this.app.vault);
-      const path = dailyNotePath(settings);
+      if (target && this.app.vault.getAbstractFileByPath(target.path) !== target) throw new Error('目标笔记已不存在。');
+      const settings = target ? { folder: '', format: '', template: '' } : await readDailyNoteSettings(this.app.vault);
+      const path = target?.path ?? dailyNotePath(settings);
       let existing = this.app.vault.getAbstractFileByPath(path);
       let added = false;
       if (existing && !(existing instanceof TFile)) throw new Error('今日日记路径已被文件夹占用。');
@@ -111,9 +121,24 @@ export default class QiaomuRssPlugin extends Plugin {
       }
       if (!(existing instanceof TFile)) throw new Error('无法创建今日日记。');
       if (!added) {
-        await this.app.vault.process(existing, content => {
-          const next = appendDailyNoteLink(content, entry, options); added = next.added; return next.content;
-        });
+        const view = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
+          .find(view => view instanceof MarkdownView && view.file === existing);
+        if (view instanceof MarkdownView) {
+          // Read the editor buffer so a pending autosave cannot erase a user's draft.
+          const content = view.editor.getValue();
+          const next = appendDailyNoteLink(content, entry, options); added = next.added;
+          if (next.content !== content) {
+            let start = 0, end = content.length, nextEnd = next.content.length;
+            while (start < end && content[start] === next.content[start]) start++;
+            while (end > start && nextEnd > start && content[end - 1] === next.content[nextEnd - 1]) { end--; nextEnd--; }
+            view.editor.replaceRange(next.content.slice(start, nextEnd), view.editor.offsetToPos(start), view.editor.offsetToPos(end));
+            await view.save();
+          }
+        } else {
+          await this.app.vault.process(existing, content => {
+            const next = appendDailyNoteLink(content, entry, options); added = next.added; return next.content;
+          });
+        }
       }
       result = { file: existing, added };
     };
@@ -234,18 +259,6 @@ class RssSettings extends PluginSettingTab {
       { name: '我的订阅', desc: '添加 RSS / Atom、分组与 OPML 导入导出。', render: setting => {
         setting.addButton(button => button.setButtonText('管理订阅').onClick(() => this.plugin.manageSubscriptions()));
       } },
-      { name: '服务地址', desc: '连接兼容的 HTTPS 服务。切换地址会清空乔木精选的缓存与收藏，保留个人订阅。', render: setting => {
-        setting.addText(text => text.setValue(settings.baseUrl).onChange(value => { this.pendingUrl = value; }))
-          .addButton(button => button.setButtonText('应用').onClick(async () => {
-            try {
-              const base = serviceUrl(this.pendingUrl ?? settings.baseUrl);
-              if (base !== settings.baseUrl) {
-                this.plugin.state = withServiceOrigin(this.plugin.state, base);
-                await this.plugin.persist(); this.plugin.resetViews(); this.update();
-              }
-            } catch (error) { new Notice(error instanceof Error ? error.message : '无法保存设置。'); }
-          }));
-      } },
       { name: 'OPML 导出文件夹', desc: '导出的 OPML 文件保存在这个库内文件夹。文章链接会写入 Obsidian 的今日日记。', render: setting => {
         setting.addText(text => text.setValue(settings.folder).onChange(value => { this.pendingFolder = value; }))
           .addButton(button => button.setButtonText('保存').onClick(async () => {
@@ -269,6 +282,5 @@ class RssSettings extends PluginSettingTab {
       { name: '本地数据', desc: '已读、收藏与缓存保存在当前库。浏览频道、切换文章或刷新时请求服务，不会上传你的笔记。' },
     ];
   }
-  private pendingUrl?: string;
   private pendingFolder?: string;
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 — 2026-09-07
+
+- Remove the service-address control from user settings.
+- Right-click article content to append selected text or an article link to the most recently active note or today’s Daily Note. Preserve unsaved editor text and group repeated captures.
+- Align article metadata with titles and summaries; refine selection backgrounds and thumbnail edges without changing row spacing or typography.
+
 ## 0.11.0 — 2026-09-07
 
 - Drag loaded RSS and vault Markdown raster images into editable notes as native image files.

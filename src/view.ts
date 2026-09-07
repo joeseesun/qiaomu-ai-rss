@@ -92,6 +92,26 @@ export class ReaderView extends ItemView {
   getIcon() { return 'rss'; }
   onOpen(): Promise<void> {
     this.reset();
+    this.registerDomEvent(this.contentEl, 'contextmenu', event => {
+      const target = event.target;
+      if (!(target instanceof this.contentEl.ownerDocument.defaultView!.HTMLElement) || !target.closest('.qrs-article') || !this.bundle) return;
+      event.preventDefault();
+      const bundle = this.bundle, mode = this.mode, note = this.plugin.currentNote();
+      const selection = this.contentEl.ownerDocument.getSelection();
+      const prose = target.closest('.qrs-article')?.querySelector('.qrs-prose');
+      const excerpt = selection && prose?.contains(selection.anchorNode) && prose.contains(selection.focusNode) ? selection.toString().trim() : '';
+      const append = async (current: boolean) => {
+        try {
+          this.plugin.remember(bundle);
+          const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, mode, current && note ? note : undefined);
+          new Notice(result.added ? `已追加到 ${result.file.basename}` : '这篇文章或摘录已在笔记中。');
+        } catch (error) { new Notice(error instanceof Error ? error.message : '无法追加到笔记。'); }
+      };
+      new Menu().setUseNativeMenu(false)
+        .addItem(item => item.setTitle(note ? `追加到当前笔记：${note.basename}` : '追加到当前笔记（请先打开笔记）').setIcon('file-pen-line').setDisabled(!note).onClick(() => append(true)))
+        .addItem(item => item.setTitle('追加到今日日记').setIcon('calendar-days').onClick(() => append(false)))
+        .showAtMouseEvent(event);
+    });
     this.selectionCapture = new SelectionCapture(this.contentEl.ownerDocument, () => this.reader, () => {
       const bundle = this.bundle, mode = this.mode;
       if (!bundle || !this.plugin.state.settings.selectionPopup) return null;
