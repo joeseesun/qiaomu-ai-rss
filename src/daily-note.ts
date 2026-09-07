@@ -1,5 +1,5 @@
 import { moment, normalizePath, type Vault } from 'obsidian';
-import { safeUrl, titleOf, type Entry } from './model';
+import { safeUrl, titleOf, type Entry, type Mode } from './model';
 
 export interface DailyNoteSettings { folder: string; format: string; template: string }
 export interface DateFormatter { format(pattern: string): string }
@@ -29,19 +29,25 @@ export function dailyNotePath(settings: DailyNoteSettings, now: DateFormatter = 
   return normalizePath(`${settings.folder ? `${settings.folder}/` : ''}${dated}.md`);
 }
 
-export function dailyNoteLink(entry: Entry): string {
-  const link = entry.link ? safeUrl(entry.link) : null;
-  if (!link) throw new Error('这篇文章没有可用的原文链接。');
-  const title = titleOf(entry).replace(/\\/g, '\\\\').replaceAll('[', '\\[').replaceAll(']', '\\]').replace(/\s+/g, ' ').trim() || '未命名文章';
-  return `- [${title}](<${link}>)`;
+export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string }
+export function articleNoteUrl(options: CaptureOptions): string {
+  const params = new URLSearchParams({ vault: options.vault || '', article: options.article || '', mode: options.mode || 'original' });
+  return `obsidian://qiaomu-ai-rss?${params.toString()}`;
 }
-
-export function appendDailyNoteLink(content: string, entry: Entry): { content: string; added: boolean } {
-  const link = entry.link ? safeUrl(entry.link) : null;
-  if (!link) throw new Error('这篇文章没有可用的原文链接。');
-  if (content.includes(link)) return { content, added: false };
-  const separator = !content ? '' : content.endsWith('\n\n') ? '' : content.endsWith('\n') ? '\n' : '\n\n';
-  return { content: `${content}${separator}${dailyNoteLink(entry)}\n`, added: true };
+function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
+export function dailyNoteLink(entry: Entry, options: CaptureOptions = {}): string {
+  const link = options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
+  if (!link) throw new Error('这篇文章没有可用的链接。');
+  const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || '未命名文章');
+  return `[${title}](<${link}>)`;
+}
+export function appendDailyNoteLink(content: string, entry: Entry, options: CaptureOptions = {}): { content: string; added: boolean } {
+  const title = dailyNoteLink(entry, options);
+  const excerpt = options.excerpt?.trim();
+  const block = excerpt ? `${title}\n\n${markdownText(excerpt)}` : title;
+  if (content.includes(block)) return { content, added: false };
+  const separator = !content || content.endsWith('\n\n') ? '' : content.endsWith('\n') ? '\n' : '\n\n';
+  return { content: `${content}${separator}${block}\n\n`, added: true };
 }
 
 export function renderDailyNoteTemplate(template: string, title: string, now: DateFormatter = currentMoment()): string {

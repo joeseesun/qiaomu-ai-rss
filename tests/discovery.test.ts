@@ -13,8 +13,8 @@ describe('local discovery catalog', () => {
     expect(new Set(independentBlogs.map(feed => feed.url)).size).toBe(independentBlogs.length);
     expect(entries.some(feed => feed.url === 'https://blog.qiaomu.ai/feed.xml')).toBe(false);
   });
-  it('keeps ten direct featured feeds separate from RSSHub routes', () => {
-    expect(discoveryFeeds).toHaveLength(10);
+  it('keeps nine direct featured feeds separate from RSSHub routes', () => {
+    expect(discoveryFeeds).toHaveLength(9);
     expect(discoveryFeeds.every(feed => !!feed.url && !feed.route)).toBe(true);
     expect(filterDiscovery('阮一峰 技术', 'AI 与技术').map(feed => feed.id)).toEqual(['ruanyifeng']);
     expect(filterDiscovery('github 英文', 'AI 与技术', 'rsshub').map(feed => feed.id)).toEqual(['github']);

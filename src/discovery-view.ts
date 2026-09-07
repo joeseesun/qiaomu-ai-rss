@@ -34,7 +34,7 @@ export class DiscoveryView extends ItemView {
     const featured = collections.createEl('button', { text: `精选订阅 · ${discoveryFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'featured') } });
     const blogs = collections.createEl('button', { text: `独立博客 · ${independentBlogs.length}`, attr: { 'aria-pressed': String(this.collection === 'blogs') } });
     const rsshub = collections.createEl('button', { text: `RSSHub · ${rsshubFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'rsshub') } });
-    const standard = page.createEl('p', { cls: 'qrs-discovery-standard', text: '精选标准：长期原创、持续更新、RSS 直连、个人辨识度。首批 10 个，宁缺毋滥。' });
+    const standard = page.createEl('p', { cls: 'qrs-discovery-standard', text: '精选标准：长期原创、持续更新、RSS 全文、个人辨识度。目前 9 个，宁缺毋滥。' });
     const attribution = page.createDiv('qrs-discovery-attribution');
     attribution.createSpan({ text: '目录来自 ' });
     attribution.createEl('a', { text: '中文独立博客列表', href: blogCatalogSource, attr: { target: '_blank', rel: 'noopener noreferrer' } });

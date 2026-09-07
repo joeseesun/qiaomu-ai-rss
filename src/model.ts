@@ -41,6 +41,7 @@ export const stateSchema = z.object({
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),
+  savedArticles: z.record(z.string(), bundleSchema).default({}),
   cache: z.record(z.string(), bundleSchema).default({}), updatedAt: z.number().default(0),
 });
 export type State = z.infer<typeof stateSchema>;
@@ -67,7 +68,7 @@ export function folderPath(value: string): string {
   return segments.join('/');
 }
 export function withServiceOrigin(state: State, baseUrl: string): State {
-  return initialState({ settings: { ...state.settings, baseUrl: serviceUrl(baseUrl) }, subscriptions: state.subscriptions,
+  return initialState({ savedArticles: state.savedArticles, settings: { ...state.settings, baseUrl: serviceUrl(baseUrl) }, subscriptions: state.subscriptions,
     favorites: Object.fromEntries(Object.entries(state.favorites).filter(([, bundle]) => bundle.entry.origin === 'local')),
     cache: Object.fromEntries(Object.entries(state.cache).filter(([, bundle]) => bundle.entry.origin === 'local')),
     readIds: state.readIds.filter(id => id.startsWith('local-')) });

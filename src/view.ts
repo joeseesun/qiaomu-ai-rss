@@ -1,5 +1,6 @@
 import { ItemView, Menu, Modal, Notice, setIcon, type App, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
+import { SelectionCapture } from './selection';
 import { readingFonts } from './fonts';
 import { articleFragment } from './content';
 import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type Bundle, type Entry, type Mode } from './model';
@@ -47,6 +48,7 @@ class ChannelPicker extends Modal {
   onClose() { this.contentEl.empty(); }
 }
 export class ReaderView extends ItemView {
+  private selectionCapture?: SelectionCapture;
   private list!: HTMLElement;
   private reader!: HTMLElement;
   private status!: HTMLElement;
@@ -85,8 +87,23 @@ export class ReaderView extends ItemView {
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return 'Qiaomu AI RSS'; }
   getIcon() { return 'rss'; }
-  onOpen(): Promise<void> { this.reset(); return Promise.resolve(); }
+  onOpen(): Promise<void> {
+    this.reset();
+    this.selectionCapture = new SelectionCapture(this.contentEl.ownerDocument, () => this.reader, () => {
+      const bundle = this.bundle, mode = this.mode;
+      if (!bundle) return null;
+      return async text => {
+        try {
+          this.plugin.remember(bundle);
+          const result = await this.plugin.noteArticle(bundle.entry, text, mode);
+          new Notice(result.added ? '摘录已添加到今日日记。' : '这段摘录已在今日日记中。');
+        } catch (error) { new Notice(error instanceof Error ? error.message : '摘录失败，请重试。'); }
+      };
+    });
+    return Promise.resolve();
+  }
   onClose(): Promise<void> {
+    this.selectionCapture?.dispose();
     this.closed = true; this.listVersion++; this.articleVersion++; this.clearImages(); this.clearThumbnails(); this.contentEl.onkeydown = null;
     return Promise.resolve();
   }
@@ -383,10 +400,17 @@ export class ReaderView extends ItemView {
     }
     if (!this.closed && version === this.articleVersion) { this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); this.renderList(); }
   }
+  showSavedArticle(bundle: Bundle, mode: Mode) {
+    this.articleVersion++; this.articleLoading = false;
+    this.bundle = bundle; this.mode = mode; this.message = '';
+    this.reader.setAttribute('aria-busy', 'false'); this.contentEl.addClass('qrs-has-article');
+    this.renderReader(); this.reader.scrollTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
+  }
   private noteCurrent() {
     const bundle = this.bundle; if (!bundle) return;
     this.run(async () => {
-      const result = await this.plugin.noteArticle(bundle.entry);
+      this.plugin.remember(bundle);
+      const result = await this.plugin.noteArticle(bundle.entry, '', this.mode);
       new Notice(result.added ? '已添加到今日日记。' : '今日日记中已有这篇文章。');
     });
   }
@@ -427,6 +451,7 @@ export class ReaderView extends ItemView {
     }
   }
   private renderReader(keepContent = false) {
+    this.selectionCapture?.clear();
     const active = this.contentEl.ownerDocument.activeElement;
     const restoreFocus = active !== this.reader && this.reader.contains(active);
     const scroll = this.reader.scrollTop;

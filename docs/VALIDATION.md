@@ -1,4 +1,4 @@
-# Validation — 0.8.1
+# Validation — 0.9.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -90,3 +90,12 @@ Version 0.4.0 completed the directory's automatic review and was published. The 
 `node scripts/font-smoke.mjs` verifies all five embedded font faces load in Obsidian, are applied to article text, preserve the article DOM, and persist the selection. Font assets are byte-identical to the documented upstream files after gzip decompression. No font network requests are used. Mobile-device verification remains pending.
 
 `node scripts/navigation-smoke.mjs` passes nine actual-Obsidian checks for toolbar grouping, immediate repeated J/K navigation, focus after redraw, out-of-order network responses, non-stealing editor focus, rendering independent of slow persistence, and backward navigation in an unread reading session.
+
+## 0.9.0 selection capture and internal return links
+
+- ESLint, 43 unit tests, TypeScript and production build passed.
+- Real Obsidian 1.13.7 capture smoke: all 9 checks passed (selection popup bounds, real Daily Note append, paragraph/internal-link format, split, dismissal, duplicate prevention, cache-independent return, keyboard selection and Escape).
+- All 9 delayed-navigation regression checks passed. No developer errors were captured.
+- Opening an actual obsidian://qiaomu-ai-rss link through macOS returned to the saved article. Screenshot inspected: selected text popup follows the selection, and the note renders a plain linked title and excerpt without bullets. Existing notes were not rewritten.
+- Baoyu is removed from the current featured array (9 remain); historical feed endpoint checks above describe prior versions.
+- Mobile touch selection is not manually verified in this release.

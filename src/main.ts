@@ -1,7 +1,7 @@
 import { MarkdownView, Notice, Platform, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, modeLabels, modeSchema, serviceUrl, withServiceOrigin, type Bundle, type Entry, type State } from './model';
+import { folderPath, initialState, modeLabels, modeSchema, serviceUrl, withServiceOrigin, type Bundle, type Entry, type Mode, type State } from './model';
 import { appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { ReadingFonts } from './fonts';
@@ -30,6 +30,9 @@ export default class QiaomuRssPlugin extends Plugin {
     this.addRibbonIcon('rss', '打开 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开阅读器', callback: () => { void this.openReader(); } });
     this.addSettingTab(new RssSettings(this.app, this));
+    this.registerObsidianProtocolHandler('qiaomu-ai-rss', params => {
+      void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice('这篇文章的本地副本不存在。'));
+    });
   }
   onunload() { this.fonts.dispose(); }
   api(): RssApi {
@@ -65,9 +68,21 @@ export default class QiaomuRssPlugin extends Plugin {
       }
     }
   }
-  async appendToDailyNote(entry: Entry): Promise<{ file: TFile; added: boolean }> {
+  async openSavedArticle(id: string, mode: string) {
+    const bundle = this.state.savedArticles[id];
+    if (!bundle) throw new Error('Missing saved article');
+    await this.openReader();
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+    if (view instanceof ReaderView) view.showSavedArticle(bundle, modeSchema.parse(mode));
+  }
+  async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original'): Promise<{ file: TFile; added: boolean }> {
     let result!: { file: TFile; added: boolean };
     const write = async () => {
+      const id = `${entry.origin === 'local' ? 'local' : this.state.settings.baseUrl}|${entry.id}`;
+      const bundle = this.state.cache[entry.id] || this.state.favorites[entry.id] || { entry, rewrite: entry.rewrite || null, translation: null, fetchedAt: Date.now() };
+      this.state.savedArticles[id] = bundle;
+      await this.persist();
+      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt };
       const settings = await readDailyNoteSettings(this.app.vault);
       const path = dailyNotePath(settings);
       let existing = this.app.vault.getAbstractFileByPath(path);
@@ -80,7 +95,7 @@ export default class QiaomuRssPlugin extends Plugin {
           const templateFile = this.app.vault.getAbstractFileByPath(`${settings.template}.md`);
           if (templateFile instanceof TFile) template = renderDailyNoteTemplate(await this.app.vault.read(templateFile), path.split('/').at(-1)?.replace(/\.md$/i, '') || '');
         }
-        const next = appendDailyNoteLink(template, entry); added = next.added;
+        const next = appendDailyNoteLink(template, entry, options); added = next.added;
         try { existing = await this.app.vault.create(path, next.content); }
         catch (error) {
           existing = this.app.vault.getAbstractFileByPath(path);
@@ -90,7 +105,7 @@ export default class QiaomuRssPlugin extends Plugin {
       if (!(existing instanceof TFile)) throw new Error('无法创建今日日记。');
       if (!added) {
         await this.app.vault.process(existing, content => {
-          const next = appendDailyNoteLink(content, entry); added = next.added; return next.content;
+          const next = appendDailyNoteLink(content, entry, options); added = next.added; return next.content;
         });
       }
       result = { file: existing, added };
@@ -99,8 +114,8 @@ export default class QiaomuRssPlugin extends Plugin {
     await this.dailyNoteWrite;
     return result;
   }
-  async noteArticle(entry: Entry): Promise<{ file: TFile; added: boolean }> {
-    const result = await this.appendToDailyNote(entry);
+  async noteArticle(entry: Entry, excerpt = '', mode: Mode = 'original'): Promise<{ file: TFile; added: boolean }> {
+    const result = await this.appendToDailyNote(entry, excerpt, mode);
     let leaf = this.app.workspace.getLeavesOfType('markdown').find(candidate => candidate.view instanceof MarkdownView && candidate.view.file?.path === result.file.path);
     if (!leaf) leaf = Platform.isMobileApp ? this.app.workspace.getLeaf('tab') : this.app.workspace.getLeaf('split', 'vertical');
     await leaf.openFile(result.file, { active: true }); await this.app.workspace.revealLeaf(leaf);
