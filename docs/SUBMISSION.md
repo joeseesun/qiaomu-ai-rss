@@ -2,14 +2,12 @@
 
 Status: **published** in the [Obsidian Community directory](https://community.obsidian.md/plugins/qiaomu-ai-rss) on 2026-09-07.
 
-## Publication evidence
+## Latest verified review
 
-- Version 0.3.0, reviewed commit `00f2d0ae75f3411ef2a4ae41c48198e99137cdb0`.
-- Automated review completed. Dependency scan passed; the reviewer reproduced release `main.js` byte-for-byte from source. Vault-write behavior passed.
-- Non-blocking feedback: CSS `text-decoration` partial compatibility with Obsidian 1.11.4 (the plugin requires 1.13.0), use of `!important`, and a recommendation to add GitHub artifact attestations for `main.js` and `styles.css`.
-- The public page and its `obsidian://show-plugin?id=qiaomu-ai-rss` installation link were verified both in the browser and with an unauthenticated HTTP request.
-- Listing includes an RSS icon, English descriptions, three actual desktop screenshots, free pricing, and Research / Import / Integrations categories.
-- Listing owner: 向阳乔木 (`vista8`); source repository: `joeseesun/qiaomu-ai-rss`.
+- 2026-09-07: release 0.18.0, commit `509a3fa9b5acf5b318ef84531ca78c5507c78a88`, completed the official release review. The unauthenticated public listing displays **Review: Passed**, version 0.18.0, and **Add to Obsidian**.
+- No errors or warnings are shown for that release. GitHub attestations for main.js/styles.css and byte-for-byte build verification pass. Vault enumeration is disclosed as a recommendation because the plugin offers user-selected local Markdown sources and native file/folder pickers.
+- Older releases, including 0.14.0, timed out. Their historical failed reports are not the current release result.
+- The new release workflow builds, enforces a 5 MB per-asset budget, attests and publishes assets. Check the latest official review separately after each GitHub release; release publication alone is not proof of directory approval.
 
 The initial-submission workflow below is retained for reference.
 
@@ -24,8 +22,8 @@ The current official workflow uses [community.obsidian.md](https://community.obs
 - Public repo: `joeseesun/qiaomu-ai-rss`.
 - ID: `qiaomu-ai-rss`; display name: `Qiaomu AI RSS`.
 - Original plugin implementation. Product/API references are the author's QMReader projects, not a fork of another Obsidian plugin.
-- MIT license, source, README, privacy policy and third-party notices are included.
-- For each update, the manifest version and release tag must match exactly (without a `v` prefix). The current source version is `0.17.0`.
+- GPL-3.0-only license, source, README, privacy policy and third-party notices are included.
+- For each update, the manifest version and release tag must match exactly (without a `v` prefix). Read the current source version from `manifest.json`.
 - Release assets: `main.js`, `manifest.json`, `styles.css`.
 - The default branch must contain the current manifest before submission.
 - Checks: TypeScript, official Obsidian ESLint recommended rules, automated tests, build, public API checks and actual Obsidian UI acceptance. Record limits in VALIDATION.md.
