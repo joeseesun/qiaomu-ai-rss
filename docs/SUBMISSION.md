@@ -25,7 +25,7 @@ The current official workflow uses [community.obsidian.md](https://community.obs
 - ID: `qiaomu-ai-rss`; display name: `Qiaomu AI RSS`.
 - Original plugin implementation. Product/API references are the author's QMReader projects, not a fork of another Obsidian plugin.
 - MIT license, source, README, privacy policy and third-party notices are included.
-- For each update, the manifest version and release tag must match exactly (without a `v` prefix). The current source version is `0.8.1`.
+- For each update, the manifest version and release tag must match exactly (without a `v` prefix). The current source version is `0.9.0`.
 - Release assets: `main.js`, `manifest.json`, `styles.css`.
 - The default branch must contain the current manifest before submission.
 - Checks: TypeScript, official Obsidian ESLint recommended rules, automated tests, build, public API checks and actual Obsidian UI acceptance. Record limits in VALIDATION.md.

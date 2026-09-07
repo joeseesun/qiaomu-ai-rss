@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective: 2026-09-07 (0.7.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
+Effective: 2026-09-07 (0.9.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
 
 Qiaomu AI RSS is a local reader for a remote Qiaomu RSS API. It requests public sources, entry lists, article details, and existing translation/rewrite assets. The default server is `rss.qiaomu.ai`. A user-configured server is governed by its own operator's policy.
 
@@ -8,7 +8,7 @@ The plugin sends no vault files, local searches, read states or favorites to tha
 
 Images are enabled by default and can be disabled in settings. Raster article images and list thumbnails are downloaded through Obsidian, validated, and stored in this plugin’s image-cache folder inside the vault configuration (up to 64 MB / 100 files; 8 MB per image). The interface displays local Blob URLs and can reuse cached images offline. Third-party hosts see initial/retry image requests. SVG and executable payloads are not rendered. External links opened deliberately are governed by the destination sites' privacy policies.
 
-Local settings, read IDs, entries and cached/favorite article bodies reside in the vault configuration's plugin folder, using Obsidian's storage API. The note action reads the core Daily Notes configuration and appends only the article title and public URL to today's note, creating it from the configured template when needed. Your configured sync/backup service may copy these files. The plugin neither encrypts local data nor reads files outside the vault.
+Local settings, read IDs, entries and cached/favorite article bodies reside in the vault configuration's plugin folder, using Obsidian's storage API. The note action reads the core Daily Notes configuration and appends the article title and a vault-scoped internal reader link, plus explicitly selected text when requested to today's note, creating it from the configured template when needed. Captured article snapshots remain in plugin data independently of the recent cache, allowing internal links to reopen the saved reading version offline. Deleting plugin data breaks those internal links; note text remains. No selections or notes are transmitted. Your configured sync/backup service may copy these files. The plugin neither encrypts local data nor reads files outside the vault.
 
 To remove local reader data, disable the plugin and remove its `data.json` and `image-cache/` folder in the vault's configured plugin directory. Daily Notes and OPML exports remain under your control. Removing plugin data does not remove service access logs. Contact the maintainer through GitHub for privacy questions; do not post private data or credentials in public issues.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 — 2026-09-07
+
+- Remove Baoyu from featured feeds; keep existing subscriptions.
+- Capture selected article text using an explicit selection popup.
+- Append ordinary paragraphs and vault-scoped internal article links to Daily Notes.
+- Retain captured article snapshots for offline return links, independent of recent cache.
+
 ## 0.8.1 — 2026-09-07
 
 - Move reading appearance to the right-hand article actions.

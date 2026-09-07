@@ -2,8 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RssApi } from '../src/api';
 import { articleFragment } from '../src/content';
-import { appendDailyNoteLink, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate } from '../src/daily-note';
-import { folderPath, initialState, safeUrl, serviceUrl, type Bundle } from '../src/model';
+import { articleNoteUrl, appendDailyNoteLink, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate } from '../src/daily-note';
+import { folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle } from '../src/model';
 const bundle: Bundle = {
   entry: { id: 'abc123', sourceId: 'example', title: 'Title: "quotes"\n---', link: 'https://example.com/news', content: '<h2>Original</h2><p>Full text</p>' },
   rewrite: { body: '# Title\n\n**Hello** [source](/path)\n\n```dataviewjs\nthrow Error("never execute");\n```' },
@@ -38,11 +38,26 @@ describe('untrusted remote content', () => {
     expect(articleFragment({ ...bundle, rewrite: null }, 'rewrite', document, false)).toBeNull();
   });
   it('appends only a linked title to a daily note and avoids duplicates', () => {
-    expect(dailyNoteLink(bundle.entry)).toBe('- [Title: "quotes" ---](<https://example.com/news>)');
+    const entry = { ...bundle.entry, title: 'Plain title' };
+    expect(dailyNoteLink(entry)).toBe('[Plain title](<https://example.com/news>)');
     const first = appendDailyNoteLink('# Daily\n', bundle.entry);
-    expect(first).toEqual({ content: '# Daily\n\n- [Title: "quotes" ---](<https://example.com/news>)\n', added: true });
+    expect(first.content).toBe('# Daily\n\n' + dailyNoteLink(bundle.entry) + '\n\n');
+    expect(first.content).not.toMatch(/^- /m);
     expect(appendDailyNoteLink(first.content, bundle.entry)).toEqual({ content: first.content, added: false });
     expect(first.content).not.toContain('Full text'); expect(first.content).not.toContain('rss_id');
+  });
+  it('captures inert excerpts with vault-scoped internal article links', () => {
+    const options = { vault: '中文 & QA', article: 'https://rss.qiaomu.ai|a/b', mode: 'rewrite' as const, excerpt: 'A paragraph\n\n- item <script> [link](evil) `code`' };
+    const url = new URL(articleNoteUrl(options));
+    expect(url.searchParams.get('vault')).toBe(options.vault);
+    expect(url.searchParams.get('article')).toBe(options.article);
+    expect(url.searchParams.get('mode')).toBe('rewrite');
+    const first = appendDailyNoteLink('', bundle.entry, options);
+    expect(first.content).toContain('obsidian://qiaomu-ai-rss?');
+    expect(first.content).not.toMatch(/^- /m);
+    expect(first.content).not.toContain('<script>');
+    expect(appendDailyNoteLink(first.content, bundle.entry, options).added).toBe(false);
+    expect(appendDailyNoteLink(first.content, bundle.entry, { ...options, excerpt: 'Another paragraph' }).added).toBe(true);
   });
   it('respects daily-note folders, formats and common template tokens', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;
@@ -63,6 +78,12 @@ describe('paths and persistence', () => {
   it('round trips favorites and cached content', () => {
     const state = initialState({ favorites: { abc123: bundle }, cache: { abc123: bundle }, readIds: ['abc123'] });
     expect(initialState(JSON.parse(JSON.stringify(state))).favorites.abc123.entry.id).toBe('abc123');
+  });
+  it('preserves saved article links through cache and service changes', () => {
+    expect(initialState({}).savedArticles).toEqual({});
+    const state = initialState({ savedArticles: { saved: bundle } });
+    const restored = initialState(JSON.parse(JSON.stringify(state)));
+    expect(withServiceOrigin(restored, 'https://example.com').savedArticles.saved).toEqual(bundle);
   });
   it('migrates and persists compact reading appearance settings', () => {
     expect(initialState({ settings: {} }).settings).toMatchObject({ fontSize: 19, fontFamily: 'serif', lineHeight: 1.9, lineWidth: 36 });

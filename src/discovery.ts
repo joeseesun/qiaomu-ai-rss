@@ -26,7 +26,6 @@ export const discoveryFeeds: DiscoveryFeed[] = [
   { id: 'trend-weekly', name: '潮流周刊 · Tw93', description: '每周分享科技、产品、开源项目与生活灵感。', category: '产品与工具', language: '中文', icon: 'sparkles', url: 'https://weekly.tw93.fun/rss.xml', site: 'https://weekly.tw93.fun/' },
   { id: 'ruanyifeng', name: '阮一峰的网络日志', description: '科技爱好者周刊、开发教程与长期技术观察。', category: 'AI 与技术', language: '中文', icon: 'code-xml', url: 'https://www.ruanyifeng.com/blog/atom.xml', site: 'https://www.ruanyifeng.com/blog/' },
   { id: 'codingnow', name: '云风的 BLOG', description: '游戏开发、系统设计与工程实践的一手记录。', category: 'AI 与技术', language: '中文', icon: 'gamepad-2', url: 'https://blog.codingnow.com/atom.xml', site: 'https://blog.codingnow.com/' },
-  { id: 'baoyu', name: '宝玉的分享', description: 'AI、软件工程与产品趋势的高密度解读和翻译。', category: 'AI 与技术', language: '中文', icon: 'bot', url: 'https://baoyu.io/feed.xml', site: 'https://baoyu.io/' },
   { id: 'hecaitou', name: '槽边往事 · 和菜头', description: '日常见闻、文化观察与个人经验写作。', category: '人文与生活', language: '中文', icon: 'feather', url: 'https://www.hecaitou.com/feeds/posts/default?alt=rss', site: 'https://www.hecaitou.com/' },
   { id: 'zhangxinxu', name: '张鑫旭的技术作品', description: '持续更新的 Web 前端技术研究、实验与写作。', category: 'AI 与技术', language: '中文', icon: 'braces', url: 'https://www.zhangxinxu.com/wordpress/feed/', site: 'https://www.zhangxinxu.com/' },
   { id: 'appinn', name: '小众软件', description: '发现实用、有趣、值得长期使用的软件与工具。', category: '产品与工具', language: '中文', icon: 'app-window', url: 'https://www.appinn.com/feed/', site: 'https://www.appinn.com/' },

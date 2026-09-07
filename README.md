@@ -8,7 +8,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ## 功能
 
-- **探索订阅**：10 个严格筛选的中文作者与 1,342 个中文独立博客，按名称/主题搜索、一键订阅；RSSHub 内容放在单独入口。乔木博客由服务内置，无需重复订阅。
+- **探索订阅**：9 个严格筛选的中文作者与 1,342 个中文独立博客，按名称/主题搜索、一键订阅；RSSHub 内容放在单独入口。乔木博客由服务内置，无需重复订阅。
 - **我的订阅**：添加 RSS / Atom 地址、重命名、分组、取消订阅；OPML 导入预览、去重与导出。个人订阅直接在本机获取，无需乔木账号。
 
 - 阅读优先双栏：紧凑工具栏、可拖动调宽的列表、一键专注阅读；有配图的文章在列表中显示本地缓存缩略图。
@@ -18,7 +18,8 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 - 搜索当前载入的文章，按未读、收藏筛选。
 - 切换乔木改写、中文翻译、原文。没有生成的版本会明确显示缺失，不自动调用 AI。
 - 已读状态、本地收藏，以及最近 40 篇打开过的文章缓存。收藏文章另外保留完整内容。
-- 点击“记到今日日记”，只追加文章标题与原文 URL，并在桌面端分屏打开今日日记；日记不存在时自动创建，重复点击不重复写入。
+- 点击“记到今日日记”，以普通段落追加文章标题与内部回跳链接，并在桌面端分屏打开今日日记；日记不存在时自动创建，重复点击不重复写入。
+- 选中正文后，可通过跟随浮层摘录到今日日记。内部链接会在 RSS 阅读器中打开保存的文章版本；本地副本独立于最近文章缓存保留，依赖插件及其数据。
 - 外部正文经过 HTML 清理，脚本、嵌入页面与可执行代码块不会运行。文章图片默认显示，下载到本地缓存后再渲染。
 
 本插件参考自有 [QMReader iOS](https://github.com/joeseesun/qmreader-ios) 的产品交互，根据 [QMReader 服务](https://github.com/joeseesun/qmreader) 的公共 API 独立开发。它不是其他 Obsidian RSS 插件的 fork。
@@ -44,7 +45,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 3. 在 Obsidian 的第三方插件设置中启用 **Qiaomu AI RSS**。
 4. 点击侧边栏 RSS 图标，或运行命令 **Qiaomu AI RSS: 打开阅读器**。
 
-2026-09-07 完成官方自动审核并发布。当前版本为 0.8.1。
+2026-09-07 完成官方自动审核并发布。当前版本为 0.9.0。
 
 ## 使用
 
@@ -54,9 +55,9 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 点击列表顶部 **+ → 探索订阅**，或运行命令 **Qiaomu AI RSS: 探索订阅**。
 
-- **精选订阅**：首批只保留潮流周刊、阮一峰、云风、宝玉、和菜头、张鑫旭、小众软件、月光博客、Reorx 与 pseudoyu。标准是长期原创、持续更新、RSS 直连与鲜明的个人辨识度，宁缺毋滥；乔木博客直接作为内置频道提供。
+- **精选订阅**：首批只保留潮流周刊、阮一峰、云风、和菜头、张鑫旭、小众软件、月光博客、Reorx 与 pseudoyu。标准是长期原创、持续更新、RSS 全文与鲜明的个人辨识度，宁缺毋滥；乔木博客直接作为内置频道提供。
 - **独立博客**：来自 [timqian/chinese-independent-blogs](https://github.com/timqian/chinese-independent-blogs) 的 1,342 个带 RSS 地址的博客，保留名称、主页与主题标签；支持搜索、主题筛选和分批浏览。
-- **RSSHub**：36氪快讯和 GitHub 今日趋势保留在单独的 RSSHub 页签，不计入 10 个精选作者。
+- **RSSHub**：36氪快讯和 GitHub 今日趋势保留在单独的 RSSHub 页签，不计入 9 个精选作者。
 - 点击“订阅”会读取并验证源，按主题加入“我的订阅”，并让阅读器记住这个新频道；切回阅读器即可看到文章。已经添加的源显示“已订阅”，点击“开始阅读”可查看全部个人订阅。
 - 目录离线内置，不会在浏览时请求所有网站。独立博客是社区目录快照，部分旧地址可能失效；添加失败时显示原因和重试入口。
 - RSSHub 页签默认使用第三方公共实例 `rsshub.rssforever.com`，可以展开“RSSHub 实例”改为自己的 HTTPS 实例。仅影响以后添加的源，已有订阅保持不变。
@@ -86,7 +87,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ![分组频道选择器](docs/images/channel-picker.png)
 
-点击列表顶部的当前频道，按聚合、分组、乔木频道和个人订阅源浏览或搜索。正文顶部的版本菜单切换原文、中文翻译和乔木改写；点击字体图标可调整正文字体、字号、行距与版心宽度。拖动两栏之间的分隔线调整列表宽度，双击复位；按 `[` 或点击侧栏图标专注阅读，按 `j` / `k` 切换文章。点击笔记图标后，插件会遵循 Obsidian 核心“日记”插件的文件夹、日期格式和模板设置，追加 `- [文章标题](URL)` 并分屏打开该文件。
+点击列表顶部的当前频道，按聚合、分组、乔木频道和个人订阅源浏览或搜索。正文顶部的版本菜单切换原文、中文翻译和乔木改写；点击字体图标可调整正文字体、字号、行距与版心宽度。拖动两栏之间的分隔线调整列表宽度，双击复位；按 `[` 或点击侧栏图标专注阅读，按 `j` / `k` 切换文章。点击笔记图标后，插件会遵循 Obsidian 核心“日记”插件的文件夹、日期格式和模板设置，以普通段落追加文章标题的内部回跳链接 并分屏打开该文件。
 
 搜索只覆盖当前加载列表（收藏模式下为本地收藏）；要读更多历史文章，请选择具体频道，再点击“加载更早文章”。全文与各版本取决于服务实际提供的内容，部分订阅只含摘要。
 
@@ -100,7 +101,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 - **No account, API key or payment is required for the public reading features in this release.** This plugin only reads existing published AI assets. It does not request new AI generation or send data to model providers. Future service availability is controlled by the service operator.
 - **Article images are enabled by default.** The plugin downloads article images and list thumbnails from their hosts and displays local Blob URLs. Images are cached within this plugin’s vault configuration directory (up to 64 MB / 100 files, 8 MB per image). Image hosts receive normal image requests; cached images can be read offline. You can disable images in settings. Clicking article links opens the linked website in your browser.
 - **No client-side analytics, ads, remote executable code, automatic updates or installation of dependencies.** The plugin does not upload vault notes or send local search queries, favorites or read markers to the service. There is no plugin-specific analytics endpoint. The service may retain ordinary HTTP access/error logs; this plugin does not load the website's analytics scripts.
-- **Vault-local storage only.** Settings, personal subscriptions with cached entries, recent Qiaomu entries, up to 40 recently opened articles, favorites, local images and up to 5,000 read IDs are saved using Obsidian plugin storage. Favorites remain until removed; large libraries can increase the size of `data.json`. If you sync your vault's configuration, your sync provider may also sync these files. The note action appends only the article title and public URL to today's Daily Note in the vault. No files outside the vault are read or written.
+- **Vault-local storage only.** Settings, personal subscriptions with cached entries, recent Qiaomu entries, up to 40 recently opened articles, favorites, local images and up to 5,000 read IDs are saved using Obsidian plugin storage. Captured article snapshots are retained for internal return links even after cache eviction; deleting plugin data breaks those links. Favorites remain until removed; large libraries can increase the size of `data.json`. If you sync your vault's configuration, your sync provider may also sync these files. The note action appends the article title with an internal reader link and optionally selected text to today's Daily Note in the vault. No files outside the vault are read or written.
 - Switching service origins clears the previous Qiaomu service's local reader data and favorites; personal subscriptions and personal favorites remain. Back up your plugin data before switching.
 
 ## 开发
