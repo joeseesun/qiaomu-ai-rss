@@ -33,7 +33,7 @@ export class SubscriptionManager extends Modal {
       if (!this.plugin.state.subscriptions.length) { this.message.setText('还没有可以导出的订阅。'); return; }
       void this.plugin.saveOpml(exportOpml(this.plugin.state.subscriptions)).then(path => {
         this.message.setText(`已导出到 ${path}`);
-      }).catch(() => { this.message.setText('导出失败，请检查笔记文件夹。'); });
+      }).catch(() => { this.message.setText('导出失败，请检查 OPML 导出文件夹。'); });
     };
     this.list = this.contentEl.createDiv('qrs-subscription-list'); this.renderList();
     this.contentEl.createEl('p', { cls: 'qrs-subscription-help', text: '订阅仅保存在本库。直接读取订阅网站；个人源显示原文，不调用 AI。' });

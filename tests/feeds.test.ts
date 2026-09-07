@@ -14,15 +14,20 @@ describe('feed formats and article identity', () => {
     const changed = await parseFeed(rss('<p>Updated</p>').replace('First', 'Renamed'), 'https://example.com/feed', document);
     expect(first.name).toBe('RSS & news'); expect(first.entries[0].id).toBe(changed.entries[0].id);
     expect(first.entries[0].origin).toBe('local'); expect(first.entries[0].publishedTs).toBe(Date.parse('2026-09-07T00:00:00Z'));
-    expect(first.entries[0].content).toContain('https://example.com/cover.jpg'); expect(first.entries[0].content).not.toContain('onerror');
+    expect(first.entries[0].content).toContain('https://example.com/cover.jpg'); expect(first.entries[0].image).toBe('https://example.com/cover.jpg'); expect(first.entries[0].content).not.toContain('onerror');
     const other = await parseFeed(rss(), 'https://other.example/feed', document);
     expect(first.entries[0].id).not.toBe(other.entries[0].id);
   });
   it('handles Atom namespace, alternate links, XHTML and inherited xml:base', async () => {
     const { entries } = await parseFeed(atom, 'https://example.org/feed.xml', document);
     expect(entries[0].link).toBe('https://example.org/blog/article');
-    expect(entries[0].content).toContain('https://example.org/blog/assets/photo.png');
+    expect(entries[0].content).toContain('https://example.org/blog/assets/photo.png'); expect(entries[0].image).toBe('https://example.org/blog/assets/photo.png');
     expect(entries[0].content).toContain('Body');
+  });
+  it('prefers RSS media thumbnails and image enclosures', async () => {
+    const xml = '<rss xmlns:media="http://search.yahoo.com/mrss/"><channel><title>Images</title><item><guid>one</guid><title>One</title><media:thumbnail url="/thumb.jpg"/><enclosure url="/large.jpg" type="image/jpeg"/><description>Text</description></item></channel></rss>';
+    const { entries } = await parseFeed(xml, 'https://example.com/feed', document);
+    expect(entries[0].image).toBe('https://example.com/thumb.jpg');
   });
   it('resolves relative root xml:base only once', async () => {
     const xml = atom.replace('https://example.org/blog/', '../blog/');

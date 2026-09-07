@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-09-07
+
+- Replace the flat channel search with a grouped picker, source icons, monograms, counts and cleaner active-channel labels.
+- Show locally cached list thumbnails from API images, Media RSS, enclosures or article content.
+- Replace standalone article exports with a deduplicated title-and-URL entry in today's Daily Note, then open that note in a desktop split.
+- Continue the project-wide Obsidian UI rule: no hover tooltips unless explicitly requested.
+
 ## 0.6.0 — 2026-09-07
 
 - Add compact, persistent reading controls for serif/sans fonts, text size, line height and article width.

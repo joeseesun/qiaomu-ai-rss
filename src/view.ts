@@ -1,16 +1,49 @@
-import { FuzzySuggestModal, ItemView, Menu, Notice, setIcon, type App, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, Menu, Modal, Notice, setIcon, type App, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { articleFragment } from './content';
-import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type Bundle, type Entry, type Mode, type Source } from './model';
+import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type Bundle, type Entry, type Mode } from './model';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
-class ChannelPicker extends FuzzySuggestModal<Source> {
-  constructor(app: App, private sources: Source[], private choose: (source: Source) => void) {
-    super(app); this.setPlaceholder('搜索频道…');
+type ChannelSection = '聚合' | '订阅分组' | '乔木频道' | '我的订阅源';
+interface ChannelChoice { id: string; name: string; section: ChannelSection; subtitle: string; icon?: string; monogram?: string }
+function channelMark(parent: HTMLElement, choice: ChannelChoice) {
+  const mark = parent.createSpan('qrs-channel-mark');
+  if (choice.icon) setIcon(mark, choice.icon); else mark.setText(choice.monogram || choice.name.trim().slice(0, 1).toLocaleUpperCase());
+  return mark;
+}
+function feedHost(url: string) {
+  try { return new URL(url).hostname || 'RSS'; } catch { return 'RSS'; }
+}
+class ChannelPicker extends Modal {
+  private query = '';
+  constructor(app: App, private choices: ChannelChoice[], private active: string, private choose: (source: ChannelChoice) => void) {
+    super(app);
   }
-  getItems() { return this.sources.filter(source => source.enabled !== false); }
-  getItemText(source: Source) { return source.name; }
-  onChooseItem(source: Source) { this.choose(source); }
+  onOpen() {
+    this.modalEl.addClass('qrs-channel-modal'); this.setTitle('选择频道');
+    const searchId = `qrs-channel-search-${crypto.randomUUID()}`;
+    this.contentEl.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索频道', attr: { for: searchId } });
+    const input = this.contentEl.createEl('input', { type: 'search', cls: 'qrs-channel-search', placeholder: '搜索频道、分组或订阅源…', attr: { id: searchId } });
+    const list = this.contentEl.createDiv('qrs-channel-list');
+    const render = () => {
+      list.empty(); const query = this.query.trim().toLocaleLowerCase();
+      const matches = this.choices.filter(choice => !query || `${choice.name} ${choice.subtitle}`.toLocaleLowerCase().includes(query));
+      for (const section of ['聚合', '订阅分组', '乔木频道', '我的订阅源'] as const) {
+        const choices = matches.filter(choice => choice.section === section); if (!choices.length) continue;
+        const group = list.createEl('section', { cls: 'qrs-channel-section' }); group.createEl('h3', { text: section });
+        for (const choice of choices) {
+          const row = group.createEl('button', { cls: 'qrs-channel-row', attr: { 'data-channel-id': choice.id } }); row.toggleClass('is-active', choice.id === this.active);
+          channelMark(row, choice); const text = row.createSpan('qrs-channel-copy');
+          text.createSpan({ cls: 'qrs-channel-name', text: choice.name }); text.createSpan({ cls: 'qrs-channel-subtitle', text: choice.subtitle });
+          if (choice.id === this.active) setIcon(row.createSpan('qrs-channel-check'), 'check');
+          row.onclick = () => { this.close(); this.choose(choice); };
+        }
+      }
+      if (!matches.length) list.createDiv({ cls: 'qrs-channel-empty', text: '没有匹配的频道。' });
+    };
+    input.oninput = () => { this.query = input.value; render(); }; render(); input.focus();
+  }
+  onClose() { this.contentEl.empty(); }
 }
 export class ReaderView extends ItemView {
   private list!: HTMLElement;
@@ -40,6 +73,9 @@ export class ReaderView extends ItemView {
   private closed = false;
   private message = '';
   private blobUrls: string[] = [];
+  private thumbnailUrls = new Map<string, string>();
+  private thumbnailPending = new Map<string, Promise<string | null>>();
+  private thumbnailVersion = 0;
   private imageObserver?: IntersectionObserver;
   constructor(leaf: WorkspaceLeaf, private plugin: QiaomuRssPlugin) {
     super(leaf); this.mode = plugin.state.settings.defaultMode;
@@ -49,11 +85,11 @@ export class ReaderView extends ItemView {
   getIcon() { return 'rss'; }
   onOpen(): Promise<void> { this.reset(); return Promise.resolve(); }
   onClose(): Promise<void> {
-    this.closed = true; this.listVersion++; this.articleVersion++; this.clearImages(); this.contentEl.onkeydown = null;
+    this.closed = true; this.listVersion++; this.articleVersion++; this.clearImages(); this.clearThumbnails(); this.contentEl.onkeydown = null;
     return Promise.resolve();
   }
   reset() {
-    this.closed = false; this.listVersion++; this.articleVersion++;
+    this.closed = false; this.listVersion++; this.articleVersion++; this.clearThumbnails();
     const remembered = this.plugin.state.settings.lastSource;
     const localExists = this.plugin.state.subscriptions.some(feed => feed.id === remembered);
     const groupExists = remembered.startsWith('@group:') && this.plugin.state.subscriptions.some(feed => feed.group === remembered.slice(7));
@@ -106,7 +142,9 @@ export class ReaderView extends ItemView {
   }
   private renderChannel() {
     this.channelButton.empty();
-    this.channelButton.createSpan({ text: this.channelChoices().find(s => s.id === this.source)?.name || '乔木精选' });
+    const choices = this.channelChoices();
+    const choice = choices.find(item => item.id === this.source) || choices[0];
+    channelMark(this.channelButton, choice); this.channelButton.createSpan({ cls: 'qrs-channel-label', text: choice.name });
     setIcon(this.channelButton.createSpan(), 'chevron-down');
   }
   private renderFilters() {
@@ -116,13 +154,19 @@ export class ReaderView extends ItemView {
       button.addEventListener('click', () => { this.filter = value; this.renderFilters(); this.renderList(); });
     }
   }
-  private channelChoices(): Source[] {
+  private channelChoices(): ChannelChoice[] {
     const feeds = this.plugin.state.subscriptions;
     const groups = [...new Set(feeds.map(feed => feed.group).filter(Boolean))].sort();
-    return [{ id: '', name: '乔木精选' }, { id: '@local', name: '我的订阅' },
-      ...groups.map(group => ({ id: `@group:${group}`, name: `我的订阅 / ${group}` })),
-      ...feeds.map(feed => ({ id: feed.id, name: `${feed.group || '我的订阅'} / ${feed.name}` })),
-      ...this.plugin.state.sources];
+    return [
+      { id: '', name: '乔木精选', section: '聚合', subtitle: '乔木筛选的高质量内容', icon: 'sparkles' },
+      { id: '@local', name: '我的订阅', section: '聚合', subtitle: `${feeds.length} 个个人订阅源`, icon: 'rss' },
+      ...groups.map(group => ({ id: `@group:${group}`, name: group, section: '订阅分组' as const,
+        subtitle: `${feeds.filter(feed => feed.group === group).length} 个订阅源`, icon: 'folder' })),
+      ...this.plugin.state.sources.filter(source => source.enabled !== false).map(source => ({ id: source.id, name: source.name, section: '乔木频道' as const,
+        subtitle: ({ article: '文章', news: '新闻', podcast: '播客' } as Record<string, string>)[source.category || ''] || source.category || '乔木内容频道', monogram: source.name.trim().slice(0, 1) })),
+      ...feeds.map(feed => ({ id: feed.id, name: feed.name, section: '我的订阅源' as const,
+        subtitle: `${feed.group ? `${feed.group} · ` : ''}${feedHost(feed.url)} · ${feed.entries.length} 篇`, monogram: feed.name.trim().slice(0, 1) })),
+    ];
   }
   private personalScope() { return this.source === '@local' || this.source.startsWith('@group:') || this.source.startsWith('local:'); }
   private selectedFeeds() {
@@ -135,7 +179,7 @@ export class ReaderView extends ItemView {
     if (this.plugin.state.subscriptions.some(feed => feed.id === id)) this.selectSource(id, false);
   }
   private pickChannel() {
-    new ChannelPicker(this.app, this.channelChoices(), source => this.selectSource(source.id)).open();
+    new ChannelPicker(this.app, this.channelChoices(), this.source, source => this.selectSource(source.id)).open();
   }
   private selectSource(source: string, refresh = true) {
     this.listVersion++; this.loading = false; this.refreshButton.removeClass('is-loading');
@@ -248,6 +292,33 @@ export class ReaderView extends ItemView {
     const text = entry.rewrite?.body.split('\n\n').find(line => /[\u3400-\u9fff]/.test(line) && !line.startsWith('#') && !line.startsWith('!['));
     return (text || entry.summary || '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#]/g, '').slice(0, 160);
   }
+  private clearThumbnails() {
+    this.thumbnailVersion++;
+    for (const url of this.thumbnailUrls.values()) URL.revokeObjectURL(url);
+    this.thumbnailUrls.clear(); this.thumbnailPending.clear();
+  }
+  private thumbnailUrl(url: string): Promise<string | null> {
+    const cached = this.thumbnailUrls.get(url); if (cached) return Promise.resolve(cached);
+    const pending = this.thumbnailPending.get(url); if (pending) return pending;
+    const version = this.thumbnailVersion;
+    const promise = this.plugin.images.load(url).then(blob => {
+      if (this.closed || version !== this.thumbnailVersion) return null;
+      const local = URL.createObjectURL(blob); this.thumbnailUrls.set(url, local); return local;
+    }).catch(() => null);
+    this.thumbnailPending.set(url, promise);
+    void promise.finally(() => { if (this.thumbnailPending.get(url) === promise) this.thumbnailPending.delete(url); });
+    return promise;
+  }
+  private renderThumbnail(row: HTMLElement, entry: Entry) {
+    if (!this.plugin.state.settings.remoteImages) return;
+    const url = entry.image ? safeUrl(entry.image, entry.link || undefined) : null; if (!url) return;
+    const holder = row.createSpan('qrs-entry-thumb is-loading');
+    const img = holder.createEl('img', { attr: { alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' } });
+    void this.thumbnailUrl(url).then(local => {
+      if (!local || !holder.isConnected) { holder.remove(); return; }
+      img.onload = () => holder.removeClass('is-loading'); img.onerror = () => holder.remove(); img.src = local;
+    });
+  }
   private renderList() {
     const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
     if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
@@ -256,16 +327,18 @@ export class ReaderView extends ItemView {
       const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
       row.toggleClass('qrs-selected', this.bundle?.entry.id === entry.id);
       row.setAttribute('aria-pressed', String(this.bundle?.entry.id === entry.id)); row.toggleClass('qrs-read', read);
-      const meta = row.createSpan('qrs-entry-meta');
+      const copy = row.createSpan('qrs-entry-copy');
+      const meta = copy.createSpan('qrs-entry-meta');
       meta.createSpan({ text: this.sourceName(entry), cls: 'qrs-source-name' });
       const date = entry.publishedTs ? new Date(entry.publishedTs) : entry.published ? new Date(entry.published) : null;
       meta.createSpan({ cls: 'qrs-date', text: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '' });
-      const title = row.createDiv('qrs-entry-title');
+      const title = copy.createDiv('qrs-entry-title');
       title.createSpan({ cls: read ? 'qrs-read-dot' : 'qrs-unread-dot', attr: { 'aria-hidden': 'true' } });
       title.createSpan({ cls: 'qrs-visually-hidden', text: read ? '已读' : '未读' });
       title.createEl('h3', { text: titleOf(entry) });
       if (this.plugin.state.favorites[entry.id]) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
-      const summary = this.excerpt(entry); if (summary) row.createEl('p', { text: summary, cls: 'qrs-summary' });
+      const summary = this.excerpt(entry); if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' });
+      this.renderThumbnail(row, entry);
       row.addEventListener('click', () => { void this.openArticle(entry); });
     }
     if (this.hasMore && this.filter !== 'favorites') {
@@ -296,11 +369,11 @@ export class ReaderView extends ItemView {
     }
     if (!this.closed && version === this.articleVersion) { this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); this.renderList(); }
   }
-  private saveCurrent() {
+  private noteCurrent() {
     const bundle = this.bundle; if (!bundle) return;
     this.run(async () => {
-      const file = await this.plugin.saveArticle(bundle, this.mode, this.reader.ownerDocument);
-      new Notice('笔记已保存。'); await this.app.workspace.getLeaf('tab').openFile(file);
+      const result = await this.plugin.noteArticle(bundle.entry);
+      new Notice(result.added ? '已添加到今日日记。' : '今日日记中已有这篇文章。');
     });
   }
   private clearImages() {
@@ -374,7 +447,7 @@ export class ReaderView extends ItemView {
       await this.plugin.persist(); this.renderReader(true); this.renderList();
     }));
     readButton.setAttribute('aria-pressed', String(read));
-    this.addIconButton(actions, 'file-plus-2', '保存为笔记', () => this.saveCurrent());
+    this.addIconButton(actions, 'notebook-pen', '记到今日日记', () => this.noteCurrent());
     const more = this.addIconButton(actions, 'ellipsis', '更多文章操作', () => {
       const menu = new Menu(); const link = safeUrl(bundle.entry.link || '');
       if (link) menu.addItem(item => item.setTitle('在浏览器打开原文').setIcon('external-link').onClick(() => { this.contentEl.win.open(link, '_blank', 'noopener,noreferrer'); }));

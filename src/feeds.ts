@@ -46,7 +46,7 @@ function atomContent(node?: Element): string {
   const value = node.textContent || '';
   return node.getAttribute('type') === 'html' ? value : `<p>${escapeXml(value)}</p>`;
 }
-function contentWithBase(html: string, base: string, doc: Document): string {
+function contentWithBase(html: string, base: string, doc: Document): { html: string; image?: string } {
   // Parsing into an inert sanitized fragment also prevents source HTML from making requests.
   const fragment = createDOMPurify(doc.defaultView!).sanitize(html, { RETURN_DOM_FRAGMENT: true, ADD_ATTR: ['xml:base'], FORBID_TAGS: ['style', 'iframe'] });
   for (const el of fragment.querySelectorAll('[href],[src]')) {
@@ -56,7 +56,23 @@ function contentWithBase(html: string, base: string, doc: Document): string {
       if (url) el.setAttribute(attr, url); else el.removeAttribute(attr);
     }
   }
-  return Array.from(fragment.childNodes).map(node => node.nodeType === 1 ? (node as Element).outerHTML : escapeXml(node.textContent || '')).join('');
+  const image = fragment.querySelector('img[src]')?.getAttribute('src') || undefined;
+  return { html: Array.from(fragment.childNodes).map(node => node.nodeType === 1 ? (node as Element).outerHTML : escapeXml(node.textContent || '')).join(''), image };
+}
+function entryImage(item: Element, contentImage: string | undefined, base: string): string | undefined {
+  for (const node of Array.from(item.getElementsByTagName('*'))) {
+    const name = node.localName.toLocaleLowerCase();
+    const type = node.getAttribute('type') || '';
+    const isImage = name === 'thumbnail' ||
+      (name === 'content' && (node.getAttribute('medium') === 'image' || type.startsWith('image/'))) ||
+      (name === 'enclosure' && type.startsWith('image/')) ||
+      (name === 'link' && node.getAttribute('rel') === 'enclosure' && type.startsWith('image/'));
+    if (!isImage) continue;
+    const raw = node.getAttribute('url') || node.getAttribute('href');
+    const resolved = raw ? safeUrl(raw, baseUrl(node, base)) : null;
+    if (resolved) return resolved;
+  }
+  return contentImage ? safeUrl(contentImage, base) || undefined : undefined;
 }
 export async function parseFeed(xml: string, url: string, doc: Document): Promise<{ name: string; entries: Entry[] }> {
   const root = xmlDocument(xml, doc).documentElement;
@@ -82,11 +98,11 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     if (ids.has(id)) continue; ids.add(id);
     const publishedTs = Date.parse(published);
     const contentBase = contentNode && hasXmlBase(contentNode) ? baseUrl(contentNode, url) : link || base;
-    const html = contentWithBase(raw.slice(0, 100_000), contentBase, doc);
-    const entry: Entry = { id, sourceId, origin: 'local', sourceName: name, title, link: link || url,
+    const parsedContent = contentWithBase(raw.slice(0, 100_000), contentBase, doc);
+    const entry: Entry = { id, sourceId, origin: 'local', sourceName: name, title, link: link || url, image: entryImage(item, parsedContent.image, contentBase),
       published, publishedTs: Number.isNaN(publishedTs) ? null : publishedTs,
       author: atom ? text(child(item, 'author') || root, 'name') : text(item, 'creator') || text(item, 'author'),
-      summary: plain(raw, doc).slice(0, 240), content: (html || '<p>订阅源没有提供正文，请打开原文阅读。</p>') + (raw.length > 100_000 ? '<p>正文较长，已缓存部分内容。请打开原文阅读全文。</p>' : '') };
+      summary: plain(raw, doc).slice(0, 240), content: (parsedContent.html || '<p>订阅源没有提供正文，请打开原文阅读。</p>') + (raw.length > 100_000 ? '<p>正文较长，已缓存部分内容。请打开原文阅读全文。</p>' : '') };
     size += new TextEncoder().encode(JSON.stringify(entry)).byteLength;
     if (size > MAX_STORED_FEED) break;
     entries.push(entry);
