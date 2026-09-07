@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.0 — 2026-09-07
+
+- Enable the selection popup by default with separate Daily Note and current-note icon actions and tooltips.
+- Stop writing internal capture comments. Clean legacy comments when notes open or become active, and group excerpts using article links.
+- Default new reading preferences and the reset action to bundled Zhuque Fangsong; use a Lucide tree for Qiaomu selections. Existing saved preferences remain respected.
+
 ## 0.12.0 — 2026-09-07
 
 - Remove the service-address control from user settings.

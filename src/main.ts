@@ -2,7 +2,7 @@ import { MarkdownView, Notice, Platform, Plugin, PluginSettingTab, TFile, type A
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
 import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
-import { repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
+import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
 import { readingFonts, ReadingFonts } from './fonts';
@@ -23,7 +23,9 @@ export default class QiaomuRssPlugin extends Plugin {
   async onload() {
     this.lastNote = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? null;
     this.registerEvent(this.app.workspace.on('active-leaf-change', leaf => {
-      if (leaf?.view instanceof MarkdownView && leaf.view.file) this.lastNote = leaf.view.file;
+      if (leaf?.view instanceof MarkdownView && leaf.view.file) {
+        this.lastNote = leaf.view.file; this.cleanNoteMarkers(leaf.view.file);
+      }
     }));
     const data: unknown = await this.loadData();
     try { this.state = initialState(data); }
@@ -37,6 +39,12 @@ export default class QiaomuRssPlugin extends Plugin {
     this.addRibbonIcon('rss', '打开 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开阅读器', callback: () => { void this.openReader(); } });
     this.addSettingTab(new RssSettings(this.app, this));
+    this.registerEvent(this.app.workspace.on('file-open', file => { if (file?.extension === 'md') this.cleanNoteMarkers(file); }));
+    this.app.workspace.onLayoutReady(() => {
+      for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+        if (leaf.view instanceof MarkdownView && leaf.view.file) this.cleanNoteMarkers(leaf.view.file);
+      }
+    });
     this.registerMarkdownPostProcessor(element => {
       for (const link of element.querySelectorAll<HTMLAnchorElement>('a[href^="obsidian://qiaomu-ai-rss?"]')) {
         link.setAttribute('href', repairArticleLinks(link.getAttribute('href') || ''));
@@ -86,6 +94,24 @@ export default class QiaomuRssPlugin extends Plugin {
     await this.openReader();
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
     if (view instanceof ReaderView) view.showSavedArticle(bundle, modeSchema.parse(mode));
+  }
+  private cleanNoteMarkers(file: TFile) {
+    this.dailyNoteWrite = this.dailyNoteWrite.catch(() => undefined).then(async () => {
+      // file-open fires before the editor has finished loading its new buffer.
+      await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+      if (this.app.vault.getAbstractFileByPath(file.path) !== file) return;
+      const view = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
+        .find(view => view instanceof MarkdownView && view.file === file);
+      if (view instanceof MarkdownView) {
+        const content = view.editor.getValue();
+        const matches = [...content.matchAll(/^[ \t]*<!-- qrs-article:[^\r\n]*?-->[ \t]*(?:\r?\n)?/gm)];
+        for (const match of matches.reverse()) view.editor.replaceRange('', view.editor.offsetToPos(match.index), view.editor.offsetToPos(match.index + match[0].length));
+        if (matches.length) await view.save();
+      } else {
+        const content = await this.app.vault.cachedRead(file);
+        if (cleanCaptureMarkers(content) !== content) await this.app.vault.process(file, cleanCaptureMarkers);
+      }
+    }).catch(() => { new Notice('旧摘录标记暂未清理，请重新打开笔记重试。'); });
   }
   currentNote(): TFile | null {
     const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.lastNote;
@@ -219,7 +245,7 @@ class RssSettings extends PluginSettingTab {
     const saveReading = async () => { this.plugin.refreshPreferences(); await this.plugin.persist(); };
     return [
       { type: 'group', heading: '阅读与摘录', items: [
-        { name: '选中文字时显示摘录浮层', desc: '默认关闭。关闭后仍可拖拽选中文字到笔记。', render: setting => {
+        { name: '选中文字时显示摘录浮层', desc: '默认开启。选中文字后可追加到今日日记或当前笔记。', render: setting => {
           setting.addToggle(toggle => toggle.setValue(settings.selectionPopup).onChange(async value => { settings.selectionPopup = value; await saveReading(); }));
         } },
         { name: '正文字体', render: setting => { setting.addDropdown(drop => {

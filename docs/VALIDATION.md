@@ -1,4 +1,4 @@
-# Validation — 0.12.0
+# Validation — 0.13.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -117,3 +117,7 @@ All 14 image-drag checks passed in real Obsidian 1.13.7 using native editor drop
 `npm run check`: 49 unit tests, lint, TypeScript and production build pass. `node scripts/context-menu-smoke.cjs` passes 8 real Obsidian checks for recent-note targeting, context actions, unsaved editor preservation, source links, untouched unrelated notes, capture grouping, duplicate prevention and removed service settings. The 9 navigation regression checks also pass. Earlier sections describe prior-version coverage, not a fresh full-suite run.
 
 List layout was measured in Obsidian at widths 240, 300 and 380 px: 25 article rows at each width retained exactly the same nonzero heights before and after the metadata alignment change. Selection and thumbnail refinements use inset decoration and do not change box dimensions.
+
+## 0.13.0 targeted checks
+
+`npm run check` passes 50 unit tests, lint, TypeScript and production build. The real Obsidian context-capture script passes 14 checks, including legacy marker cleanup on note activation, two icon-only labeled popup actions, both capture destinations and marker-free grouped output. The Daily Note popup route is redirected to a disposable fixture in this check to avoid changing the user’s journal.

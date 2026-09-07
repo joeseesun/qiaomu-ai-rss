@@ -87,6 +87,18 @@ describe('untrusted remote content', () => {
     expect(upgraded.split('[原文]')).toHaveLength(2);
     expect(appendDailyNoteLink(upgraded, bundle.entry, options).content.split('[原文]')).toHaveLength(2);
   });
+  it('removes legacy capture markers while keeping grouped excerpts and notes', () => {
+    const options = { vault: 'QA', article: 'local:test', excerpt: 'First excerpt' };
+    const first = appendDailyNoteLink('', bundle.entry, options).content;
+    expect(first).not.toContain('qrs-article:');
+    const legacy = first + '<!-- qrs-article:local%3Atest -->\n\nPersonal note\n';
+    const next = appendDailyNoteLink(legacy, bundle.entry, { ...options, excerpt: 'Second excerpt' }).content;
+    expect(next).not.toContain('qrs-article:');
+    expect(next).toContain('Personal note');
+    expect(next).toContain('First excerpt');
+    expect(next).toContain('Second excerpt');
+    expect(next.split('[原文]')).toHaveLength(2);
+  });
   it('links local Markdown captures back to their source file without a web URL', () => {
     const entry = { ...bundle.entry, origin: 'vault' as const, link: null, markdownPath: 'Clippings/My article.md' };
     const link = dailyNoteLink(entry, { vault: 'Qiaomu RSS QA', article: 'vault:file' });
@@ -118,13 +130,13 @@ describe('paths and persistence', () => {
     const restored = initialState(JSON.parse(JSON.stringify(state)));
     expect(withServiceOrigin(restored, 'https://example.com').savedArticles.saved).toEqual(bundle);
   });
-  it('defaults the selection popup off and persists folder sources and opt-in', () => {
-    expect(initialState({}).settings.selectionPopup).toBe(false);
+  it('defaults the selection popup on and persists folder sources and opt-in', () => {
+    expect(initialState({}).settings.selectionPopup).toBe(true);
     const state = initialState({ settings: { selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] } });
     expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] });
   });
   it('migrates and persists compact reading appearance settings', () => {
-    expect(initialState({ settings: {} }).settings).toMatchObject({ fontSize: 19, fontFamily: 'serif', lineHeight: 1.9, lineWidth: 36 });
+    expect(initialState({ settings: {} }).settings).toMatchObject({ fontSize: 19, fontFamily: 'fangsong', lineHeight: 1.9, lineWidth: 36 });
     const state = initialState({ settings: { fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 } });
     expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 });
   });
