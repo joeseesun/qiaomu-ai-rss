@@ -1,4 +1,4 @@
-# Validation — 0.13.0
+# Validation — 0.14.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -121,3 +121,7 @@ List layout was measured in Obsidian at widths 240, 300 and 380 px: 25 article r
 ## 0.13.0 targeted checks
 
 `npm run check` passes 50 unit tests, lint, TypeScript and production build. The real Obsidian context-capture script passes 14 checks, including legacy marker cleanup on note activation, two icon-only labeled popup actions, both capture destinations and marker-free grouped output. The Daily Note popup route is redirected to a disposable fixture in this check to avoid changing the user’s journal.
+
+## 0.14.0 targeted checks
+
+`npm run check`: 50 unit tests, lint, typecheck and production build. Real Obsidian desktop automation: 17 mobile-source/typography checks, 14 capture checks and 9 navigation regressions. Coverage includes selectionchange without pointer release, unprevented touch context menus, native channel/file suggestions, embedded exploration, folder/file sources, immediate font saving and outside dismissal. The manager fits a 390 px simulated layout. Mobile checks use desktop DOM/touch-event simulation, not an iOS device; native iOS selection handles still need device confirmation.

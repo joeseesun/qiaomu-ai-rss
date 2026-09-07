@@ -58,7 +58,7 @@
 .qrs-article h1 { font-size:clamp(24px,2.5cqw,32px); line-height:1.5; letter-spacing:-.025em; margin:0 0 26px; overflow-wrap:anywhere; font-weight:600; text-wrap:balance; }
 .qrs-feedback { border-radius:6px; background:var(--background-secondary); padding:8px 12px; margin:16px 0; font-size:12px; color:var(--text-muted); }
 .qrs-article h1,.qrs-prose { font-family:var(--qrs-font-family,"Songti SC",Georgia,serif); }
-.qrs-prose { font-size:var(--qrs-font-size); line-height:var(--qrs-line-height); overflow-wrap:anywhere; user-select:text; }
+.qrs-prose { font-size:var(--qrs-font-size); line-height:var(--qrs-line-height); overflow-wrap:anywhere; -webkit-user-select:text; user-select:text; }
 .qrs-prose p { margin:1.1em 0; }
 .qrs-prose h2 { margin:1.8em 0 .7em; font-size:1.3em; line-height:1.6; }
 .qrs-prose h3 { margin:1.6em 0 .6em; font-size:1.12em; }
@@ -76,13 +76,11 @@
 .qrs-reading-settings { position:absolute; z-index:5; top:100%; right:12px; max-height:calc(100vh - 180px); overflow:auto; width:min(300px,calc(100% - 24px)); padding:14px; border:1px solid var(--background-modifier-border); border-radius:10px; background:var(--background-primary); box-shadow:var(--shadow-s); }
 .qrs-reading-settings-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .qrs-reading-settings-head strong { font-size:14px; }
-.qrs-reading-settings-head button,.qrs-reading-reset { box-shadow:none; font-size:12px; }
 .qrs-reading-settings-fields { display:grid; gap:12px; }
 .qrs-reading-setting { display:grid; grid-template-columns:84px minmax(0,1fr) auto; align-items:center; gap:8px; color:var(--text-muted); font-size:12px; }
 .qrs-reading-setting select,.qrs-reading-setting input { grid-column:2/-1; min-width:0; }
 .qrs-reading-setting output { grid-column:3; grid-row:1; color:var(--text-normal); font-variant-numeric:tabular-nums; }
 .qrs-reading-setting input[type=range] { grid-row:2; }
-.qrs-reading-reset { margin-top:12px; }
 .qrs-welcome { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; text-align:center; }
 .qrs-welcome-icon { color:var(--text-muted); margin-bottom:12px; }
 .qrs-welcome-icon svg { width:32px; height:32px; stroke-width:1.3; }
@@ -109,16 +107,13 @@
 }
 @keyframes qrs-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .qrs-root .qrs-icon.is-loading svg { animation:none; } }
-.qrs-channel-modal { width:520px; max-width:calc(100vw - 24px); }
-.qrs-channel-modal .modal-content { padding-bottom:18px; }
-.qrs-channel-search { width:100%; height:38px; margin:2px 0 12px; padding:0 11px; border:1px solid var(--background-modifier-border); border-radius:8px; background:var(--background-primary); }
-.qrs-channel-search:focus { outline:none; border-color:var(--interactive-accent); box-shadow:inset 0 0 0 1px var(--interactive-accent); }
-.qrs-channel-list { max-height:min(66vh,620px); overflow:auto; padding-right:2px; }
-.qrs-channel-section { margin:0 0 14px; }
-.qrs-channel-section h3 { margin:10px 10px 5px; color:var(--text-faint); font-size:10px; font-weight:600; letter-spacing:.08em; }
-.modal.qrs-channel-modal button.qrs-channel-row { width:100%; min-width:0; height:auto; display:flex; align-items:center; gap:11px; padding:8px 10px; border:0; border-radius:9px; box-shadow:none; background:transparent; color:var(--text-normal); text-align:left; }
-.modal.qrs-channel-modal button.qrs-channel-row:hover { background:var(--background-modifier-hover); }
-.modal.qrs-channel-modal button.qrs-channel-row.is-active { background:color-mix(in srgb,var(--interactive-accent) 9%,transparent); }
+.qrs-channel-modal .qrs-channel-row { display:flex; align-items:center; gap:11px; padding:10px 12px; color:var(--text-normal); }
+.qrs-channel-modal .qrs-channel-row.is-selected { background:var(--background-secondary); color:var(--text-normal); }
+.qrs-channel-modal .qrs-channel-row.is-selected .qrs-channel-subtitle { color:var(--text-normal); }
+@media (hover:hover) {
+ .qrs-channel-modal .qrs-channel-row:hover { background:var(--background-secondary); color:var(--text-normal); }
+ .qrs-channel-modal .qrs-channel-row:hover .qrs-channel-subtitle { color:var(--text-normal); }
+}
 .qrs-channel-row .qrs-channel-mark { width:38px; height:38px; flex-basis:38px; border-radius:10px; font-size:14px; }
 .qrs-channel-row .qrs-channel-mark svg { width:18px; height:18px; }
 .qrs-channel-copy { min-width:0; flex:1; display:flex; flex-direction:column; gap:3px; }
@@ -127,7 +122,6 @@
 .qrs-channel-subtitle { color:var(--text-muted); font-size:11px; font-weight:400; }
 .qrs-channel-check { display:flex; flex:0 0 auto; color:var(--interactive-accent); }
 .qrs-channel-check svg { width:17px; height:17px; }
-.qrs-channel-empty { padding:32px 12px; text-align:center; color:var(--text-muted); font-size:13px; }
 .qrs-subscription-modal { width:620px; max-width:calc(100vw - 24px); }
 .qrs-subscription-modal .modal-content { max-height:75vh; overflow-y:auto; }
 .qrs-subscription-add { display:grid; grid-template-columns:minmax(0,1fr) 120px auto; gap:8px; }
@@ -201,3 +195,18 @@
 .qrs-selection-popup button { display:flex; align-items:center; justify-content:center; width:32px; height:32px; padding:6px; margin:0; box-shadow:none; border:0; font-size:13px; }
 
 .qrs-selection-popup button svg { width:18px; height:18px; }
+
+.qrs-prose :is(p,span,a,li,blockquote,h1,h2,h3,h4,strong,em,code) { -webkit-user-select:text; user-select:text; }
+.qrs-subscription-tabs { display:flex; gap:4px; flex-shrink:0; padding:0 0 12px; }
+.qrs-subscription-tabs button { flex:1; box-shadow:none; background:transparent; color:var(--text-muted); }
+.qrs-subscription-tabs button[aria-selected="true"] { background:var(--background-modifier-hover); color:var(--text-normal); font-weight:600; }
+.qrs-subscription-modal .modal-content { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+.qrs-subscription-body { overflow:auto; min-height:0; padding:3px; }
+.qrs-subscription-body .qrs-discovery { padding:0; overflow:visible; }
+.qrs-subscription-body .qrs-discovery-page { padding:0; max-width:none; }
+.qrs-subscription-body .qrs-discovery-grid { grid-template-columns:1fr; }
+.qrs-subscription-body .qrs-discovery-card { padding:14px; }
+.is-mobile .qrs-subscription-modal { width:100%; max-width:100%; }
+.is-mobile .qrs-subscription-modal .modal-content { max-height:none; flex:1; }
+.is-mobile .qrs-subscription-tabs button { min-height:44px; padding:6px; }
+.is-mobile .qrs-selection-popup button { width:44px; height:44px; }

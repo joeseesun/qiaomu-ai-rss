@@ -1,31 +1,78 @@
 import { Modal, Notice, Setting, setIcon } from 'obsidian';
+import { DiscoveryPanel } from './discovery-view';
+import { VaultFilePicker, VaultFolderPicker, vaultSourceId } from './vault-source';
 import type QiaomuRssPlugin from './main';
 import { exportOpml, MAX_SUBSCRIPTIONS, parseOpml, type FeedInput } from './feeds';
 import type { Subscription } from './model';
 
+export type SubscriptionTab = 'mine' | 'explore' | 'local';
 export class SubscriptionManager extends Modal {
   private list!: HTMLElement;
   private message!: HTMLElement;
-  constructor(private plugin: QiaomuRssPlugin, private changed: () => void) { super(plugin.app); }
+  private discovery?: DiscoveryPanel;
+  private body!: HTMLElement;
+  constructor(private plugin: QiaomuRssPlugin, private changed: () => void, private tab: SubscriptionTab = 'mine') { super(plugin.app); }
   onOpen() {
-    this.setTitle('我的订阅'); this.modalEl.addClass('qrs-subscription-modal');
-    const form = this.contentEl.createEl('form', { cls: 'qrs-subscription-add' });
+    this.setTitle('订阅管理'); this.modalEl.addClass('qrs-subscription-modal');
+    const tabs = this.contentEl.createDiv({ cls: 'qrs-subscription-tabs', attr: { role: 'tablist' } });
+    this.body = this.contentEl.createDiv({ cls: 'qrs-subscription-body', attr: { role: 'tabpanel', id: `qrs-sources-${crypto.randomUUID()}` } });
+    const choices: [SubscriptionTab, string][] = [['mine', '我的订阅'], ['explore', '探索'], ['local', '本地文件夹']];
+    const select = (tab: SubscriptionTab) => {
+      this.tab = tab;
+      for (const button of tabs.querySelectorAll('button')) { const selected = button.dataset.tab === tab; button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1; }
+      this.discovery?.unload(); this.discovery = undefined; this.body.empty();
+      if (tab === 'mine') this.renderMine();
+      else if (tab === 'explore') { this.discovery = new DiscoveryPanel(this.body.createDiv(), this.plugin, true); this.discovery.load(); }
+      else this.renderLocal();
+    };
+    for (const [tab, label] of choices) {
+      const button = tabs.createEl('button', { text: label, attr: { role: 'tab', 'data-tab': tab, 'aria-controls': this.body.id } });
+      button.onclick = () => select(tab);
+      button.onkeydown = event => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault(); const index = choices.findIndex(([id]) => id === this.tab);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3;
+        select(choices[next][0]); (tabs.children[next] as HTMLButtonElement).focus();
+      };
+    }
+    select(this.tab);
+  }
+  onClose() { this.discovery?.unload(); this.contentEl.empty(); }
+  refresh() { this.discovery?.refresh(); }
+  private renderLocal() {
+    const add = (path: string) => {
+      const settings = this.plugin.state.settings;
+      if (!settings.markdownFolders.includes(path)) settings.markdownFolders.push(path);
+      settings.lastSource = vaultSourceId(path);
+      void this.plugin.persist().then(() => { this.plugin.resetViews(); if (this.tab === 'local' && this.body.isConnected) { this.body.empty(); this.renderLocal(); } });
+    };
+    const tools = this.body.createDiv('qrs-subscription-tools');
+    tools.createEl('button', { text: '添加文件夹' }).onclick = () => new VaultFolderPicker(this.app, folder => add(folder.path)).open();
+    tools.createEl('button', { text: '添加文件' }).onclick = () => new VaultFilePicker(this.app, file => add(file.path)).open();
+    for (const path of this.plugin.state.settings.markdownFolders) {
+      new Setting(this.body).setName(path === '/' ? '整个库' : path).addButton(button => button.setButtonText('移除').onClick(async () => {
+        this.plugin.state.settings.markdownFolders = this.plugin.state.settings.markdownFolders.filter(value => value !== path);
+        await this.plugin.persist(); this.plugin.resetViews(); if (this.tab === 'local' && this.body.isConnected) { this.body.empty(); this.renderLocal(); }
+      }));
+    }
+    if (!this.plugin.state.settings.markdownFolders.length) this.body.createEl('p', { cls: 'qrs-subscription-help', text: '选择剪藏文件夹或笔记，在阅读器中阅读。' });
+  }
+  private renderMine() {
+    const form = this.body.createEl('form', { cls: 'qrs-subscription-add' });
     const fieldId = crypto.randomUUID();
     form.createEl('label', { cls: 'qrs-visually-hidden', text: 'RSS 或 Atom 地址', attr: { for: `qrs-feed-${fieldId}` } });
     const url = form.createEl('input', { type: 'url', placeholder: 'https://example.com/feed.xml', attr: { id: `qrs-feed-${fieldId}`, required: '' } });
     form.createEl('label', { cls: 'qrs-visually-hidden', text: '订阅分组', attr: { for: `qrs-group-${fieldId}` } });
     const group = form.createEl('input', { type: 'text', placeholder: '分组（可选）', attr: { id: `qrs-group-${fieldId}`, maxlength: '100' } });
     const add = form.createEl('button', { text: '添加', type: 'submit', cls: 'mod-cta' });
-    this.message = this.contentEl.createDiv({ cls: 'qrs-subscription-message', attr: { role: 'status' } });
+    this.message = this.body.createDiv({ cls: 'qrs-subscription-message', attr: { role: 'status' } });
     form.onsubmit = event => {
       event.preventDefault(); add.disabled = true; this.message.setText('正在读取订阅源…');
       void this.plugin.subscriptions.add(url.value, group.value, this.contentEl.ownerDocument).then(() => {
         url.value = ''; this.message.setText('订阅已添加。'); this.renderList(); this.changed();
       }).catch((error: unknown) => { this.message.setText(error instanceof Error ? error.message : '添加失败，请重试。'); }).finally(() => { add.disabled = false; });
     };
-    const tools = this.contentEl.createDiv('qrs-subscription-tools');
-    const explore = tools.createEl('button', { text: '探索订阅' });
-    explore.onclick = () => { this.close(); void this.plugin.openDiscovery(); };
+    const tools = this.body.createDiv('qrs-subscription-tools');
     const importButton = tools.createEl('button', { text: '导入 OPML' });
     importButton.onclick = () => new OpmlImport(this.plugin, () => { this.renderList(); this.changed(); }).open();
     const exportButton = tools.createEl('button', { text: '导出 OPML' });
@@ -35,9 +82,8 @@ export class SubscriptionManager extends Modal {
         this.message.setText(`已导出到 ${path}`);
       }).catch(() => { this.message.setText('导出失败，请检查 OPML 导出文件夹。'); });
     };
-    this.list = this.contentEl.createDiv('qrs-subscription-list'); this.renderList();
-    this.contentEl.createEl('p', { cls: 'qrs-subscription-help', text: '订阅仅保存在本库。直接读取订阅网站；个人源显示原文，不调用 AI。' });
-    url.focus();
+    this.list = this.body.createDiv('qrs-subscription-list'); this.renderList();
+    this.body.createEl('p', { cls: 'qrs-subscription-help', text: '订阅仅保存在本库。直接读取订阅网站；个人源显示原文，不调用 AI。' });
   }
   private renderList() {
     this.list.empty();

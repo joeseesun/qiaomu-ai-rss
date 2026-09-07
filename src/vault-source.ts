@@ -13,10 +13,18 @@ export class VaultFolderPicker extends FuzzySuggestModal<TFolder> {
   getItemText(folder: TFolder) { return folder.path === '/' ? '整个库' : folder.path; }
   onChooseItem(folder: TFolder) { this.choose(folder); }
 }
+export class VaultFilePicker extends FuzzySuggestModal<TFile> {
+  constructor(app: App, private choose: (file: TFile) => void) { super(app); this.setPlaceholder('搜索库内笔记…'); }
+  getItems() { return this.app.vault.getMarkdownFiles(); }
+  getItemText(file: TFile) { return file.path; }
+  onChooseItem(file: TFile) { this.choose(file); }
+}
 export class VaultSources {
   constructor(private app: App) {}
   entries(folder: string): Entry[] {
-    if (!(this.app.vault.getAbstractFileByPath(folder) instanceof TFolder)) throw new Error('文件夹不存在，请在设置中重新选择。');
+    const target = this.app.vault.getAbstractFileByPath(folder);
+    if (target instanceof TFile && target.extension === 'md') return [this.entry(target, folder)];
+    if (!(target instanceof TFolder)) throw new Error('文件夹不存在，请在设置中重新选择。');
     return this.app.vault.getMarkdownFiles().filter(file => inFolder(file.path, folder))
       .sort((a, b) => b.stat.mtime - a.stat.mtime).map(file => this.entry(file, folder));
   }

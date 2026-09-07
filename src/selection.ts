@@ -4,6 +4,7 @@ export interface CaptureAction { label: string; icon: string; disabled?: boolean
 /** A selection action, shown only after an explicit text selection. */
 export class SelectionCapture {
   private popup?: HTMLElement;
+  private selectionTimer?: number;
   constructor(private doc: Document, private reader: () => HTMLElement, private capture: () => CaptureAction[] | null) {
     doc.addEventListener('pointerup', this.update);
     doc.addEventListener('dragstart', this.dragStart);
@@ -14,7 +15,7 @@ export class SelectionCapture {
     doc.defaultView?.addEventListener('resize', this.clear);
     doc.addEventListener('keydown', this.escape);
   }
-  clear = () => { this.popup?.remove(); this.popup = undefined; };
+  clear = () => { this.doc.defaultView?.clearTimeout(this.selectionTimer); this.popup?.remove(); this.popup = undefined; };
   private dragStart = (event: DragEvent) => {
     const selection = this.doc.getSelection(), prose = this.reader().querySelector('.qrs-prose');
     if (!event.dataTransfer || !selection || selection.isCollapsed || !prose?.contains(selection.anchorNode) || !prose.contains(selection.focusNode) || !prose.contains(event.target as Node)) return;
@@ -27,7 +28,11 @@ export class SelectionCapture {
     event.dataTransfer.effectAllowed = 'copy';
     this.clear();
   }
-  private selectionChanged = () => { if (this.doc.getSelection()?.isCollapsed) this.clear(); };
+  private selectionChanged = () => {
+    if (this.doc.getSelection()?.isCollapsed) { this.clear(); return; }
+    this.doc.defaultView?.clearTimeout(this.selectionTimer);
+    this.selectionTimer = this.doc.defaultView?.setTimeout(() => this.update(new Event('selectionchange')), 180);
+  };
   private escape = (event: KeyboardEvent) => { if (event.key === 'Escape') this.clear(); };
   private update = (event: Event) => {
     if (this.popup?.contains(event.target as Node)) return;
