@@ -115,13 +115,20 @@ export class ReaderView extends ItemView {
     this.selectionCapture = new SelectionCapture(this.contentEl.ownerDocument, () => this.reader, () => {
       const bundle = this.bundle, mode = this.mode;
       if (!bundle || !this.plugin.state.settings.selectionPopup) return null;
-      return async text => {
+      const note = this.plugin.currentNote();
+      const capture = async (text: string, current: boolean) => {
         try {
           this.plugin.remember(bundle);
-          const result = await this.plugin.noteArticle(bundle.entry, text, mode);
-          new Notice(result.added ? '摘录已添加到今日日记。' : '这段摘录已在今日日记中。');
+          const result = current && note
+            ? await this.plugin.appendToDailyNote(bundle.entry, text, mode, note)
+            : await this.plugin.noteArticle(bundle.entry, text, mode);
+          new Notice(result.added ? `摘录已添加到 ${result.file.basename}` : '这段摘录已在笔记中。');
         } catch (error) { new Notice(error instanceof Error ? error.message : '摘录失败，请重试。'); }
       };
+      return [
+        { label: '追加到今日日记', icon: 'calendar-plus', save: text => capture(text, false) },
+        { label: note ? `追加到当前笔记：${note.basename}` : '追加到当前笔记（请先打开笔记）', icon: 'file-pen-line', disabled: !note, save: text => capture(text, true) },
+      ];
     });
     return Promise.resolve();
   }
@@ -207,7 +214,7 @@ export class ReaderView extends ItemView {
     const feeds = this.plugin.state.subscriptions;
     const groups = [...new Set(feeds.map(feed => feed.group).filter(Boolean))].sort();
     return [
-      { id: '', name: '乔木精选', section: '聚合', subtitle: '乔木筛选的高质量内容', icon: 'sparkles' },
+      { id: '', name: '乔木精选', section: '聚合', subtitle: '乔木筛选的高质量内容', icon: 'tree-deciduous' },
       { id: '@local', name: '我的订阅', section: '聚合', subtitle: `${feeds.length} 个个人订阅源`, icon: 'rss' },
       ...this.plugin.state.settings.markdownFolders.map(folder => ({ id: vaultSourceId(folder), name: folder === '/' ? '整个库' : folder.split('/').at(-1)!, section: '库内文件夹' as const, subtitle: folder, icon: 'folder-open' })),
       ...groups.map(group => ({ id: `@group:${group}`, name: group, section: '订阅分组' as const,
@@ -583,7 +590,7 @@ export class ReaderView extends ItemView {
     width.onchange = () => { settings.lineWidth = Number(width.value) as 28 | 36 | 44; update(); this.run(() => this.plugin.persist()); };
     const reset = panel.createEl('button', { text: '恢复默认', cls: 'qrs-reading-reset' });
     reset.onclick = () => {
-      settings.fontFamily = 'serif'; settings.fontSize = 19; settings.lineHeight = 1.9; settings.lineWidth = 36;
+      settings.fontFamily = 'fangsong'; settings.fontSize = 19; settings.lineHeight = 1.9; settings.lineWidth = 36;
       font.value = settings.fontFamily; size.value = String(settings.fontSize); height.value = String(settings.lineHeight); width.value = String(settings.lineWidth);
       update(); this.run(() => this.plugin.persist());
     };

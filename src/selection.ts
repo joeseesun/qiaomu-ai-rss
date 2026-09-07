@@ -1,8 +1,10 @@
+import { setIcon, setTooltip } from 'obsidian';
 import { markdownText } from './daily-note';
+export interface CaptureAction { label: string; icon: string; disabled?: boolean; save: (text: string) => Promise<void> }
 /** A selection action, shown only after an explicit text selection. */
 export class SelectionCapture {
   private popup?: HTMLElement;
-  constructor(private doc: Document, private reader: () => HTMLElement, private capture: () => ((text: string) => Promise<void>) | null) {
+  constructor(private doc: Document, private reader: () => HTMLElement, private capture: () => CaptureAction[] | null) {
     doc.addEventListener('pointerup', this.update);
     doc.addEventListener('dragstart', this.dragStart);
     doc.addEventListener('dragend', this.clear);
@@ -39,9 +41,13 @@ export class SelectionCapture {
     const rect = selection.getRangeAt(0).getBoundingClientRect();
     const viewport = this.doc.documentElement;
     const popup = this.doc.body.createDiv({ cls: 'qrs-selection-popup' }); this.popup = popup;
-    const button = popup.createEl('button', { text: '摘录到今日日记' });
-    button.onpointerdown = event => event.preventDefault();
-    button.onclick = () => { this.clear(); void save(text); };
+    for (const action of save) {
+      const button = popup.createEl('button', { attr: { 'aria-label': action.label } });
+      setIcon(button, action.icon); setTooltip(button, action.label);
+      button.disabled = !!action.disabled;
+      button.onpointerdown = event => event.preventDefault();
+      button.onclick = () => { this.clear(); void action.save(text); };
+    }
     popup.setCssProps({ '--qrs-popup-x': `${Math.max(8, Math.min(rect.left + rect.width / 2 - popup.offsetWidth / 2, viewport.clientWidth - popup.offsetWidth - 8))}px`,
       '--qrs-popup-y': `${Math.max(8, Math.min(rect.bottom + 8, viewport.clientHeight - popup.offsetHeight - 8))}px` });
   };
