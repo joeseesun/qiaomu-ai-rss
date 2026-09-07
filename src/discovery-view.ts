@@ -30,7 +30,7 @@ export class DiscoveryPanel extends Component {
     const collections = page.createDiv({ cls: 'qrs-discovery-collections' });
     const featured = collections.createEl('button', { text: `精选订阅 · ${discoveryFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'featured') } });
     const blogs = collections.createEl('button', { text: `独立博客 · ${independentBlogs.length}`, attr: { 'aria-pressed': String(this.collection === 'blogs') } });
-    const rsshub = collections.createEl('button', { text: `RSSHub · ${rsshubFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'rsshub') } });
+    const rsshub = collections.createEl('button', { text: '网站与公众号', attr: { 'aria-pressed': String(this.collection === 'rsshub') } });
     const standard = page.createEl('p', { cls: 'qrs-discovery-standard', text: '精选标准：长期原创、持续更新、RSS 全文、个人辨识度。目前 9 个，宁缺毋滥。' });
     const attribution = page.createDiv('qrs-discovery-attribution');
     attribution.createSpan({ text: '目录来自 ' });
@@ -76,15 +76,21 @@ export class DiscoveryPanel extends Component {
     const help = details.createEl('p');
     help.createSpan({ text: `默认实例：${DEFAULT_RSSHUB} · ` });
     help.createEl('a', { text: 'RSSHub 路由文档', href: 'https://docs.rsshub.app/', attr: { target: '_blank', rel: 'noopener noreferrer' } });
+    const wechat = page.createDiv('qrs-discovery-wechat');
+    wechat.createEl('p', { text: '公众号也可以订阅：在公共目录复制 RSS 地址，然后到“我的订阅”添加。更多公众号需自行连接采集服务。' });
+    wechat.createEl('a', { text: '浏览公众号 RSS 目录', href: 'https://wechat2rss.xlab.app/list/all', attr: { target: '_blank', rel: 'noopener noreferrer' } });
+    wechat.createSpan({ text: ' · ' });
+    wechat.createEl('a', { text: '了解自建公众号订阅', href: 'https://github.com/rachelos/we-mp-rss', attr: { target: '_blank', rel: 'noopener noreferrer' } });
     this.cards = page.createDiv('qrs-discovery-grid');
     this.more = page.createEl('button', { text: '显示更多博客', cls: 'qrs-discovery-more' });
     this.more.onclick = () => { this.limit += 60; this.refresh(); };
     const switchCollection = (collection: DiscoveryCollection) => {
       this.collection = collection; this.limit = 60;
       featured.setAttribute('aria-pressed', String(collection === 'featured')); blogs.setAttribute('aria-pressed', String(collection === 'blogs')); rsshub.setAttribute('aria-pressed', String(collection === 'rsshub'));
+      wechat.toggleClass('qrs-hidden', collection !== 'rsshub');
       filters.toggleClass('qrs-hidden', collection !== 'featured'); details.toggleClass('qrs-hidden', collection !== 'rsshub'); standard.toggleClass('qrs-hidden', collection !== 'featured');
       for (const el of [tags, attribution]) el.toggleClass('qrs-hidden', collection !== 'blogs');
-      search.placeholder = collection === 'blogs' ? '搜索博客、作者、网址或主题…' : collection === 'rsshub' ? '搜索 RSSHub 订阅…' : '搜索精选作者或主题…';
+      search.placeholder = collection === 'blogs' ? '搜索博客、作者、网址或主题…' : collection === 'rsshub' ? '搜索网站动态…' : '搜索精选作者或主题…';
       this.refresh();
     };
     featured.onclick = () => switchCollection('featured'); blogs.onclick = () => switchCollection('blogs'); rsshub.onclick = () => switchCollection('rsshub'); switchCollection(this.collection);

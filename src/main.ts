@@ -1,3 +1,4 @@
+import { EditorView } from '@codemirror/view';
 import { MarkdownView, Notice, Platform, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
@@ -6,6 +7,7 @@ import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNote
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
 import { readingFonts, ReadingFonts } from './fonts';
+import { registerImageDrops } from './image-drag';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
 import { SubscriptionManager, type SubscriptionTab } from './subscription-ui';
@@ -32,6 +34,7 @@ export default class QiaomuRssPlugin extends Plugin {
     try { this.state = initialState(data); }
     catch { new Notice('RSS 配置不兼容，已使用默认设置。'); }
     this.images = new LocalImages(this.app.vault, `${this.app.vault.configDir}/plugins/${this.manifest.id}/image-cache`);
+    registerImageDrops(this);
     this.subscriptions = new Subscriptions(() => this.state, () => this.persist());
     this.addCommand({ id: 'manage-subscriptions', name: '管理我的订阅', callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
@@ -51,6 +54,31 @@ export default class QiaomuRssPlugin extends Plugin {
         link.setAttribute('href', repairArticleLinks(link.getAttribute('href') || ''));
       }
     });
+    // Handle links inside Obsidian directly, including Live Preview links.
+    const registerLinks = (doc: Document) => this.registerDomEvent(doc, 'click', event => {
+      const target = event.target;
+      if (!(target instanceof doc.defaultView!.Element)) return;
+      const link = target.closest('a[href]');
+      let href = link?.getAttribute('href');
+      const editorLink = target.closest<HTMLElement>('.cm-link');
+      if (!href && editorLink) {
+        const cm = EditorView.findFromDOM(editorLink);
+        if (cm) {
+          const position = cm.posAtDOM(editorLink), line = cm.state.doc.lineAt(position);
+          for (const match of line.text.matchAll(/\[[^\n]*?\]\(<(obsidian:\/\/qiaomu-ai-rss\?[^>]+)>\)/g)) {
+            if (position >= line.from + match.index && position <= line.from + match.index + match[0].length) { href = match[1]; break; }
+          }
+        }
+      }
+      if (!href?.startsWith('obsidian://qiaomu-ai-rss?')) return;
+      const url = new URL(repairArticleLinks(href));
+      if (url.searchParams.get('vault') !== this.app.vault.getName()) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      void this.openSavedArticle(url.searchParams.get('article') || '', url.searchParams.get('mode') || 'original')
+        .catch(() => new Notice('这篇文章的本地副本不存在，请使用旁边的原文链接。'));
+    }, { capture: true });
+    registerLinks(document);
+    this.registerEvent(this.app.workspace.on('window-open', (_window, win) => registerLinks(win.document)));
     this.registerObsidianProtocolHandler('qiaomu-ai-rss', params => {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice('这篇文章的本地副本不存在。'));
     });
@@ -66,6 +94,7 @@ export default class QiaomuRssPlugin extends Plugin {
     try {
       let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
       if (!leaf) { leaf = this.app.workspace.getLeaf('tab'); await leaf.setViewState({ type: VIEW_TYPE, active: true }); }
+      await leaf.loadIfDeferred();
       await this.app.workspace.revealLeaf(leaf);
     } catch { new Notice('无法打开 RSS 阅读器。'); }
   }
@@ -94,7 +123,8 @@ export default class QiaomuRssPlugin extends Plugin {
     if (!bundle) throw new Error('Missing saved article');
     await this.openReader();
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
-    if (view instanceof ReaderView) view.showSavedArticle(bundle, modeSchema.parse(mode));
+    if (!(view instanceof ReaderView)) throw new Error('Reader unavailable');
+    view.showSavedArticle(bundle, modeSchema.catch('original').parse(mode));
   }
   private cleanNoteMarkers(file: TFile) {
     this.dailyNoteWrite = this.dailyNoteWrite.catch(() => undefined).then(async () => {

@@ -1,4 +1,4 @@
-# Validation — 0.14.0
+# Validation — 0.15.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -125,3 +125,11 @@ List layout was measured in Obsidian at widths 240, 300 and 380 px: 25 article r
 ## 0.14.0 targeted checks
 
 `npm run check`: 50 unit tests, lint, typecheck and production build. Real Obsidian desktop automation: 17 mobile-source/typography checks, 14 capture checks and 9 navigation regressions. Coverage includes selectionchange without pointer release, unprevented touch context menus, native channel/file suggestions, embedded exploration, folder/file sources, immediate font saving and outside dismissal. The manager fits a 390 px simulated layout. Mobile checks use desktop DOM/touch-event simulation, not an iOS device; native iOS selection handles still need device confirmation.
+
+## 0.15.0 targeted checks
+
+- `npm run check`: lint, 50 unit tests, TypeScript and production build pass.
+- `node scripts/return-links-smoke.cjs`: Reading View link interception, exact article, closed-reader recreation, Live Preview span links, RSS-only header hiding.
+- `node scripts/image-drag-smoke.cjs`: 15 checks, byte-preserving files, global/relative attachment locations, repeated drops, image embed syntax and three rendered images after reopening. Drop payload deliberately omits native File objects to exercise the plugin token path.
+- These are desktop Obsidian automation checks. A CDP mouse gesture did not produce a drop; this does not establish a native OS drag or iOS hardware pass.
+- WeChat discovery/service research is in WECHAT.md; no service deployment or account authorization was performed.
