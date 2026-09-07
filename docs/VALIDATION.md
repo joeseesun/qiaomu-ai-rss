@@ -1,4 +1,4 @@
-# Validation — 0.7.0
+# Validation — 0.8.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -84,3 +84,7 @@ The earlier reader and subscription integration records above are retained as ve
 ## Official directory — 2026-09-07
 
 Version 0.4.0 completed the directory's automatic review and was published. The public listing displays an Add to Obsidian link, three uploaded desktop screenshots, and the correct repository/version. Anonymous HTTP readback confirms the listing is public. See [submission record](SUBMISSION.md) for non-blocking review recommendations.
+
+## Bundled fonts
+
+`node scripts/font-smoke.mjs` verifies all five embedded font faces load in Obsidian, are applied to article text, preserve the article DOM, and persist the selection. Font assets are byte-identical to the documented upstream files after gzip decompression. No font network requests are used. Mobile-device verification remains pending.

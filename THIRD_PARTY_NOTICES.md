@@ -697,3 +697,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Bundled Chinese reading fonts
+
+The five unmodified fonts listed in [fonts/README.md](fonts/README.md) are distributed under SIL OFL 1.1. Copyright notices and the complete license are in [fonts/OFL.txt](fonts/OFL.txt) and embedded in the main.js release banner.
