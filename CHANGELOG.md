@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1 — 2026-09-07
+
+- Encode vault-name spaces as %20 for Obsidian protocol routing; repair legacy links when rendered or appended.
+- Drag selected article text into an editable note as safe plain Markdown, without source-link duplication or HTML.
+- Group repeated captures under one article title, including interleaved article captures.
+
 ## 0.9.0 — 2026-09-07
 
 - Remove Baoyu from featured feeds; keep existing subscriptions.

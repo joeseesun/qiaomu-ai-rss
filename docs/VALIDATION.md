@@ -1,4 +1,4 @@
-# Validation — 0.9.0
+# Validation — 0.9.1
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -99,3 +99,7 @@ Version 0.4.0 completed the directory's automatic review and was published. The 
 - Opening an actual obsidian://qiaomu-ai-rss link through macOS returned to the saved article. Screenshot inspected: selected text popup follows the selection, and the note renders a plain linked title and excerpt without bullets. Existing notes were not rewritten.
 - Baoyu is removed from the current featured array (9 remain); historical feed endpoint checks above describe prior versions.
 - Mobile touch selection is not manually verified in this release.
+
+## 0.9.1 regression correction
+
+The 0.9.0 shell protocol check used a hand-encoded URL and missed the generated URLSearchParams plus-sign encoding. New unit coverage explicitly rejects plus signs for spaces. Real Obsidian checks clicked both a generated link and the user-reported legacy note link; both returned to the saved article without a vault error. A real CodeMirror drop event inserted selected text and discarded HTML. Native physical pointer dragging and mobile touch were not manually verified. Grouped repeated excerpts produced only one source title.

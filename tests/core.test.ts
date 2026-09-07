@@ -41,7 +41,7 @@ describe('untrusted remote content', () => {
     const entry = { ...bundle.entry, title: 'Plain title' };
     expect(dailyNoteLink(entry)).toBe('[Plain title](<https://example.com/news>)');
     const first = appendDailyNoteLink('# Daily\n', bundle.entry);
-    expect(first.content).toBe('# Daily\n\n' + dailyNoteLink(bundle.entry) + '\n\n');
+    expect(first.content).toContain('# Daily\n\n' + dailyNoteLink(bundle.entry) + '\n\n');
     expect(first.content).not.toMatch(/^- /m);
     expect(appendDailyNoteLink(first.content, bundle.entry)).toEqual({ content: first.content, added: false });
     expect(first.content).not.toContain('Full text'); expect(first.content).not.toContain('rss_id');
@@ -50,6 +50,8 @@ describe('untrusted remote content', () => {
     const options = { vault: '中文 & QA', article: 'https://rss.qiaomu.ai|a/b', mode: 'rewrite' as const, excerpt: 'A paragraph\n\n- item <script> [link](evil) `code`' };
     const url = new URL(articleNoteUrl(options));
     expect(url.searchParams.get('vault')).toBe(options.vault);
+    expect(articleNoteUrl(options)).not.toContain('+');
+    expect(articleNoteUrl(options)).toContain('%20');
     expect(url.searchParams.get('article')).toBe(options.article);
     expect(url.searchParams.get('mode')).toBe('rewrite');
     const first = appendDailyNoteLink('', bundle.entry, options);
@@ -58,6 +60,24 @@ describe('untrusted remote content', () => {
     expect(first.content).not.toContain('<script>');
     expect(appendDailyNoteLink(first.content, bundle.entry, options).added).toBe(false);
     expect(appendDailyNoteLink(first.content, bundle.entry, { ...options, excerpt: 'Another paragraph' }).added).toBe(true);
+  });
+  it('groups A B A excerpts under one source title and preserves other notes', () => {
+    const a = { article: 'a', vault: 'Qiaomu RSS QA', excerpt: 'First A' };
+    let content = appendDailyNoteLink('# My note\n', bundle.entry, a).content;
+    content = appendDailyNoteLink(content, { ...bundle.entry, title: 'B' }, { ...a, article: 'b', excerpt: 'First B' }).content;
+    content = appendDailyNoteLink(content, bundle.entry, { ...a, excerpt: 'Second A' }).content;
+    expect(content.split('obsidian://qiaomu-ai-rss?')).toHaveLength(3);
+    expect(content.indexOf('Second A')).toBeLessThan(content.indexOf('First B'));
+    expect(content).toContain('# My note');
+    expect(appendDailyNoteLink(content, bundle.entry, { ...a, excerpt: 'Second A' }).added).toBe(false);
+  });
+  it('recognizes old links and repairs form-encoded vault spaces without repeating title', () => {
+    const a = { article: 'a', vault: 'Qiaomu RSS QA', excerpt: 'Second' };
+    const old = dailyNoteLink(bundle.entry, a).replace(/%20/g, '+') + '\n\nFirst\n\n';
+    const result = appendDailyNoteLink(old, bundle.entry, a);
+    expect(result.content).not.toContain('Qiaomu+RSS+QA');
+    expect(result.content.split('obsidian://qiaomu-ai-rss?')).toHaveLength(2);
+    expect(result.content).toContain('First\n\nSecond');
   });
   it('respects daily-note folders, formats and common template tokens', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;

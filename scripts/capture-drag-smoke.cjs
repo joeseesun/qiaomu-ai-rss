@@ -1,0 +1,34 @@
+const {execFileSync}=require('node:child_process');
+const evalCode=code=>{const out=execFileSync('obsidian',['vault=Qiaomu RSS QA','eval','code='+code.replace(/\n/g,' ')],{encoding:'utf8'});return JSON.parse(out.slice(3));};
+evalCode(String.raw`(()=>{void(async()=>{
+const p=app.plugins.plugins['qiaomu-ai-rss'];await p.openReader();
+const v=app.workspace.getLeavesOfType('qiaomu-ai-rss-reader')[0].view;
+const b={entry:{id:'qa-drag-091',sourceId:'qa',origin:'local',title:'Drag QA',link:'https://example.com',content:'<p>Drag this selected paragraph</p>'},rewrite:null,translation:null,fetchedAt:Date.now()};
+v.showSavedArticle(b,'original');p.remember(b);
+const note=await p.noteArticle(b.entry,'First excerpt','original');
+await p.noteArticle(b.entry,'Second excerpt','original');
+const content=await app.vault.read(note.file);
+window.__qrs091={path:note.file.path,oneTitle:content.split('[Drag QA]').length===2,grouped:content.includes('First excerpt')&&content.includes('Second excerpt')};
+const leaf=app.workspace.getLeavesOfType('markdown').find(l=>l.view.file?.path===note.file.path);
+await leaf.setViewState({type:'markdown',state:{file:note.file.path,mode:'source'}});
+const prose=v.reader.querySelector('.qrs-prose p'),range=document.createRange(),sel=document.getSelection();
+range.selectNodeContents(prose);sel.removeAllRanges();sel.addRange(range);
+const dt=new DataTransfer();dt.setData('text/html','<script>bad</script>');
+prose.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer:dt}));
+window.__qrs091.dragText=dt.getData('text/plain');window.__qrs091.noHtml=!dt.getData('text/html');
+const editor=leaf.view.editor;editor.setCursor(editor.lastLine(),0);editor.scrollIntoView({from:editor.getCursor(),to:editor.getCursor()},true);
+const beforeDrop=editor.getValue().split('Drag this selected paragraph').length;
+const cm=leaf.view.containerEl.querySelector('.cm-content'),rect=cm.getBoundingClientRect();
+cm.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt,clientX:rect.left+30,clientY:rect.bottom-20}));
+await new Promise(r=>setTimeout(r,200));
+window.__qrs091.dropInserted=editor.getValue().split('Drag this selected paragraph').length===beforeDrop+1;
+const url=content.match(/obsidian:\/\/qiaomu-ai-rss\?[^>]+article=local%7Cqa-drag-091[^>]+/)[0];
+window.__qrs091.url=url;
+v.bundle=null;
+const link=document.createElement('a');link.href=url;link.textContent='QA internal return';document.body.append(link);link.click();link.remove();
+})().catch(e=>window.__qrs091={error:String(e)});return true;})()`);
+setTimeout(()=>{
+ const result=evalCode('JSON.stringify({...window.__qrs091,returned:app.workspace.getLeavesOfType("qiaomu-ai-rss-reader")[0].view.bundle?.entry.id})');
+ console.log(result);
+ if(result.error || !result.oneTitle || !result.grouped || !result.noHtml || !result.dropInserted || result.returned!=='qa-drag-091')process.exitCode=1;
+},1500);

@@ -32,22 +32,48 @@ export function dailyNotePath(settings: DailyNoteSettings, now: DateFormatter = 
 export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string }
 export function articleNoteUrl(options: CaptureOptions): string {
   const params = new URLSearchParams({ vault: options.vault || '', article: options.article || '', mode: options.mode || 'original' });
-  return `obsidian://qiaomu-ai-rss?${params.toString()}`;
+  return `obsidian://qiaomu-ai-rss?${params.toString().replace(/\+/g, '%20')}`;
 }
-function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
+export function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
 export function dailyNoteLink(entry: Entry, options: CaptureOptions = {}): string {
   const link = options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
   if (!link) throw new Error('这篇文章没有可用的链接。');
   const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || '未命名文章');
   return `[${title}](<${link}>)`;
 }
+export function repairArticleLinks(content: string): string {
+  return content.replace(/obsidian:\/\/qiaomu-ai-rss\?[^\s<>)]*/g, url => url.replace(/\+/g, '%20'));
+}
 export function appendDailyNoteLink(content: string, entry: Entry, options: CaptureOptions = {}): { content: string; added: boolean } {
+  content = repairArticleLinks(content);
   const title = dailyNoteLink(entry, options);
   const excerpt = options.excerpt?.trim();
-  const block = excerpt ? `${title}\n\n${markdownText(excerpt)}` : title;
-  if (content.includes(block)) return { content, added: false };
+  const text = excerpt ? markdownText(excerpt) : '';
+  // An invisible section boundary keeps later excerpts under their original article.
+  const identity = options.article || entry.link || entry.id;
+  const marker = `<!-- qrs-article:${encodeURIComponent(identity)} -->`;
+  const markerIndex = content.indexOf(marker);
+  if (markerIndex >= 0) {
+    const previousMarker = content.lastIndexOf('<!-- qrs-article:', markerIndex - 1);
+    const section = content.slice(previousMarker < 0 ? 0 : content.indexOf('-->', previousMarker) + 3, markerIndex);
+    if (!text || ('\n\n' + section.trim() + '\n\n').includes('\n\n' + text + '\n\n')) return { content, added: false };
+    return { content: content.slice(0, markerIndex).trimEnd() + '\n\n' + text + '\n\n' + content.slice(markerIndex), added: true };
+  }
+  // Recognize 0.9.0 captures, including its form-encoded spaces and other reading modes.
+  const links = [...content.matchAll(/^\[[^\n]*\]\(<(obsidian:\/\/qiaomu-ai-rss\?[^\n>]+)>\)$/gm)];
+  const existing = links.find(match => {
+    try { return new URL(match[1]).searchParams.get('article') === options.article; } catch { return false; }
+  });
+  if (options.article && existing?.index !== undefined) {
+    const next = links.find(match => match.index > existing.index)?.index ?? content.length;
+    const section = content.slice(existing.index + existing[0].length, next).trim();
+    const added = !!text && !('\n\n' + section.trim() + '\n\n').includes('\n\n' + text + '\n\n');
+    const updated = title + '\n\n' + section + (added ? '\n\n' + text : '') + '\n\n' + marker + '\n\n';
+    return { content: content.slice(0, existing.index) + updated + content.slice(next), added };
+  }
+  const block = text ? `${title}\n\n${text}` : title;
   const separator = !content || content.endsWith('\n\n') ? '' : content.endsWith('\n') ? '\n' : '\n\n';
-  return { content: `${content}${separator}${block}\n\n`, added: true };
+  return { content: `${content}${separator}${block}\n\n${marker}\n\n`, added: true };
 }
 
 export function renderDailyNoteTemplate(template: string, title: string, now: DateFormatter = currentMoment()): string {
