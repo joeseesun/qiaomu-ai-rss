@@ -58,6 +58,7 @@ export class ReaderView extends ItemView {
   private entries: Entry[] = [];
   private source = '';
   private filter: Filter = 'all';
+  private unreadSession = new Set<string>();
   private query = '';
   private cursor = '';
   private hasMore = false;
@@ -90,6 +91,7 @@ export class ReaderView extends ItemView {
     return Promise.resolve();
   }
   reset() {
+    this.unreadSession.clear();
     this.closed = false; this.listVersion++; this.articleVersion++; this.clearThumbnails();
     const remembered = this.plugin.state.settings.lastSource;
     const localExists = this.plugin.state.subscriptions.some(feed => feed.id === remembered);
@@ -138,7 +140,7 @@ export class ReaderView extends ItemView {
     const searchId = `${this.appearanceId}-search`; this.searchBox.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索已载入文章', attr: { for: searchId } });
     this.searchInput = this.searchBox.createEl('input', { type: 'search', placeholder: '搜索当前列表…', attr: { id: searchId } });
     this.searchInput.value = this.query;
-    this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.renderList(); });
+    this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.unreadSession.clear(); this.renderList(); });
     this.searchInput.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); this.toggleSearch(false); } });
     this.status = sidebar.createDiv({ cls: 'qrs-status', attr: { role: 'status', 'aria-live': 'polite' } });
     this.list = sidebar.createDiv({ cls: 'qrs-list' });
@@ -157,7 +159,7 @@ export class ReaderView extends ItemView {
     this.filters.empty();
     for (const [value, label] of [['all', '全部'], ['unread', '未读'], ['favorites', '收藏']] as const) {
       const button = this.filters.createEl('button', { text: label, attr: { 'aria-pressed': String(value === this.filter), 'data-filter': value } });
-      button.addEventListener('click', () => { this.filter = value; this.renderFilters(); this.renderList(); });
+      button.addEventListener('click', () => { this.filter = value; this.unreadSession.clear(); this.renderFilters(); this.renderList(); });
     }
   }
   private channelChoices(): ChannelChoice[] {
@@ -188,6 +190,7 @@ export class ReaderView extends ItemView {
     new ChannelPicker(this.app, this.channelChoices(), this.source, source => this.selectSource(source.id)).open();
   }
   private selectSource(source: string, refresh = true) {
+    this.unreadSession.clear();
     this.listVersion++; this.loading = false; this.refreshButton.removeClass('is-loading');
     this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
     this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
@@ -202,7 +205,7 @@ export class ReaderView extends ItemView {
     this.focused = false; this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
     this.searchBox.toggleClass('is-hidden', !show);
     if (show) this.searchInput.focus();
-    else { this.query = ''; this.searchInput.value = ''; this.renderList(); this.contentEl.focus(); }
+    else { this.query = ''; this.searchInput.value = ''; this.unreadSession.clear(); this.renderList(); this.contentEl.focus(); }
   }
   private createResizeHandle(parent: HTMLElement) {
     const labelId = `${this.appearanceId}-resize`; const handle = parent.createDiv({ cls: 'qrs-resize', attr: { role: 'separator', tabindex: '0', 'aria-labelledby': labelId, 'aria-orientation': 'vertical', 'aria-valuemin': '220', 'aria-valuemax': '520', 'aria-valuenow': String(this.plugin.state.settings.listWidth) } });
@@ -239,7 +242,8 @@ export class ReaderView extends ItemView {
     }
     if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
       (target?.closest?.('input,textarea,select,[contenteditable=true]'))) return;
-    if (event.key === 'j' || event.key === 'k') { event.preventDefault(); this.navigate(event.key === 'j' ? 1 : -1); }
+    const key = event.key.toLowerCase();
+    if (key === 'j' || key === 'k') { event.preventDefault(); event.stopPropagation(); this.navigate(key === 'j' ? 1 : -1); }
     if (event.key === '[' || event.key === 'f') { event.preventDefault(); this.toggleFocus(); }
     if (event.key === '/') { event.preventDefault(); this.toggleSearch(true); }
     if (event.key === 'Escape') { this.focused = false; this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article'); }
@@ -289,7 +293,7 @@ export class ReaderView extends ItemView {
     return entries.filter(entry => (this.personalScope()
       ? entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))
       : entry.origin !== 'local' && (!this.source || entry.sourceId === this.source)) &&
-      (this.filter !== 'unread' || !state.readIds.includes(entry.id) || entry.id === this.bundle?.entry.id) &&
+      (this.filter !== 'unread' || !state.readIds.includes(entry.id) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
       (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
   }
   private sourceName(entry: Entry) { return this.plugin.state.subscriptions.find(feed => feed.id === entry.sourceId)?.name || entry.sourceName || this.plugin.state.sources.find(source => source.id === entry.sourceId)?.name || entry.sourceId; }
@@ -326,6 +330,7 @@ export class ReaderView extends ItemView {
     });
   }
   private renderList() {
+    const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
     const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
     if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
     for (const entry of entries) {
@@ -352,8 +357,11 @@ export class ReaderView extends ItemView {
       button.disabled = this.loading; button.addEventListener('click', () => { void this.loadEntries(true); });
     }
     this.list.scrollTop = scroll;
+    if (restoreFocus) this.reader.focus({ preventScroll: true });
   }
   private async openArticle(entry: Entry) {
+    // Keep this unread reading session navigable after opening marks entries read.
+    if (this.filter === 'unread') this.unreadSession.add(entry.id);
     const version = ++this.articleVersion; const state = this.plugin.state;
     this.bundle = state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
     state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000); this.run(() => this.plugin.persist());
@@ -367,7 +375,7 @@ export class ReaderView extends ItemView {
     try {
       const { bundle, warnings } = await this.plugin.api().article(entry.id);
       if (this.closed || version !== this.articleVersion) return;
-      this.bundle = bundle; this.message = warnings.join('；'); this.plugin.remember(bundle); await this.plugin.persist();
+      this.bundle = bundle; this.message = warnings.join('；'); this.plugin.remember(bundle); this.run(() => this.plugin.persist());
     } catch (error) {
       if (this.closed || version !== this.articleVersion) return;
       const cached = this.bundle.fetchedAt ? ` 正在显示 ${new Date(this.bundle.fetchedAt).toLocaleString()} 的缓存。` : ' 可重新打开文章重试。';
@@ -419,10 +427,15 @@ export class ReaderView extends ItemView {
     }
   }
   private renderReader(keepContent = false) {
+    const active = this.contentEl.ownerDocument.activeElement;
+    const restoreFocus = active !== this.reader && this.reader.contains(active);
     const scroll = this.reader.scrollTop;
     const previous = keepContent ? this.reader.querySelector('.qrs-article') : null;
     if (!previous) this.clearImages();
-    this.reader.empty(); const bundle = this.bundle;
+    this.reader.empty();
+    // A removed toolbar button must not leave keyboard focus on document.body.
+    if (restoreFocus) this.reader.focus({ preventScroll: true });
+    const bundle = this.bundle;
     if (!bundle) {
       const empty = this.reader.createDiv('qrs-welcome'); setIcon(empty.createDiv('qrs-welcome-icon'), 'book-open');
       empty.createEl('h2', { text: '选一篇，开始读。' }); empty.createEl('p', { text: '上下篇：j / k · 收起列表：[ · 搜索：/' }); return;
@@ -434,12 +447,12 @@ export class ReaderView extends ItemView {
     for (const [mode, label] of Object.entries(modeLabels).filter(([mode]) => bundle.entry.origin !== 'local' || mode === 'original')) select.createEl('option', { value: mode, text: label });
     select.disabled = bundle.entry.origin === 'local';
     select.value = this.mode; select.onchange = () => { this.mode = modeSchema.parse(select.value); this.renderReader(); };
-    const appearance = this.addIconButton(toolbar, 'type', '阅读设置', () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
-    appearance.setAttribute('aria-expanded', String(this.appearanceOpen)); appearance.setAttribute('aria-controls', this.appearanceId);
     const nav = toolbar.createDiv('qrs-reader-nav');
     this.addIconButton(nav, 'chevron-up', '上一篇 K', () => this.navigate(-1));
     this.addIconButton(nav, 'chevron-down', '下一篇 J', () => this.navigate(1));
     const actions = toolbar.createDiv('qrs-actions');
+    const appearance = this.addIconButton(actions, 'type', '阅读设置', () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
+    appearance.setAttribute('aria-expanded', String(this.appearanceOpen)); appearance.setAttribute('aria-controls', this.appearanceId);
     const favorite = !!this.plugin.state.favorites[bundle.entry.id];
     const bookmark = this.addIconButton(actions, 'bookmark', favorite ? '取消收藏' : '收藏文章', () => this.run(async () => {
       if (favorite) delete this.plugin.state.favorites[bundle.entry.id]; else this.plugin.state.favorites[bundle.entry.id] = bundle;

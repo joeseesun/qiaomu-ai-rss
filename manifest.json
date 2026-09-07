@@ -1,7 +1,7 @@
 {
   "id": "qiaomu-ai-rss",
   "name": "Qiaomu AI RSS",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "minAppVersion": "1.13.0",
   "description": "Read Qiaomu and personal RSS feeds, then add article links to your Daily Note.",
   "author": "向阳乔木",

@@ -1,4 +1,4 @@
-# Validation — 0.8.0
+# Validation — 0.8.1
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -88,3 +88,5 @@ Version 0.4.0 completed the directory's automatic review and was published. The 
 ## Bundled fonts
 
 `node scripts/font-smoke.mjs` verifies all five embedded font faces load in Obsidian, are applied to article text, preserve the article DOM, and persist the selection. Font assets are byte-identical to the documented upstream files after gzip decompression. No font network requests are used. Mobile-device verification remains pending.
+
+`node scripts/navigation-smoke.mjs` passes nine actual-Obsidian checks for toolbar grouping, immediate repeated J/K navigation, focus after redraw, out-of-order network responses, non-stealing editor focus, rendering independent of slow persistence, and backward navigation in an unread reading session.
