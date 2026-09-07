@@ -1,14 +1,17 @@
 import { Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, modeLabels, modeSchema, noteName, serviceUrl, type Bundle, type Mode, type State } from './model';
+import { folderPath, initialState, modeLabels, modeSchema, noteName, serviceUrl, withServiceOrigin, type Bundle, type Mode, type State } from './model';
 import { noteMarkdown } from './content';
 import { ReaderView, VIEW_TYPE } from './view';
 import { LocalImages } from './images';
+import { Subscriptions } from './subscriptions';
+import { SubscriptionManager } from './subscription-ui';
 
 export default class QiaomuRssPlugin extends Plugin {
   state: State = initialState(null);
   images!: LocalImages;
+  subscriptions!: Subscriptions;
   private saving: Promise<void> = Promise.resolve();
   private exports = new Map<string, Promise<TFile>>();
   async onload() {
@@ -16,6 +19,8 @@ export default class QiaomuRssPlugin extends Plugin {
     try { this.state = initialState(data); }
     catch { new Notice('RSS 配置不兼容，已使用默认设置。'); }
     this.images = new LocalImages(this.app.vault, `${this.app.vault.configDir}/plugins/${this.manifest.id}/image-cache`);
+    this.subscriptions = new Subscriptions(() => this.state, () => this.persist());
+    this.addCommand({ id: 'manage-subscriptions', name: '管理我的订阅', callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
     this.addRibbonIcon('rss', '打开 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开阅读器', callback: () => { void this.openReader(); } });
@@ -66,6 +71,25 @@ export default class QiaomuRssPlugin extends Plugin {
     const promise = write(); this.exports.set(path, promise);
     try { return await promise; } finally { this.exports.delete(path); }
   }
+  manageSubscriptions() {
+    new SubscriptionManager(this, () => {
+      for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+        if (leaf.view instanceof ReaderView) leaf.view.showSubscriptions();
+      }
+    }).open();
+  }
+  async saveOpml(content: string): Promise<string> {
+    const folder = folderPath(this.state.settings.folder); let current = '';
+    for (const segment of folder.split('/')) {
+      current = current ? `${current}/${segment}` : segment;
+      if (!this.app.vault.getAbstractFileByPath(current)) {
+        try { await this.app.vault.createFolder(current); }
+        catch (error) { if (!this.app.vault.getAbstractFileByPath(current)) throw error; }
+      }
+    }
+    const path = `${folder}/subscriptions-${Date.now()}.opml`;
+    await this.app.vault.create(path, content); return path;
+  }
   resetViews() {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
       if (leaf.view instanceof ReaderView) leaf.view.reset();
@@ -77,13 +101,16 @@ class RssSettings extends PluginSettingTab {
   getSettingDefinitions(): SettingDefinitionItem[] {
     const settings = this.plugin.state.settings;
     return [
-      { name: '服务地址', desc: '连接兼容的 HTTPS 服务。切换地址会清空当前缓存与收藏。', render: setting => {
+      { name: '我的订阅', desc: '添加 RSS / Atom、分组与 OPML 导入导出。', render: setting => {
+        setting.addButton(button => button.setButtonText('管理订阅').onClick(() => this.plugin.manageSubscriptions()));
+      } },
+      { name: '服务地址', desc: '连接兼容的 HTTPS 服务。切换地址会清空乔木精选的缓存与收藏，保留个人订阅。', render: setting => {
         setting.addText(text => text.setValue(settings.baseUrl).onChange(value => { this.pendingUrl = value; }))
           .addButton(button => button.setButtonText('应用').onClick(async () => {
             try {
               const base = serviceUrl(this.pendingUrl ?? settings.baseUrl);
               if (base !== settings.baseUrl) {
-                this.plugin.state = initialState({ settings: { ...settings, baseUrl: base } });
+                this.plugin.state = withServiceOrigin(this.plugin.state, base);
                 await this.plugin.persist(); this.plugin.resetViews(); this.update();
               }
             } catch (error) { new Notice(error instanceof Error ? error.message : '无法保存设置。'); }

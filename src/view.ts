@@ -8,7 +8,7 @@ class ChannelPicker extends FuzzySuggestModal<Source> {
   constructor(app: App, private sources: Source[], private choose: (source: Source) => void) {
     super(app); this.setPlaceholder('搜索频道…');
   }
-  getItems() { return [{ id: '', name: '所有频道' }, ...this.sources.filter(source => source.enabled !== false)]; }
+  getItems() { return this.sources.filter(source => source.enabled !== false); }
   getItemText(source: Source) { return source.name; }
   onChooseItem(source: Source) { this.choose(source); }
 }
@@ -52,7 +52,7 @@ export class ReaderView extends ItemView {
   }
   reset() {
     this.closed = false; this.listVersion++; this.articleVersion++;
-    this.source = ''; this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
+    this.focused = false; this.source = ''; this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
     this.mode = this.plugin.state.settings.defaultMode; this.entries = this.plugin.state.entries;
     this.build(); this.renderList(); this.renderReader(); void this.loadEntries();
   }
@@ -72,8 +72,9 @@ export class ReaderView extends ItemView {
     const bar = sidebar.createDiv('qrs-sidebar-toolbar');
     this.channelButton = bar.createEl('button', { cls: 'qrs-channel', attr: { 'aria-label': '选择频道', 'aria-haspopup': 'dialog' } });
     this.renderChannel(); this.channelButton.addEventListener('click', () => this.pickChannel());
+    this.addIconButton(bar, 'plus', '添加或管理订阅', () => this.plugin.manageSubscriptions());
     this.addIconButton(bar, 'search', '搜索文章 /', () => this.toggleSearch());
-    this.refreshButton = this.addIconButton(bar, 'refresh-cw', '刷新文章', () => { void this.loadEntries(); });
+    this.refreshButton = this.addIconButton(bar, 'refresh-cw', '刷新文章', () => { void this.loadEntries(false, true); });
     this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group', 'aria-label': '阅读筛选' } });
     this.renderFilters();
     this.searchBox = sidebar.createDiv('qrs-search-box'); this.searchBox.toggleClass('is-hidden', !this.query);
@@ -89,7 +90,7 @@ export class ReaderView extends ItemView {
   }
   private renderChannel() {
     this.channelButton.empty();
-    this.channelButton.createSpan({ text: this.plugin.state.sources.find(s => s.id === this.source)?.name || '所有频道' });
+    this.channelButton.createSpan({ text: this.channelChoices().find(s => s.id === this.source)?.name || '乔木精选' });
     setIcon(this.channelButton.createSpan(), 'chevron-down');
   }
   private renderFilters() {
@@ -99,14 +100,33 @@ export class ReaderView extends ItemView {
       button.addEventListener('click', () => { this.filter = value; this.renderFilters(); this.renderList(); });
     }
   }
-  private pickChannel() {
-    new ChannelPicker(this.app, this.plugin.state.sources, source => this.selectSource(source.id)).open();
+  private channelChoices(): Source[] {
+    const feeds = this.plugin.state.subscriptions;
+    const groups = [...new Set(feeds.map(feed => feed.group).filter(Boolean))].sort();
+    return [{ id: '', name: '乔木精选' }, { id: '@local', name: '我的订阅' },
+      ...groups.map(group => ({ id: `@group:${group}`, name: `我的订阅 / ${group}` })),
+      ...feeds.map(feed => ({ id: feed.id, name: `${feed.group || '我的订阅'} / ${feed.name}` })),
+      ...this.plugin.state.sources];
   }
-  private selectSource(source: string) {
+  private personalScope() { return this.source === '@local' || this.source.startsWith('@group:') || this.source.startsWith('local:'); }
+  private selectedFeeds() {
+    return this.plugin.state.subscriptions.filter(feed => this.source === '@local' || feed.id === this.source ||
+      (this.source.startsWith('@group:') && feed.group === this.source.slice(7)));
+  }
+  private localEntries() { return this.selectedFeeds().flatMap(feed => feed.entries).sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0)); }
+  showSubscriptions() { this.selectSource('@local', false); }
+  private pickChannel() {
+    new ChannelPicker(this.app, this.channelChoices(), source => this.selectSource(source.id)).open();
+  }
+  private selectSource(source: string, refresh = true) {
+    this.listVersion++; this.loading = false; this.refreshButton.removeClass('is-loading');
+    this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
     this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
     this.bundle = null; this.articleVersion++; this.focused = false;
     this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
-    this.renderChannel(); this.renderReader(); this.renderList(); void this.loadEntries();
+    this.entries = this.personalScope() ? this.localEntries() : source ? [] : this.plugin.state.entries;
+    this.status.setText(''); this.renderChannel(); this.renderReader(); this.renderList();
+    if (refresh) void this.loadEntries();
   }
   private toggleSearch(show = this.searchBox.hasClass('is-hidden')) {
     this.focused = false; this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
@@ -154,11 +174,22 @@ export class ReaderView extends ItemView {
     const entries = this.visibleEntries(); const index = entries.findIndex(entry => entry.id === this.bundle?.entry.id);
     const next = entries[index + direction]; if (next) void this.openArticle(next);
   }
-  private async loadEntries(more = false) {
+  private async loadEntries(more = false, force = false) {
     if (this.loading && more) return;
     const version = ++this.listVersion; this.loading = true; this.status.setText(''); this.refreshButton.addClass('is-loading');
     const state = this.plugin.state;
     try {
+      if (this.personalScope()) {
+        const feeds = this.selectedFeeds();
+        await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, () => {
+          if (!this.closed && version === this.listVersion) { this.entries = this.localEntries(); this.renderList(); }
+        });
+        if (this.closed || version !== this.listVersion) return;
+        this.entries = this.localEntries(); this.hasMore = false;
+        const failed = feeds.filter(feed => feed.error).length;
+        this.status.setText(failed ? `${failed} 个订阅刷新失败，保留已有文章。可在订阅管理中查看详情。` : '');
+        return;
+      }
       const api = this.plugin.api();
       const [page, sources] = await Promise.allSettled([api.entries(this.source, more ? this.cursor : ''), api.sources()]);
       if (this.closed || version !== this.listVersion) return;
@@ -181,11 +212,13 @@ export class ReaderView extends ItemView {
     const state = this.plugin.state;
     const entries = this.filter === 'favorites' ? Object.values(state.favorites).map(b => b.entry) : this.entries;
     const query = this.query.trim().toLocaleLowerCase();
-    return entries.filter(entry => (!this.source || entry.sourceId === this.source) &&
+    return entries.filter(entry => (this.personalScope()
+      ? entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))
+      : entry.origin !== 'local' && (!this.source || entry.sourceId === this.source)) &&
       (this.filter !== 'unread' || !state.readIds.includes(entry.id) || entry.id === this.bundle?.entry.id) &&
       (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
   }
-  private sourceName(entry: Entry) { return this.plugin.state.sources.find(source => source.id === entry.sourceId)?.name || entry.sourceId; }
+  private sourceName(entry: Entry) { return this.plugin.state.subscriptions.find(feed => feed.id === entry.sourceId)?.name || entry.sourceName || this.plugin.state.sources.find(source => source.id === entry.sourceId)?.name || entry.sourceId; }
   private excerpt(entry: Entry): string {
     if (entry.summaryZh) return entry.summaryZh;
     const text = entry.rewrite?.body.split('\n\n').find(line => /[\u3400-\u9fff]/.test(line) && !line.startsWith('#') && !line.startsWith('!['));
@@ -193,7 +226,7 @@ export class ReaderView extends ItemView {
   }
   private renderList() {
     const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
-    if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : '暂无匹配文章，试试其他频道或筛选。' });
+    if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
     for (const entry of entries) {
       const read = this.plugin.state.readIds.includes(entry.id);
       const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'aria-label': titleOf(entry), 'data-entry-id': entry.id } });
@@ -220,8 +253,13 @@ export class ReaderView extends ItemView {
     const version = ++this.articleVersion; const state = this.plugin.state;
     this.bundle = state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
     state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000); this.run(() => this.plugin.persist());
-    this.mode = state.settings.defaultMode; this.message = ''; this.articleLoading = true; this.reader.setAttribute('aria-busy', 'true');
+    this.mode = entry.origin === 'local' ? 'original' : state.settings.defaultMode; this.message = ''; this.articleLoading = true; this.reader.setAttribute('aria-busy', 'true');
     this.contentEl.addClass('qrs-has-article'); this.renderReader(); this.reader.scrollTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
+    if (entry.origin === 'local') {
+      this.bundle = { entry, rewrite: null, translation: null, fetchedAt: Date.now() };
+      this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
+      this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); return;
+    }
     try {
       const { bundle, warnings } = await this.plugin.api().article(entry.id);
       if (this.closed || version !== this.articleVersion) return;
@@ -288,7 +326,8 @@ export class ReaderView extends ItemView {
     const toolbar = this.reader.createDiv('qrs-reader-toolbar');
     this.addIconButton(toolbar, this.focused ? 'panel-left-open' : 'panel-left-close', '显示或收起文章列表 [', () => this.toggleFocus());
     const select = toolbar.createEl('select', { cls: 'qrs-mode-select', attr: { 'aria-label': '阅读版本' } });
-    for (const [mode, label] of Object.entries(modeLabels)) select.createEl('option', { value: mode, text: label });
+    for (const [mode, label] of Object.entries(modeLabels).filter(([mode]) => bundle.entry.origin !== 'local' || mode === 'original')) select.createEl('option', { value: mode, text: label });
+    select.disabled = bundle.entry.origin === 'local';
     select.value = this.mode; select.onchange = () => { this.mode = modeSchema.parse(select.value); this.renderReader(); };
     const nav = toolbar.createDiv('qrs-reader-nav');
     this.addIconButton(nav, 'chevron-up', '上一篇 K', () => this.navigate(-1));

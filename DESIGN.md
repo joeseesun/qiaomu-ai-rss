@@ -31,3 +31,7 @@ Use Obsidian theme variables. No imported fonts, marketing hero, dashboard stati
 ## Acceptance
 
 Desktop and 390px screenshots; real loaded image with nonzero natural dimensions and Blob URL; resize/persistence; sidebar focus toggle retaining scroll; search/channel modal; keyboard next/previous; correct icons; note export; offline image cache; no runtime errors or horizontal overflow.
+
+## Personal subscriptions (0.2.0)
+
+Keep the reading surface unchanged. A single plus icon in the existing list toolbar opens a native subscription manager. The searchable channel picker contains Qiaomu, My Subscriptions, group paths and individual feeds. Names/groups are edited in a native modal, with explicit unsubscribe confirmation preserving favorites/notes. OPML uses a preview before importing; export writes a vault file. Personal article mode is original-only so unavailable AI actions do not occupy the reader. Empty/error states explain add/refresh actions.

@@ -91,3 +91,26 @@
 }
 @keyframes qrs-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .qrs-root .qrs-icon.is-loading svg { animation:none; } }
+.qrs-subscription-modal { width:620px; max-width:calc(100vw - 24px); }
+.qrs-subscription-modal .modal-content { max-height:75vh; overflow-y:auto; }
+.qrs-subscription-add { display:grid; grid-template-columns:minmax(0,1fr) 120px auto; gap:8px; }
+.qrs-subscription-add input { width:100%; min-width:0; }
+.qrs-subscription-message { color:var(--text-muted); font-size:12px; padding:8px 0; overflow-wrap:anywhere; }
+.qrs-subscription-tools { display:flex; gap:8px; margin:8px 0 16px; }
+.qrs-subscription-list { max-height:40vh; overflow-y:auto; }
+.qrs-subscription-row { display:flex; align-items:center; gap:8px; padding:12px 0; border-bottom:1px solid var(--background-modifier-border); }
+.qrs-subscription-info { flex:1; min-width:0; }
+.qrs-subscription-name { font-weight:500; overflow-wrap:anywhere; }
+.qrs-subscription-detail,.qrs-subscription-help { font-size:12px; color:var(--text-muted); margin-top:5px; overflow-wrap:anywhere; }
+.qrs-subscription-error { font-size:12px; color:var(--text-error); margin-top:6px; }
+.qrs-subscription-icon { display:flex; align-items:center; justify-content:center; padding:8px; width:36px; height:36px; flex-shrink:0; background:transparent; box-shadow:none; }
+.qrs-subscription-icon svg { width:16px; height:16px; }
+.qrs-opml-text { width:100%; min-height:120px; margin-top:12px; resize:vertical; }
+.qrs-opml-preview { margin:12px 0; max-height:200px; overflow:auto; font-size:13px; overflow-wrap:anywhere; }
+@media (max-width:500px) {
+ .qrs-subscription-add { grid-template-columns:minmax(0,1fr) auto; }
+ .qrs-subscription-add input[type=url] { grid-column:1/-1; }
+ .qrs-subscription-icon { width:44px; height:44px; }
+}
+.qrs-subscription-add input { height:32px; padding:0 10px; border:1px solid var(--background-modifier-border); border-radius:6px; background:var(--background-primary); color:var(--text-normal); font:inherit; font-size:13px; }
+.qrs-subscription-add input:focus { outline:2px solid var(--interactive-accent); outline-offset:1px; }
