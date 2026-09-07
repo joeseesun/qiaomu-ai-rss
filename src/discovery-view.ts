@@ -1,6 +1,6 @@
 import { ItemView, Notice, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
-import { blogCatalogSource, blogTags, categories, DEFAULT_RSSHUB, discoveryFeeds, discoveryUrl, filterDiscovery, independentBlogs } from './discovery';
+import { blogCatalogSource, blogTags, categories, DEFAULT_RSSHUB, discoveryFeeds, discoveryUrl, filterDiscovery, independentBlogs, rsshubFeeds, type DiscoveryCollection } from './discovery';
 import { serviceUrl } from './model';
 
 export const DISCOVERY_VIEW_TYPE = 'qiaomu-ai-rss-discovery';
@@ -9,8 +9,7 @@ export class DiscoveryView extends ItemView {
   private count!: HTMLElement;
   private query = '';
   private category = '全部';
-  private rsshubOnly = false;
-  private collection: 'featured' | 'blogs' = 'featured';
+  private collection: DiscoveryCollection = 'featured';
   private tag = '';
   private limit = 60;
   private more!: HTMLButtonElement;
@@ -32,8 +31,10 @@ export class DiscoveryView extends ItemView {
     actions.createEl('button', { text: '管理订阅' }).onclick = () => this.plugin.manageSubscriptions();
     actions.createEl('button', { text: '开始阅读', cls: 'mod-cta' }).onclick = () => { void this.plugin.readSubscriptions(); };
     const collections = page.createDiv({ cls: 'qrs-discovery-collections', attr: { 'aria-label': '目录选择' } });
-    const featured = collections.createEl('button', { text: '精选订阅', attr: { 'aria-pressed': String(this.collection === 'featured') } });
+    const featured = collections.createEl('button', { text: `精选订阅 · ${discoveryFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'featured') } });
     const blogs = collections.createEl('button', { text: `独立博客 · ${independentBlogs.length}`, attr: { 'aria-pressed': String(this.collection === 'blogs') } });
+    const rsshub = collections.createEl('button', { text: `RSSHub · ${rsshubFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'rsshub') } });
+    const standard = page.createEl('p', { cls: 'qrs-discovery-standard', text: '精选标准：长期原创、持续更新、RSS 直连、个人辨识度。首批 10 个，宁缺毋滥。' });
     const attribution = page.createDiv('qrs-discovery-attribution');
     attribution.createSpan({ text: '目录来自 ' });
     attribution.createEl('a', { text: '中文独立博客列表', href: blogCatalogSource, attr: { target: '_blank', rel: 'noopener noreferrer' } });
@@ -54,10 +55,6 @@ export class DiscoveryView extends ItemView {
     for (const tag of blogTags) tags.createEl('option', { value: tag, text: tag });
     tags.value = this.tag; tags.onchange = () => { this.tag = tags.value; this.limit = 60; this.refresh(); };
     const provider = page.createDiv('qrs-discovery-provider');
-    const label = provider.createEl('label', { cls: 'qrs-discovery-toggle' });
-    const toggle = label.createEl('input', { type: 'checkbox' }); toggle.checked = this.rsshubOnly;
-    label.createSpan({ text: '只看 RSSHub' });
-    toggle.onchange = () => { this.rsshubOnly = toggle.checked; this.limit = 60; this.refresh(); };
     this.count = provider.createSpan({ cls: 'qrs-discovery-count', attr: { role: 'status' } });
     const details = page.createEl('details', { cls: 'qrs-discovery-instance' });
     const summary = details.createEl('summary', { text: `RSSHub 实例 · ${new URL(this.plugin.state.settings.rsshubUrl).hostname}` });
@@ -82,15 +79,15 @@ export class DiscoveryView extends ItemView {
     this.cards = page.createDiv('qrs-discovery-grid');
     this.more = page.createEl('button', { text: '显示更多博客', cls: 'qrs-discovery-more' });
     this.more.onclick = () => { this.limit += 60; this.refresh(); };
-    const switchCollection = (collection: 'featured' | 'blogs') => {
+    const switchCollection = (collection: DiscoveryCollection) => {
       this.collection = collection; this.limit = 60;
-      featured.setAttribute('aria-pressed', String(collection === 'featured')); blogs.setAttribute('aria-pressed', String(collection === 'blogs'));
-      for (const el of [filters, label, details]) el.toggleClass('qrs-hidden', collection === 'blogs');
+      featured.setAttribute('aria-pressed', String(collection === 'featured')); blogs.setAttribute('aria-pressed', String(collection === 'blogs')); rsshub.setAttribute('aria-pressed', String(collection === 'rsshub'));
+      filters.toggleClass('qrs-hidden', collection !== 'featured'); details.toggleClass('qrs-hidden', collection !== 'rsshub'); standard.toggleClass('qrs-hidden', collection !== 'featured');
       for (const el of [tags, attribution]) el.toggleClass('qrs-hidden', collection !== 'blogs');
-      search.placeholder = collection === 'blogs' ? '搜索博客、作者、网址或主题…' : '搜索名称、主题或语言…';
+      search.placeholder = collection === 'blogs' ? '搜索博客、作者、网址或主题…' : collection === 'rsshub' ? '搜索 RSSHub 订阅…' : '搜索精选作者或主题…';
       this.refresh();
     };
-    featured.onclick = () => switchCollection('featured'); blogs.onclick = () => switchCollection('blogs'); switchCollection(this.collection);
+    featured.onclick = () => switchCollection('featured'); blogs.onclick = () => switchCollection('blogs'); rsshub.onclick = () => switchCollection('rsshub'); switchCollection(this.collection);
     page.createEl('p', { cls: 'qrs-discovery-footnote', text: '目录保存在本地，点击订阅时才读取内容，并按主题分组。公共源可能限流或失效；失败时可以重试。' });
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.refresh()));
     return Promise.resolve();
@@ -102,8 +99,9 @@ export class DiscoveryView extends ItemView {
     const active = this.contentEl.ownerDocument.activeElement;
     const focusedId = active instanceof HTMLElement && this.cards.contains(active) ? active.closest<HTMLElement>('[data-feed]')?.dataset.feed : undefined;
     this.cards.empty();
-    const feeds = filterDiscovery(this.query, this.category, this.rsshubOnly, this.collection, this.tag);
-    this.count.setText(`${feeds.length} / ${this.collection === 'blogs' ? independentBlogs.length : discoveryFeeds.length} 个订阅`);
+    const feeds = filterDiscovery(this.query, this.collection === 'featured' ? this.category : '全部', this.collection, this.tag);
+    const total = this.collection === 'blogs' ? independentBlogs.length : this.collection === 'rsshub' ? rsshubFeeds.length : discoveryFeeds.length;
+    this.count.setText(`${feeds.length} / ${total} 个订阅`);
     this.more.toggleClass('qrs-hidden', feeds.length <= this.limit);
     this.more.setText(`显示更多博客（还剩 ${Math.max(0, feeds.length - this.limit)} 个）`);
     if (!feeds.length) this.cards.createDiv({ cls: 'qrs-empty', text: '没有找到匹配内容，试试其他关键词或分类。' });
