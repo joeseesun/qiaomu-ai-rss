@@ -238,3 +238,9 @@
 .qrs-settings-tabs button[aria-selected=true] { background:var(--background-primary); color:var(--text-normal); box-shadow:0 1px 3px #0001; }
 .is-mobile .qrs-settings-tabs button { min-height:44px; }
 .qrs-reading-setting[hidden] { display:none; }
+.qrs-welcome-tip { width:min(100%,360px); margin-top:24px; padding:20px; border-radius:12px; background:var(--background-secondary); }
+.qrs-welcome-tip h3 { margin:0 0 8px; font-size:15px; }
+.qrs-welcome .qrs-welcome-tip p { margin:0; line-height:1.8; font-size:13px; }
+.qrs-welcome-next { margin-top:10px; box-shadow:none; background:transparent; color:var(--text-muted); }
+.qrs-welcome-keys { display:flex; flex-wrap:wrap; justify-content:center; gap:16px; margin-top:32px; color:var(--text-muted); font-size:12px; }
+.qrs-welcome-keys > span { display:flex; align-items:center; gap:6px; }

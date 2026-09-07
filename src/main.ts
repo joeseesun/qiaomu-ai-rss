@@ -349,7 +349,7 @@ class RssSettings extends PluginSettingTab {
         { name: '更新记录', render: setting => {
           const details = setting.descEl.createEl('details');
           details.createEl('summary', { text: '查看本次更新' });
-          details.createEl('p', { text: '搜索框增加清除按钮；设置中增加版本与更新记录入口。频道切换保留文章、列表和阅读位置。' });
+          details.createEl('p', { text: '修复设置 tab 菜单重复；空白阅读区新增场景提示与快捷键。保留离线朱雀仿宋、设备字体和频道阅读进度。' });
           details.createEl('a', { text: '完整更新记录', href: 'https://github.com/joeseesun/qiaomu-ai-rss/releases', attr: { target: '_blank', rel: 'noopener noreferrer' } });
         } },
       ] },
@@ -376,6 +376,8 @@ class RssSettings extends PluginSettingTab {
     };
     return [{ name: 'Qiaomu AI RSS', searchable: false, render: setting => {
       setting.settingEl.addClass('qrs-settings-header');
+      // Obsidian reuses the setting row when definitions update.
+      setting.settingEl.querySelectorAll('.qrs-settings-tabs').forEach(nav => nav.remove());
       const nav = setting.settingEl.createDiv({ cls: 'qrs-settings-tabs', attr: { role: 'tablist' } });
       for (const section of Object.keys(buckets)) {
         const button = nav.createEl('button', { text: section, attr: { role: 'tab', 'aria-selected': String(section === this.section), tabindex: section === this.section ? '0' : '-1' } });

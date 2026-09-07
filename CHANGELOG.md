@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.18.1 — 2026-09-07
+
+- Prevent duplicated settings tab bars when Obsidian reuses a setting row.
+- Add rotating reading scenarios and keyboard shortcuts to the empty reader, with manual tip switching and stable redraws.
+
 ## 0.18.0 — 2026-09-07
 
 - Reduce the offline reading font to a licensed 7,554-codepoint WOFF2 subset; use device fonts for other choices. Enforce a 5 MB asset budget and publish artifact attestations.
