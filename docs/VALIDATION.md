@@ -1,10 +1,10 @@
-# Validation — 0.1.0
+# Validation — 0.2.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
 ## Automated checks
 
-`npm run check` passes TypeScript checking, the official `eslint-plugin-obsidianmd` recommended rules, 16 Vitest tests, and the production bundle build.
+`npm run check` passes TypeScript checking, the official `eslint-plugin-obsidianmd` recommended rules, 33 Vitest tests, and the production bundle build.
 
 Tests exercise HTML/script and URL sanitization, safe vault paths, note frontmatter and source attribution, preventing executable remote code blocks, API validation/errors/timeouts, state round trips, raster image validation, disk-cache reuse and offline reads, per-image size limits, and disk-cache eviction. `npm audit` reports no known vulnerabilities at validation time.
 
@@ -36,3 +36,19 @@ A real article image renders with a `blob:app://obsidian.md/…` local URL and n
 No physical iOS or Android device was tested. The runtime uses Obsidian and Web APIs without Node.js/Electron dependencies; this supports `isDesktopOnly: false`, but does not establish mobile-device acceptance. The declared minimum is Obsidian 1.13.0; the installed desktop version tested is 1.13.7.
 
 Offline behavior is limited to already-cached lists, articles and images. Public reading state does not synchronize with website/iOS accounts. Exported Markdown retains original remote image URLs. This release does not generate AI content. Community Directory submission and review remain separate from these tests.
+
+## Personal subscriptions — 0.2.0
+
+`node scripts/subscription-smoke.mjs` passes 14 further integration checks in the same real Obsidian 1.13.7 test vault (27 together with the original reader suite):
+
+- Add the live Qiaomu blog RSS feed (50 cached articles) and Simon Willison Atom feed (30 articles) through the subscription form; reject a duplicate URL.
+- Edit source name/group, choose a group, and render original personal articles while replacing the Qiaomu API method with a throwing guard.
+- Export OPML through the UI into the vault; preview and import pasted OPML while skipping a duplicate and an unsafe URL. Import itself makes no feed requests.
+- Favorite/save personal articles, retain entries on simulated offline refresh, unsubscribe through the confirmation dialog and keep the favorite readable.
+- Prevent a late curated response from replacing the personal list; retain names/groups/cached entries after plugin reload.
+
+The native file-input path was also tested with an OPML File object. Desktop and 390px viewport screenshots were visually inspected. The subscription dialog is 364px wide inside the 390px viewport, with controls inside its bounds. The reader occupies the 346px pane beside Obsidian's ribbon, has no horizontal overflow, and displays a real 1558px-wide source image using a local Blob URL. Both light and dark layouts were checked; device emulation is not physical mobile testing.
+
+Additional unit coverage includes RSS/Atom/RDF parsing, relative XML bases and images, plain-text content escaping, stable per-feed IDs, payload bounds, malformed XML/DTD rejection, OPML grouping/escaping/deduplication, upgrade defaults, service-origin changes preserving personal data, timeout/cache fallback, deletion during refresh, and progressive refresh with shared in-flight requests.
+
+The subscription smoke runner adds/removes its named public test sources, creates an OPML export and a note, and changes test read/favorite state. Run it only in a disposable test vault. No production server or personal vault is modified by these checks.

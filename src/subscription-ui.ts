@@ -1,0 +1,117 @@
+import { Modal, Notice, Setting, setIcon, setTooltip } from 'obsidian';
+import type QiaomuRssPlugin from './main';
+import { exportOpml, MAX_SUBSCRIPTIONS, parseOpml, type FeedInput } from './feeds';
+import type { Subscription } from './model';
+
+export class SubscriptionManager extends Modal {
+  private list!: HTMLElement;
+  private message!: HTMLElement;
+  constructor(private plugin: QiaomuRssPlugin, private changed: () => void) { super(plugin.app); }
+  onOpen() {
+    this.setTitle('我的订阅'); this.modalEl.addClass('qrs-subscription-modal');
+    const form = this.contentEl.createEl('form', { cls: 'qrs-subscription-add' });
+    const url = form.createEl('input', { type: 'url', placeholder: 'https://example.com/feed.xml', attr: { 'aria-label': 'RSS 或 Atom 地址', required: '' } });
+    const group = form.createEl('input', { type: 'text', placeholder: '分组（可选）', attr: { 'aria-label': '订阅分组', maxlength: '100' } });
+    const add = form.createEl('button', { text: '添加', type: 'submit', cls: 'mod-cta' });
+    this.message = this.contentEl.createDiv({ cls: 'qrs-subscription-message', attr: { role: 'status' } });
+    form.onsubmit = event => {
+      event.preventDefault(); add.disabled = true; this.message.setText('正在读取订阅源…');
+      void this.plugin.subscriptions.add(url.value, group.value, this.contentEl.ownerDocument).then(() => {
+        url.value = ''; this.message.setText('订阅已添加。'); this.renderList(); this.changed();
+      }).catch((error: unknown) => { this.message.setText(error instanceof Error ? error.message : '添加失败，请重试。'); }).finally(() => { add.disabled = false; });
+    };
+    const tools = this.contentEl.createDiv('qrs-subscription-tools');
+    const importButton = tools.createEl('button', { text: '导入 OPML' });
+    importButton.onclick = () => new OpmlImport(this.plugin, () => { this.renderList(); this.changed(); }).open();
+    const exportButton = tools.createEl('button', { text: '导出 OPML' });
+    exportButton.onclick = () => {
+      if (!this.plugin.state.subscriptions.length) { this.message.setText('还没有可以导出的订阅。'); return; }
+      void this.plugin.saveOpml(exportOpml(this.plugin.state.subscriptions)).then(path => {
+        this.message.setText(`已导出到 ${path}`);
+      }).catch(() => { this.message.setText('导出失败，请检查笔记文件夹。'); });
+    };
+    this.list = this.contentEl.createDiv('qrs-subscription-list'); this.renderList();
+    this.contentEl.createEl('p', { cls: 'qrs-subscription-help', text: '订阅仅保存在本库。直接读取订阅网站；个人源显示原文，不调用 AI。' });
+    url.focus();
+  }
+  private renderList() {
+    this.list.empty();
+    const feeds = [...this.plugin.state.subscriptions].sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+    if (!feeds.length) { this.list.createDiv({ cls: 'qrs-empty', text: '添加第一个订阅，开始阅读。' }); return; }
+    for (const feed of feeds) {
+      const row = this.list.createDiv('qrs-subscription-row');
+      const info = row.createDiv('qrs-subscription-info');
+      info.createDiv({ cls: 'qrs-subscription-name', text: feed.name });
+      info.createDiv({ cls: 'qrs-subscription-detail', text: `${feed.group || '未分组'} · ${new URL(feed.url).hostname} · ${feed.entries.length} 篇` });
+      if (feed.error) info.createDiv({ cls: 'qrs-subscription-error', text: feed.error });
+      const edit = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'aria-label': `编辑 ${feed.name}` } });
+      setIcon(edit, 'pencil'); setTooltip(edit, `编辑 ${feed.name}`);
+      edit.onclick = () => new EditSubscription(this.plugin, feed, () => { this.renderList(); this.changed(); }).open();
+      const remove = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'aria-label': `取消订阅 ${feed.name}` } });
+      setIcon(remove, 'trash-2'); setTooltip(remove, `取消订阅 ${feed.name}`);
+      remove.onclick = () => new RemoveSubscription(this.plugin, feed, () => { this.renderList(); this.changed(); }).open();
+    }
+  }
+}
+class EditSubscription extends Modal {
+  constructor(private plugin: QiaomuRssPlugin, private feed: Subscription, private changed: () => void) { super(plugin.app); }
+  onOpen() {
+    this.setTitle('编辑订阅'); let name = this.feed.name; let group = this.feed.group;
+    new Setting(this.contentEl).setName('名称').addText(text => text.setValue(name).onChange(value => { name = value; }));
+    new Setting(this.contentEl).setName('分组').addText(text => text.setValue(group).setPlaceholder('未分组').onChange(value => { group = value; }));
+    new Setting(this.contentEl).addButton(button => button.setButtonText('保存').setCta().onClick(async () => {
+      try { await this.plugin.subscriptions.edit(this.feed.id, name, group); this.changed(); this.close(); }
+      catch (error) { new Notice(error instanceof Error ? error.message : '保存失败。'); }
+    }));
+  }
+}
+class RemoveSubscription extends Modal {
+  constructor(private plugin: QiaomuRssPlugin, private feed: Subscription, private changed: () => void) { super(plugin.app); }
+  onOpen() {
+    this.setTitle(`取消订阅 ${this.feed.name}`);
+    this.contentEl.createEl('p', { text: '移除这个源及其文章列表，已收藏的文章和已保存的笔记会保留。' });
+    new Setting(this.contentEl)
+      .addButton(button => button.setButtonText('保留订阅').onClick(() => this.close()))
+      .addButton(button => button.setButtonText('取消订阅').setDestructive().onClick(async () => {
+        await this.plugin.subscriptions.remove(this.feed.id); this.changed(); this.close();
+      }));
+  }
+}
+class OpmlImport extends Modal {
+  private feeds: FeedInput[] = [];
+  constructor(private plugin: QiaomuRssPlugin, private changed: () => void) { super(plugin.app); }
+  onOpen() {
+    this.setTitle('导入 OPML'); this.modalEl.addClass('qrs-subscription-modal');
+    const input = this.contentEl.createEl('input', { type: 'file', attr: { accept: '.opml,.xml,text/xml,application/xml', 'aria-label': '选择 OPML 文件' } });
+    const area = this.contentEl.createEl('textarea', { cls: 'qrs-opml-text', placeholder: '也可以粘贴 OPML 内容…', attr: { 'aria-label': 'OPML 内容' } });
+    const preview = this.contentEl.createDiv({ cls: 'qrs-opml-preview', attr: { role: 'status' } });
+    const importButton = this.contentEl.createEl('button', { text: '导入订阅', cls: 'mod-cta' }); importButton.disabled = true;
+    const validate = () => {
+      this.feeds = []; importButton.disabled = true; preview.empty();
+      try {
+        const parsed = parseOpml(area.value, this.contentEl.ownerDocument);
+        const existing = new Set(this.plugin.state.subscriptions.map(feed => feed.url));
+        this.feeds = parsed.feeds.filter(feed => !existing.has(feed.url));
+        preview.createEl('p', { text: `新增 ${this.feeds.length} 个订阅，跳过 ${parsed.skipped + parsed.feeds.length - this.feeds.length} 个重复或无效地址。` });
+        if (this.feeds.length + existing.size > MAX_SUBSCRIPTIONS) throw new Error(`最多保留 ${MAX_SUBSCRIPTIONS} 个订阅，请减少导入数量。`);
+        for (const feed of this.feeds.slice(0, 10)) preview.createDiv({ text: `${feed.group ? feed.group + ' / ' : ''}${feed.name}` });
+        if (this.feeds.length > 10) preview.createDiv({ text: `另有 ${this.feeds.length - 10} 个订阅` });
+        importButton.disabled = !this.feeds.length;
+      } catch (error) { preview.setText(error instanceof Error ? error.message : '文件无法读取。'); }
+    };
+    area.oninput = validate;
+    input.onchange = () => {
+      this.feeds = []; importButton.disabled = true;
+      const file = input.files?.[0]; if (!file) return;
+      if (file.size > 5 * 1024 * 1024) { preview.setText('OPML 文件超过 5 MB。'); return; }
+      void file.text().then(value => { area.value = value; validate(); }).catch(() => { preview.setText('文件无法读取。'); });
+    };
+    this.contentEl.createEl('p', { cls: 'qrs-subscription-help', text: '导入后在“我的订阅”点击刷新获取文章。导入不会覆盖现有订阅的名称和分组。' });
+    importButton.onclick = () => {
+      importButton.disabled = true;
+      void this.plugin.subscriptions.import(this.feeds).then(count => {
+        new Notice(`已导入 ${count} 个订阅。`); this.changed(); this.close();
+      }).catch((error: unknown) => { preview.setText(error instanceof Error ? error.message : '导入失败。'); importButton.disabled = false; });
+    };
+  }
+}
