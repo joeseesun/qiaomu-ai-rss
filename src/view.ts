@@ -537,9 +537,10 @@ export class ReaderView extends ItemView {
     if (restoreFocus) this.reader.focus({ preventScroll: true });
     const bundle = this.bundle;
     if (!bundle) {
-      const empty = this.reader.createDiv('qrs-welcome'); setIcon(empty.createDiv('qrs-welcome-icon'), 'book-open');
-      empty.createEl('h2', { text: '选一篇，开始读。' });
-      empty.createEl('p', { text: '从文章列表打开一篇，把值得留下的内容写进笔记。' });
+      const empty = this.reader.createDiv('qrs-welcome');
+      empty.createDiv({ cls: 'qrs-welcome-brand', text: 'QIAOMU RSS' });
+      empty.createEl('h2', { text: '给阅读，留一点时间。' });
+      empty.createEl('p', { cls: 'qrs-welcome-intro', text: '从列表中，挑一篇感兴趣的文章。' });
       const tips = [
         ['边读边记', '点击文章右上角的笔记本，在旁边打开今日日记。阅读和思考可以同时进行。'],
         ['留下有用的一段', '选中文字后，可追加到今日日记或当前笔记。也可以从右键菜单操作。'],
@@ -549,9 +550,9 @@ export class ReaderView extends ItemView {
       ];
       if (this.welcomeSource !== this.source || this.welcomeTip < 0) { this.welcomeTip = (this.welcomeTip + 1) % tips.length; this.welcomeSource = this.source; }
       const tip = empty.createDiv('qrs-welcome-tip');
-      const showTip = () => { tip.empty(); const [title, copy] = tips[this.welcomeTip]; tip.createEl('h3', { text: title }); tip.createEl('p', { text: copy }); };
+      const showTip = () => { tip.empty(); const [title, copy] = tips[this.welcomeTip]; tip.createDiv({ cls: 'qrs-welcome-index', text: `${String(this.welcomeTip + 1).padStart(2, '0')} / ${String(tips.length).padStart(2, '0')}   阅读小记` }); tip.createEl('h3', { text: title }); tip.createEl('p', { text: copy }); };
       showTip();
-      empty.createEl('button', { cls: 'qrs-welcome-next', text: '换个提示' }).onclick = () => { this.welcomeTip = (this.welcomeTip + 1) % tips.length; showTip(); };
+      empty.createEl('button', { cls: 'qrs-welcome-next', text: '下一则 →' }).onclick = () => { this.welcomeTip = (this.welcomeTip + 1) % tips.length; showTip(); };
       if (!Platform.isMobileApp) {
         const keys = empty.createDiv('qrs-welcome-keys');
         for (const [key, label] of [['J / K', '下篇 / 上篇'], ['[', '收起列表'], ['/', '搜索文章']]) { const item = keys.createSpan(); item.createEl('kbd', { text: key }); item.createSpan({ text: label }); }
