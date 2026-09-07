@@ -2,7 +2,7 @@
   "name": "qiaomu-ai-rss",
   "version": "0.12.0",
   "description": "Read Qiaomu and personal RSS feeds, then add article links to your Daily Note.",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "private": true,
   "scripts": {
     "dev": "node esbuild.config.mjs --watch",
