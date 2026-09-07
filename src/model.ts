@@ -29,8 +29,9 @@ export type Subscription = z.infer<typeof subscriptionSchema>;
 export const stateSchema = z.object({
   settings: z.object({
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
+    rsshubUrl: z.string().transform(value => { try { return serviceUrl(value); } catch { return 'https://rsshub.rssforever.com'; } }).default('https://rsshub.rssforever.com'),
     defaultMode: modeSchema.default('rewrite'), remoteImages: z.boolean().default(true), listWidth: z.number().min(220).max(520).default(300),
-  }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', defaultMode: 'rewrite', remoteImages: true, listWidth: 300 }),
+  }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', rsshubUrl: 'https://rsshub.rssforever.com', defaultMode: 'rewrite', remoteImages: true, listWidth: 300 }),
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),

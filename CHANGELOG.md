@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-09-07
+
+- Fix clipped input focus borders with an inset ring in subscription dialogs.
+- Add a native discovery tab with 12 featured feeds, RSSHub filtering and a configurable instance.
+- Bundle 1,342 independent Chinese blogs from the MIT-licensed community directory, with local search, topic filters and paginated browsing.
+- Validate one-click subscriptions, show existing/pending/retry states, and retain the current reading view.
+
 ## 0.2.0 — 2026-09-07
 
 - Add vault-local RSS/Atom subscriptions, name/group editing, and unsubscribe while retaining favorites and notes.

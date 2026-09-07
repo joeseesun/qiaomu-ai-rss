@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective: 2026-09-07 (0.2.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
+Effective: 2026-09-07 (0.3.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
 
 Qiaomu AI RSS is a local reader for a remote Qiaomu RSS API. It requests public sources, entry lists, article details, and existing translation/rewrite assets. The default server is `rss.qiaomu.ai`. A user-configured server is governed by its own operator's policy.
 
@@ -19,3 +19,7 @@ Personal RSS/Atom URLs are fetched directly through Obsidian's HTTP(S) API, with
 OPML imports are previewed and stored locally without fetching feeds at import time. Exports create an OPML file in the configured vault notes folder. URLs, names, groups, cached feed articles, errors and update times are saved in plugin data. Feed URLs with query tokens may grant access to private content; plugin data and OPML exports are unencrypted and should not be shared publicly. URL-embedded usernames/passwords are not accepted.
 
 Canceling a subscription removes its list/cache, but keeps favorited article snapshots and exported notes. Switching the Qiaomu service origin preserves personal subscriptions and favorites. Removing plugin data removes subscriptions; separately exported OPML files and notes remain.
+
+## Discovery and RSSHub
+
+The bundled catalog is read locally. Search terms, topic filters and browsing behavior are not sent to GitHub, Qiaomu, RSSHub or the blogs. There are no remote favicons or live catalog requests. Clicking Subscribe fetches the selected feed. RSSHub routes use the displayed instance (default `https://rsshub.rssforever.com`, operated by a third party); it sees the requested route and standard request metadata, and obtains content from upstream sites. Users can configure another HTTPS instance. The plugin never silently switches providers, and previously saved feed URLs are unchanged. Clicking a blog home-page or catalog-source link opens that destination in the browser.

@@ -21,6 +21,8 @@ export class SubscriptionManager extends Modal {
       }).catch((error: unknown) => { this.message.setText(error instanceof Error ? error.message : '添加失败，请重试。'); }).finally(() => { add.disabled = false; });
     };
     const tools = this.contentEl.createDiv('qrs-subscription-tools');
+    const explore = tools.createEl('button', { text: '探索订阅' });
+    explore.onclick = () => { this.close(); void this.plugin.openDiscovery(); };
     const importButton = tools.createEl('button', { text: '导入 OPML' });
     importButton.onclick = () => new OpmlImport(this.plugin, () => { this.renderList(); this.changed(); }).open();
     const exportButton = tools.createEl('button', { text: '导出 OPML' });
@@ -56,7 +58,7 @@ export class SubscriptionManager extends Modal {
 class EditSubscription extends Modal {
   constructor(private plugin: QiaomuRssPlugin, private feed: Subscription, private changed: () => void) { super(plugin.app); }
   onOpen() {
-    this.setTitle('编辑订阅'); let name = this.feed.name; let group = this.feed.group;
+    this.setTitle('编辑订阅'); this.modalEl.addClass('qrs-subscription-modal'); let name = this.feed.name; let group = this.feed.group;
     new Setting(this.contentEl).setName('名称').addText(text => text.setValue(name).onChange(value => { name = value; }));
     new Setting(this.contentEl).setName('分组').addText(text => text.setValue(group).setPlaceholder('未分组').onChange(value => { group = value; }));
     new Setting(this.contentEl).addButton(button => button.setButtonText('保存').setCta().onClick(async () => {

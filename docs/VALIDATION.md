@@ -1,10 +1,10 @@
-# Validation — 0.2.0
+# Validation — 0.3.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
 ## Automated checks
 
-`npm run check` passes TypeScript checking, the official `eslint-plugin-obsidianmd` recommended rules, 33 Vitest tests, and the production bundle build.
+`npm run check` passes TypeScript checking, the official `eslint-plugin-obsidianmd` recommended rules, 38 Vitest tests, and the production bundle build.
 
 Tests exercise HTML/script and URL sanitization, safe vault paths, note frontmatter and source attribution, preventing executable remote code blocks, API validation/errors/timeouts, state round trips, raster image validation, disk-cache reuse and offline reads, per-image size limits, and disk-cache eviction. `npm audit` reports no known vulnerabilities at validation time.
 
@@ -52,3 +52,13 @@ The native file-input path was also tested with an OPML File object. Desktop and
 Additional unit coverage includes RSS/Atom/RDF parsing, relative XML bases and images, plain-text content escaping, stable per-feed IDs, payload bounds, malformed XML/DTD rejection, OPML grouping/escaping/deduplication, upgrade defaults, service-origin changes preserving personal data, timeout/cache fallback, deletion during refresh, and progressive refresh with shared in-flight requests.
 
 The subscription smoke runner adds/removes its named public test sources, creates an OPML export and a note, and changes test read/favorite state. Run it only in a disposable test vault. No production server or personal vault is modified by these checks.
+
+## Discovery and focus regression — 0.3.0
+
+`npm run check` passes 38 tests, TypeScript, official Obsidian lint (zero warnings), and the production build. New unit coverage checks the complete bundled catalog's safe URLs and unique IDs, combined local filters, independent-blog separation, RSSHub URL construction and upgrade/instance persistence behavior.
+
+`node scripts/discovery-smoke.mjs` passes 14 new checks in actual Obsidian 1.13.7: local-only catalog opening; first-60/next-60 blog pagination; combined name/theme search and empty state; real Reorx subscription (50 cached entries); RSSHub-only filtering; real 36kr (20) and GitHub trends (18); invalid instance rejection; simulated HTTP 503 failure then live retry; disabled duplicate-add state; personal reading; inset input focus; and reopening the same exploration tab from subscription management. The initial GitHub request timed out; an explicit retry and the complete final run succeeded. No hidden provider fallback is used. The smoke script resets only its three named public sources and cleans its additions in this disposable vault.
+
+`node scripts/discovery-layout.mjs` checks desktop and 390px narrow layouts with light/dark themes, both subscription URL and group inputs, no horizontal overflow, and the discovery search focus. Focus emulation is enabled during these checks so that background app windows still render real `:focus` CSS; it is disabled afterward, with viewport and theme restored. Screenshots are from the running Obsidian view. The entire purple focus border is visible on all sides; unlike the 0.2.0 screenshot, it is now inside the input box. Developer errors were empty.
+
+The earlier reader and subscription integration records above are retained as versioned baseline evidence. The 0.3.0 run adds the discovery checks; it does not imply that all 1,342 blog feeds have been fetched. Individual blog URLs can be stale. See DISCOVERY.md for source provenance, live probes and limitations. No physical mobile-device tests were performed.
