@@ -8,6 +8,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ## 功能
 
+- **探索订阅**：12 个精选源与 1,342 个中文独立博客，按名称/主题搜索、一键订阅；支持 RSSHub 与自定义实例。
 - **我的订阅**：添加 RSS / Atom 地址、重命名、分组、取消订阅；OPML 导入预览、去重与导出。个人订阅直接在本机获取，无需乔木账号。
 
 - 阅读优先双栏：44px 正文工具栏、可拖动调宽的列表、一键专注阅读；窄屏使用列表与正文两级导航。
@@ -39,6 +40,20 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ## 使用
 
+### 探索订阅
+
+![独立博客目录](docs/images/discovery-blogs.png)
+
+点击列表顶部 **+ → 探索订阅**，或运行命令 **Qiaomu AI RSS: 探索订阅**。
+
+- **精选订阅**：乔木博客、少数派、爱范儿、NASA 等，以及 RSSHub 的 36氪快讯和 GitHub 今日趋势。
+- **独立博客**：来自 [timqian/chinese-independent-blogs](https://github.com/timqian/chinese-independent-blogs) 的 1,342 个带 RSS 地址的博客，保留名称、主页与主题标签；支持搜索、主题筛选和分批浏览。
+- 点击“订阅”会读取并验证源，按主题加入“我的订阅”，已经添加的源显示“已订阅”。点击“开始阅读”进入个人文章列表。
+- 目录离线内置，不会在浏览时请求所有网站。独立博客是社区目录快照，部分旧地址可能失效；添加失败时显示原因和重试入口。
+- RSSHub 默认使用第三方公共实例 `rsshub.rssforever.com`，可以展开“RSSHub 实例”改为自己的 HTTPS 实例。仅影响以后添加的源，已有订阅保持不变。
+
+[目录来源、授权与可用性记录](docs/DISCOVERY.md) · [精选目录截图](docs/images/discovery-featured.png)
+
 ### 添加自己的订阅
 
 ![个人订阅管理](docs/images/subscriptions-manager.png)
@@ -67,6 +82,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 ## 隐私与网络 / Privacy and network use
 
 - **Network required for new content.** Opening the reader, selecting a channel/article or refreshing sends anonymous HTTPS GET requests to `https://rss.qiaomu.ai`, or the compatible HTTPS origin you explicitly configure. The service receives normal request metadata such as IP address, request time and requested article/channel IDs. See [Privacy](docs/PRIVACY.md).
+- **Discovery is local.** Catalog search/filtering sends no network requests. Clicking Subscribe contacts the listed feed host, or the displayed RSSHub instance for RSSHub routes. Blog home-page/source links open only when clicked. See [catalog provenance](docs/DISCOVERY.md).
 - **Personal feed requests go directly to the URLs you add or import.** These HTTP(S) hosts receive normal request metadata; feed addresses, groups and article bodies are not uploaded to Qiaomu. OPML import itself does not fetch content. Feed URLs may contain private access tokens and are stored unencrypted in plugin data and OPML exports; keep those exports private.
 - **No account, API key or payment is required for the public reading features in this release.** This plugin only reads existing published AI assets. It does not request new AI generation or send data to model providers. Future service availability is controlled by the service operator.
 - **Article images are enabled by default.** The plugin downloads raster images from their hosts and displays local Blob URLs. Images are cached within this plugin’s vault configuration directory (up to 64 MB / 100 files, 8 MB per image). Image hosts receive normal image requests; cached images can be read offline. You can disable images in settings. Exported notes retain the original remote image URLs. Clicking article links opens the linked website in your browser. When disabled, no article images are embedded or exported.
@@ -82,6 +98,8 @@ npm run check
 npm run test:live  # read-only requests to the production public API
 # In the disposable Qiaomu RSS QA vault only:
 node scripts/subscription-smoke.mjs
+node scripts/discovery-smoke.mjs
+node scripts/discovery-layout.mjs
 ```
 
 `npm run dev` 监听 TypeScript 变化。构建产物为根目录 `main.js`，将其与 `manifest.json`、`styles.css` 安装到专用测试库即可。

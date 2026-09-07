@@ -7,6 +7,7 @@ import { ReaderView, VIEW_TYPE } from './view';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
 import { SubscriptionManager } from './subscription-ui';
+import { DiscoveryView, DISCOVERY_VIEW_TYPE } from './discovery-view';
 
 export default class QiaomuRssPlugin extends Plugin {
   state: State = initialState(null);
@@ -22,6 +23,8 @@ export default class QiaomuRssPlugin extends Plugin {
     this.subscriptions = new Subscriptions(() => this.state, () => this.persist());
     this.addCommand({ id: 'manage-subscriptions', name: '管理我的订阅', callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
+    this.registerView(DISCOVERY_VIEW_TYPE, leaf => new DiscoveryView(leaf, this));
+    this.addCommand({ id: 'explore-subscriptions', name: '探索订阅', callback: () => { void this.openDiscovery(); } });
     this.addRibbonIcon('rss', '打开 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开阅读器', callback: () => { void this.openReader(); } });
     this.addSettingTab(new RssSettings(this.app, this));
@@ -73,10 +76,28 @@ export default class QiaomuRssPlugin extends Plugin {
   }
   manageSubscriptions() {
     new SubscriptionManager(this, () => {
+      this.refreshDiscovery();
       for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
         if (leaf.view instanceof ReaderView) leaf.view.showSubscriptions();
       }
     }).open();
+  }
+  async openDiscovery() {
+    try {
+      let leaf = this.app.workspace.getLeavesOfType(DISCOVERY_VIEW_TYPE)[0];
+      if (!leaf) { leaf = this.app.workspace.getLeaf('tab'); await leaf.setViewState({ type: DISCOVERY_VIEW_TYPE, active: true }); }
+      await this.app.workspace.revealLeaf(leaf);
+    } catch { new Notice('无法打开订阅目录。'); }
+  }
+  refreshDiscovery() {
+    for (const leaf of this.app.workspace.getLeavesOfType(DISCOVERY_VIEW_TYPE)) {
+      if (leaf.view instanceof DiscoveryView) leaf.view.refresh();
+    }
+  }
+  async readSubscriptions() {
+    await this.openReader();
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+    if (view instanceof ReaderView) view.showSubscriptions();
   }
   async saveOpml(content: string): Promise<string> {
     const folder = folderPath(this.state.settings.folder); let current = '';
