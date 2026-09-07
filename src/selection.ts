@@ -1,8 +1,11 @@
+import { markdownText } from './daily-note';
 /** A selection action, shown only after an explicit text selection. */
 export class SelectionCapture {
   private popup?: HTMLElement;
   constructor(private doc: Document, private reader: () => HTMLElement, private capture: () => ((text: string) => Promise<void>) | null) {
     doc.addEventListener('pointerup', this.update);
+    doc.addEventListener('dragstart', this.dragStart);
+    doc.addEventListener('dragend', this.clear);
     doc.addEventListener('keyup', this.update);
     doc.addEventListener('selectionchange', this.selectionChanged);
     doc.addEventListener('scroll', this.clear, true);
@@ -10,6 +13,18 @@ export class SelectionCapture {
     doc.addEventListener('keydown', this.escape);
   }
   clear = () => { this.popup?.remove(); this.popup = undefined; };
+  private dragStart = (event: DragEvent) => {
+    const selection = this.doc.getSelection(), prose = this.reader().querySelector('.qrs-prose');
+    if (!event.dataTransfer || !selection || selection.isCollapsed || !prose?.contains(selection.anchorNode) || !prose.contains(selection.focusNode) || !prose.contains(event.target as Node)) return;
+    this.writeDrag(event, selection.toString());
+  };
+  private writeDrag(event: DragEvent, text: string) {
+    if (!event.dataTransfer) return;
+    event.dataTransfer.clearData();
+    event.dataTransfer.setData('text/plain', markdownText(text));
+    event.dataTransfer.effectAllowed = 'copy';
+    this.clear();
+  }
   private selectionChanged = () => { if (this.doc.getSelection()?.isCollapsed) this.clear(); };
   private escape = (event: KeyboardEvent) => { if (event.key === 'Escape') this.clear(); };
   private update = (event: Event) => {
@@ -33,6 +48,8 @@ export class SelectionCapture {
   dispose() {
     this.clear();
     this.doc.removeEventListener('pointerup', this.update);
+    this.doc.removeEventListener('dragstart', this.dragStart);
+    this.doc.removeEventListener('dragend', this.clear);
     this.doc.removeEventListener('keyup', this.update);
     this.doc.removeEventListener('selectionchange', this.selectionChanged);
     this.doc.removeEventListener('scroll', this.clear, true);

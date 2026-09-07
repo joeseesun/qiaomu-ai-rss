@@ -2,7 +2,7 @@ import { MarkdownView, Notice, Platform, Plugin, PluginSettingTab, TFile, type A
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
 import { folderPath, initialState, modeLabels, modeSchema, serviceUrl, withServiceOrigin, type Bundle, type Entry, type Mode, type State } from './model';
-import { appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
+import { repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { ReadingFonts } from './fonts';
 import { LocalImages } from './images';
@@ -30,6 +30,11 @@ export default class QiaomuRssPlugin extends Plugin {
     this.addRibbonIcon('rss', '打开 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开阅读器', callback: () => { void this.openReader(); } });
     this.addSettingTab(new RssSettings(this.app, this));
+    this.registerMarkdownPostProcessor(element => {
+      for (const link of element.querySelectorAll<HTMLAnchorElement>('a[href^="obsidian://qiaomu-ai-rss?"]')) {
+        link.setAttribute('href', repairArticleLinks(link.getAttribute('href') || ''));
+      }
+    });
     this.registerObsidianProtocolHandler('qiaomu-ai-rss', params => {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice('这篇文章的本地副本不存在。'));
     });
