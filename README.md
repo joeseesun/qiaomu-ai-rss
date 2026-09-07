@@ -126,9 +126,17 @@ node scripts/discovery-layout.mjs
 - [官方目录发布记录](docs/SUBMISSION.md)
 - [贡献与版本迭代](CONTRIBUTING.md)
 
-## License
+## License / 许可证
 
-MIT. Copyright (c) 2026 向阳乔木.
+Copyright (c) 2026 向阳乔木.
+
+本项目整体采用 **GNU GPL v3.0 only**（`GPL-3.0-only`），完整条款见 [LICENSE](LICENSE)。除另有明确声明的第三方部分外，自有代码可按 GPL v3.0 使用、修改和分发，不提供任何担保。第三方代码、字体及素材保留各自许可证与版权声明。
+
+GPL 允许免费商业使用；分发时须遵守相应源码、版权和许可证义务。需要 GPL 之外的授权，可联系作者协商[商业授权](COMMERCIAL-LICENSE.md)。本次变更不撤销此前已授予的许可证。
+
+The project as a whole is licensed under GNU GPL version 3 only, with no warranty. Third-party components retain their own licenses. Commercial use is permitted under GPL; a separate commercial agreement may be negotiated for rights the author can grant. Previously granted licenses remain valid.
+
+此前 MIT 版本声明保留在 [LICENSES/previous-MIT.txt](LICENSES/previous-MIT.txt)。
 
 Bundled dependencies retain their licenses: DOMPurify (Apache-2.0 OR MPL-2.0), marked (MIT), and Zod (MIT). See [third-party notices](THIRD_PARTY_NOTICES.md).
 
