@@ -17,7 +17,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 - 阅读优先双栏：紧凑工具栏、可拖动调宽的列表、一键专注阅读；有配图的文章在列表中显示本地缓存缩略图。
 - 分组频道选择器：聚合、个人分组、乔木频道和订阅源各自归类，使用图标或名称缩写快速识别。
-- 插件设置和正文工具栏共用阅读设置，前台面板跟随吸顶工具栏：思源宋体、思源黑体、霞鹜文楷屏幕版、霞鹜臻楷、朱雀仿宋，以及系统宋体/黑体；支持 14–32px 字号、1.5–2.4 倍行距和 28/36/44 字版心宽度；调整立即生效并在重启后保留。
+- 插件设置和正文工具栏共用阅读设置，前台面板跟随吸顶工具栏：内置朱雀仿宋常用字集，以及系统宋体/黑体和自选设备字体；支持 14–32px 字号、1.5–2.4 倍行距和 28/36/44 字版心宽度；调整立即生效并在重启后保留。
 - 浏览所有频道的最近 100 篇文章；单个频道按游标加载更早文章。
 - 搜索当前载入的文章，按未读、收藏筛选。
 - 切换乔木改写、中文翻译、原文。没有生成的版本会明确显示缺失，不自动调用 AI。
@@ -35,7 +35,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ### 官方插件库
 
-已收录 [Obsidian Community](https://community.obsidian.md/plugins/qiaomu-ai-rss)。在 Obsidian 的 **设置 → 第三方插件 → 浏览** 中搜索 **Qiaomu AI RSS**，安装并启用；也可以打开官方页面，点击 **Add to Obsidian**。
+官方目录目前尚不可搜索安装：最近一次自动审核因扫描超时未完成，正在等待复核。GitHub Release 可用不代表官方市场已收录。
 
 以下 BRAT 与手动安装方式仍然可用。
 
@@ -50,7 +50,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 3. 在 Obsidian 的第三方插件设置中启用 **Qiaomu AI RSS**。
 4. 点击侧边栏 RSS 图标，或运行命令 **Qiaomu AI RSS: 打开乔木 RSS 阅读器**。
 
-2026-09-07 完成官方自动审核并发布。当前版本为 0.17.0。
+2026-09-07 核实：官方后台 0.14.0 审核扫描超时；GitHub Release 与官方目录审核状态分别核验。
 
 ## 使用
 

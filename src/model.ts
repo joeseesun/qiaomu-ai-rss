@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const modeSchema = z.enum(['rewrite', 'translation', 'original']);
 export type Mode = z.infer<typeof modeSchema>;
 export const modeLabels: Record<Mode, string> = { rewrite: '乔木改写', translation: '中文翻译', original: '原文' };
-export const readingFontSchema = z.enum(['serif', 'sans', 'sourceHanSerif', 'sourceHanSans', 'wenkai', 'zhenkai', 'fangsong']);
+export const readingFontSchema = z.enum(['serif', 'sans', 'sourceHanSerif', 'sourceHanSans', 'wenkai', 'zhenkai', 'fangsong', 'custom']);
 export type ReadingFont = z.infer<typeof readingFontSchema>;
 const optionalText = z.string().nullish();
 export const rewriteSchema = z.object({ title: optionalText, body: z.string() });
@@ -40,12 +40,12 @@ export const stateSchema = z.object({
   settings: z.object({
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
     defaultMode: modeSchema.default('rewrite'), remoteImages: z.boolean().default(true), listWidth: z.number().min(220).max(520).default(300),
-    fontSize: z.number().int().min(14).max(32).default(19), fontFamily: readingFontSchema.default('fangsong'),
+    fontSize: z.number().int().min(14).max(32).default(19), customFont: z.string().max(200).catch('').default(''), fontFamily: readingFontSchema.default('fangsong'),
     lineHeight: z.number().min(1.5).max(2.4).default(1.9), lineWidth: z.union([z.literal(28), z.literal(36), z.literal(44)]).default(36),
     selectionPopup: z.boolean().default(true), markdownFolders: z.array(z.string()).default([]),
     lastSource: z.string().max(300).default(''),
   }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
-    fontSize: 19, fontFamily: 'fangsong', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [] }),
+    fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [] }),
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),

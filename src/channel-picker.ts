@@ -1,3 +1,4 @@
+import { addSearchClear } from './search-clear';
 import { Component, Platform, setIcon } from 'obsidian';
 export type ChannelSection = '聚合' | '订阅分组' | '乔木频道' | '我的订阅源' | '库内文件夹';
 export interface ChannelChoice { id: string; name: string; section: ChannelSection; subtitle: string; icon?: string; monogram?: string; group?: string }
@@ -29,6 +30,7 @@ export class ChannelPicker extends Component {
     const searchId = titleId + '-search';
     this.panel.createEl('label', { text: '搜索频道', cls: 'qrs-visually-hidden', attr: { for: searchId } });
     this.search = this.panel.createEl('input', { type: 'search', placeholder: '搜索频道…', attr: { id: searchId } });
+    addSearchClear(this.search);
     this.rows = this.panel.createDiv('qrs-channel-options');
     const current = this.choices.find(c => c.id === this.active);
     if (current?.group) this.expanded.add(current.group);
@@ -48,7 +50,8 @@ export class ChannelPicker extends Component {
         buttons[(next + buttons.length) % buttons.length]?.focus();
       } else if (e.key === 'Enter' && doc.activeElement === this.search) { e.preventDefault(); buttons[0]?.click(); }
       else if (e.key === 'Tab') {
-        const fields = [this.search, ...buttons]; const at = fields.indexOf(doc.activeElement as HTMLInputElement);
+        const clear = this.panel.querySelector<HTMLButtonElement>('.qrs-search-clear');
+        const fields = [this.search, ...(this.search.value && clear ? [clear] : []), ...buttons]; const at = fields.indexOf(doc.activeElement as HTMLInputElement);
         if (e.shiftKey && at <= 0) { e.preventDefault(); fields.at(-1)?.focus(); }
         else if (!e.shiftKey && at === fields.length - 1) { e.preventDefault(); this.search.focus(); }
       }
