@@ -1,10 +1,10 @@
-# Validation — 0.5.0
+# Validation — 0.6.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
 ## Automated checks
 
-`npm run check` passes TypeScript checking, the official `eslint-plugin-obsidianmd` recommended rules, 38 Vitest tests, and the production bundle build.
+`npm run check` passes TypeScript checking, the official `eslint-plugin-obsidianmd` recommended rules, 39 Vitest tests, and the production bundle build.
 
 Tests exercise HTML/script and URL sanitization, safe vault paths, note frontmatter and source attribution, preventing executable remote code blocks, API validation/errors/timeouts, state round trips, raster image validation, disk-cache reuse and offline reads, per-image size limits, and disk-cache eviction. `npm audit` reports no known vulnerabilities at validation time.
 
@@ -12,7 +12,7 @@ Tests exercise HTML/script and URL sanitization, safe vault paths, note frontmat
 
 ## Actual Obsidian desktop
 
-Host: macOS; Obsidian 1.13.7. The plugin was built, installed, enabled, reloaded, and operated inside Obsidian. `node scripts/obsidian-smoke.mjs` passes 13 checks:
+Host: macOS; Obsidian 1.13.7. The plugin was built, installed, enabled, reloaded, and operated inside Obsidian. `node scripts/obsidian-smoke.mjs` passes 16 checks:
 
 - Load 100 real entries, open an article, and render the rewrite.
 - Favorite, filter favorites, and retain favorites after plugin reload.
@@ -22,6 +22,8 @@ Host: macOS; Obsidian 1.13.7. The plugin was built, installed, enabled, reloaded
 - Load older channel entries (40 to 80) through cursor pagination.
 - Keep the latest article selected when an older request completes later.
 - Resize the article list using the accessible separator's keyboard controls.
+- Change the article font, size, line height and measure live; retain those values after a plugin reload.
+- Confirm that the reader contains no tooltip-triggering `aria-label` attributes while icon controls retain visually hidden accessible names.
 
 Additional actual UI checks cover dragging the divider (340 to 420 pixels), native channel search and selection, focused reading with the same article/image DOM retained and scroll position preserved, and compact layout in light and dark themes. At 390 pixels, the article screen has a 52px toolbar, hides the list, and has no horizontal overflow or clipped toolbar actions. This is a desktop narrow-pane check, not a mobile-device test.
 

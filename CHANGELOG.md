@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 — 2026-09-07
+
+- Add compact, persistent reading controls for serif/sans fonts, text size, line height and article width.
+- Apply typography changes immediately without recreating the article or losing its scroll position.
+- Remove hover overlays triggered by accessibility attributes while retaining screen-reader text and keyboard behavior.
+
 ## 0.5.0 — 2026-09-07
 
 - Replace the broad featured catalog with 10 high-signal Chinese authors and independent publications using verified direct feeds.

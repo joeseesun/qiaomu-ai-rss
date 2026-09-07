@@ -1,4 +1,4 @@
-import { Modal, Notice, Setting, setIcon, setTooltip } from 'obsidian';
+import { Modal, Notice, Setting, setIcon } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { exportOpml, MAX_SUBSCRIPTIONS, parseOpml, type FeedInput } from './feeds';
 import type { Subscription } from './model';
@@ -10,8 +10,11 @@ export class SubscriptionManager extends Modal {
   onOpen() {
     this.setTitle('我的订阅'); this.modalEl.addClass('qrs-subscription-modal');
     const form = this.contentEl.createEl('form', { cls: 'qrs-subscription-add' });
-    const url = form.createEl('input', { type: 'url', placeholder: 'https://example.com/feed.xml', attr: { 'aria-label': 'RSS 或 Atom 地址', required: '' } });
-    const group = form.createEl('input', { type: 'text', placeholder: '分组（可选）', attr: { 'aria-label': '订阅分组', maxlength: '100' } });
+    const fieldId = crypto.randomUUID();
+    form.createEl('label', { cls: 'qrs-visually-hidden', text: 'RSS 或 Atom 地址', attr: { for: `qrs-feed-${fieldId}` } });
+    const url = form.createEl('input', { type: 'url', placeholder: 'https://example.com/feed.xml', attr: { id: `qrs-feed-${fieldId}`, required: '' } });
+    form.createEl('label', { cls: 'qrs-visually-hidden', text: '订阅分组', attr: { for: `qrs-group-${fieldId}` } });
+    const group = form.createEl('input', { type: 'text', placeholder: '分组（可选）', attr: { id: `qrs-group-${fieldId}`, maxlength: '100' } });
     const add = form.createEl('button', { text: '添加', type: 'submit', cls: 'mod-cta' });
     this.message = this.contentEl.createDiv({ cls: 'qrs-subscription-message', attr: { role: 'status' } });
     form.onsubmit = event => {
@@ -46,11 +49,11 @@ export class SubscriptionManager extends Modal {
       info.createDiv({ cls: 'qrs-subscription-name', text: feed.name });
       info.createDiv({ cls: 'qrs-subscription-detail', text: `${feed.group || '未分组'} · ${new URL(feed.url).hostname} · ${feed.entries.length} 篇` });
       if (feed.error) info.createDiv({ cls: 'qrs-subscription-error', text: feed.error });
-      const edit = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'aria-label': `编辑 ${feed.name}` } });
-      setIcon(edit, 'pencil'); setTooltip(edit, `编辑 ${feed.name}`);
+      const edit = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `编辑 ${feed.name}` } });
+      setIcon(edit, 'pencil'); edit.createSpan({ cls: 'qrs-visually-hidden', text: `编辑 ${feed.name}` });
       edit.onclick = () => new EditSubscription(this.plugin, feed, () => { this.renderList(); this.changed(); }).open();
-      const remove = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'aria-label': `取消订阅 ${feed.name}` } });
-      setIcon(remove, 'trash-2'); setTooltip(remove, `取消订阅 ${feed.name}`);
+      const remove = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `取消订阅 ${feed.name}` } });
+      setIcon(remove, 'trash-2'); remove.createSpan({ cls: 'qrs-visually-hidden', text: `取消订阅 ${feed.name}` });
       remove.onclick = () => new RemoveSubscription(this.plugin, feed, () => { this.renderList(); this.changed(); }).open();
     }
   }
@@ -84,8 +87,11 @@ class OpmlImport extends Modal {
   constructor(private plugin: QiaomuRssPlugin, private changed: () => void) { super(plugin.app); }
   onOpen() {
     this.setTitle('导入 OPML'); this.modalEl.addClass('qrs-subscription-modal');
-    const input = this.contentEl.createEl('input', { type: 'file', attr: { accept: '.opml,.xml,text/xml,application/xml', 'aria-label': '选择 OPML 文件' } });
-    const area = this.contentEl.createEl('textarea', { cls: 'qrs-opml-text', placeholder: '也可以粘贴 OPML 内容…', attr: { 'aria-label': 'OPML 内容' } });
+    const fieldId = crypto.randomUUID();
+    this.contentEl.createEl('label', { cls: 'qrs-visually-hidden', text: '选择 OPML 文件', attr: { for: `qrs-opml-file-${fieldId}` } });
+    const input = this.contentEl.createEl('input', { type: 'file', attr: { id: `qrs-opml-file-${fieldId}`, accept: '.opml,.xml,text/xml,application/xml' } });
+    this.contentEl.createEl('label', { cls: 'qrs-visually-hidden', text: 'OPML 内容', attr: { for: `qrs-opml-text-${fieldId}` } });
+    const area = this.contentEl.createEl('textarea', { cls: 'qrs-opml-text', placeholder: '也可以粘贴 OPML 内容…', attr: { id: `qrs-opml-text-${fieldId}` } });
     const preview = this.contentEl.createDiv({ cls: 'qrs-opml-preview', attr: { role: 'status' } });
     const importButton = this.contentEl.createEl('button', { text: '导入订阅', cls: 'mod-cta' }); importButton.disabled = true;
     const validate = () => {
