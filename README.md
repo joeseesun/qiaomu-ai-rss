@@ -8,7 +8,8 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ## 功能
 
-- **探索订阅**：9 个严格筛选的中文作者与 1,342 个中文独立博客，按名称/主题搜索、一键订阅；RSSHub 内容放在单独入口。乔木博客由服务内置，无需重复订阅。
+- **探索订阅**：9 个精选作者与 1,342 个中文独立博客，支持搜索和一键订阅。乔木博客作为内置频道提供。
+
 - **库内 Markdown**：在插件设置中通过原生文件夹搜索选择剪藏目录或其他文件夹，频道菜单即可阅读其中及子目录的 Markdown。正文使用 Obsidian 原生渲染，支持本地附件和内部链接；刷新列表或重新打开文章可读取变化。
 - **我的订阅**：添加 RSS / Atom 地址、重命名、分组、取消订阅；OPML 导入预览、去重与导出。个人订阅直接在本机获取，无需乔木账号。
 
@@ -47,7 +48,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 3. 在 Obsidian 的第三方插件设置中启用 **Qiaomu AI RSS**。
 4. 点击侧边栏 RSS 图标，或运行命令 **Qiaomu AI RSS: 打开乔木 RSS 阅读器**。
 
-2026-09-07 完成官方自动审核并发布。当前版本为 0.15.0。
+2026-09-07 完成官方自动审核并发布。当前版本为 0.16.0。
 
 ## 使用
 
@@ -59,10 +60,8 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 - **精选订阅**：首批只保留潮流周刊、阮一峰、云风、和菜头、张鑫旭、小众软件、月光博客、Reorx 与 pseudoyu。标准是长期原创、持续更新、RSS 全文与鲜明的个人辨识度，宁缺毋滥；乔木博客直接作为内置频道提供。
 - **独立博客**：来自 [timqian/chinese-independent-blogs](https://github.com/timqian/chinese-independent-blogs) 的 1,342 个带 RSS 地址的博客，保留名称、主页与主题标签；支持搜索、主题筛选和分批浏览。
-- **RSSHub**：36氪快讯和 GitHub 今日趋势保留在单独的 RSSHub 页签，不计入 9 个精选作者。
 - 点击“订阅”会读取并验证源，按主题加入“我的订阅”，并让阅读器记住这个新频道；切回阅读器即可看到文章。已经添加的源显示“已订阅”，点击“开始阅读”可查看全部个人订阅。
 - 目录离线内置，不会在浏览时请求所有网站。独立博客是社区目录快照，部分旧地址可能失效；添加失败时显示原因和重试入口。
-- RSSHub 页签默认使用第三方公共实例 `rsshub.rssforever.com`，可以展开“RSSHub 实例”改为自己的 HTTPS 实例。仅影响以后添加的源，已有订阅保持不变。
 
 [目录来源、授权与可用性记录](docs/DISCOVERY.md) · [精选目录截图](docs/images/discovery-featured.png)
 
@@ -97,8 +96,9 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ## 隐私与网络 / Privacy and network use
 
+- **Discovery is local.** Catalog search/filtering sends no network requests. Clicking Subscribe fetches the chosen feed.
+
 - **Network required for new content.** Opening the reader, selecting a channel/article or refreshing sends anonymous HTTPS GET requests to `https://rss.qiaomu.ai`, or the compatible HTTPS origin you explicitly configure. The service receives normal request metadata such as IP address, request time and requested article/channel IDs. See [Privacy](docs/PRIVACY.md).
-- **Discovery is local.** Catalog search/filtering sends no network requests. Clicking Subscribe contacts the listed feed host, or the displayed RSSHub instance for RSSHub routes. Blog home-page/source links open only when clicked. See [catalog provenance](docs/DISCOVERY.md).
 - **Personal feed requests go directly to the URLs you add or import.** These HTTP(S) hosts receive normal request metadata; feed addresses, groups and article bodies are not uploaded to Qiaomu. OPML import itself does not fetch content. Feed URLs may contain private access tokens and are stored unencrypted in plugin data and OPML exports; keep those exports private.
 - **No account, API key or payment is required for the public reading features in this release.** This plugin only reads existing published AI assets. It does not request new AI generation or send data to model providers. Future service availability is controlled by the service operator.
 - **Article images are enabled by default.** The plugin downloads article images and list thumbnails from their hosts and displays local Blob URLs. Images are cached within this plugin’s vault configuration directory (up to 64 MB / 100 files, 8 MB per image). Image hosts receive normal image requests; cached images can be read offline. You can disable images in settings. Clicking article links opens the linked website in your browser.

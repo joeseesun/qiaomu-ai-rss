@@ -39,7 +39,7 @@ The remaining 9 direct featured endpoints returned parseable RSS/Atom with artic
 
 The user supplied the desired editorial direction. Their duplicated `hecaitou.com` link was assigned only to 和菜头; 阮一峰 uses the direct Atom endpoint documented on his own site. RSSHub-derived items are not counted as featured feeds.
 
-## RSSHub routes
+## Historical RSSHub routes (removed in 0.16.0)
 
 | Source | Route |
 | --- | --- |
@@ -48,6 +48,6 @@ The user supplied the desired editorial direction. Their duplicated `hecaitou.co
 
 RSSHub route definitions were checked against the upstream implementation: [36kr/index.ts](https://github.com/DIYgod/RSSHub/blob/master/lib/routes/36kr/index.ts), [github/trending.tsx](https://github.com/DIYgod/RSSHub/blob/master/lib/routes/github/trending.tsx). The latter needs GitHub credentials configured by the RSSHub instance operator, not in the Obsidian plugin.
 
-The official public `rsshub.app` returned 403 during testing. The default third-party instance is `https://rsshub.rssforever.com`, shown in the view and configurable to another HTTPS origin. No automatic failover is performed. Changing instances affects future additions; existing subscriptions retain their exact URLs and cached data. Direct feeds are unaffected. RSSHub subscriptions send requests to the selected instance, which fetches upstream content. Operators control route configuration and availability. Zhihu hot, Bilibili ranking, and the RSSHub IT之家 route returned 503 and are not included in the featured catalog.
+The official public `rsshub.app` returned 403 during testing. The previous default third-party instance was `https://rsshub.rssforever.com`, shown in the view and configurable to another HTTPS origin. No automatic failover is performed. Changing instances affects future additions; existing subscriptions retain their exact URLs and cached data. Direct feeds are unaffected. RSSHub subscriptions send requests to the selected instance, which fetches upstream content. Operators control route configuration and availability. Zhihu hot, Bilibili ranking, and the RSSHub IT之家 route returned 503 and are not included in the featured catalog.
 
 In 0.9.0 Baoyu was removed from featured feeds because its RSS does not provide full articles. Existing user subscriptions are preserved.

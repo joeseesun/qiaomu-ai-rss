@@ -202,6 +202,7 @@ export class ReaderView extends ItemView {
       const button = this.filters.createEl('button', { text: label, attr: { 'aria-pressed': String(value === this.filter), 'data-filter': value } });
       button.addEventListener('click', () => { this.filter = value; this.unreadSession.clear(); this.renderFilters(); this.renderList(); });
     }
+    this.addIconButton(this.filters, 'settings', '插件设置', () => this.plugin.openSettings()).addClass('qrs-settings-button');
   }
   private channelChoices(): ChannelChoice[] {
     const feeds = this.plugin.state.subscriptions;
@@ -534,11 +535,6 @@ export class ReaderView extends ItemView {
     if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
     if (previous) { this.reader.append(previous); this.reader.scrollTop = scroll; return; }
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
-    const metadata = article.createDiv('qrs-article-meta');
-    metadata.createSpan({ text: this.sourceName(bundle.entry) });
-    const date = bundle.entry.publishedTs ? new Date(bundle.entry.publishedTs) : null;
-    if (date) metadata.createSpan({ text: date.toLocaleDateString() });
-    if (this.mode !== 'original') metadata.createSpan({ text: 'AI ' + (this.mode === 'rewrite' ? '改写' : '翻译'), cls: 'qrs-ai-label' });
     article.createEl('h1', { text: titleOf(bundle.entry) });
     if (this.message) article.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
     try {

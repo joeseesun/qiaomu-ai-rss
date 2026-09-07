@@ -14,7 +14,7 @@ try{
  cdp('Emulation.setFocusEmulationEnabled',{enabled:true});
  evaluate(close+"document.body.removeClass('theme-dark');document.body.addClass('theme-light');return true;");
  command('command','id=qiaomu-ai-rss:explore-subscriptions');pause();
- evaluate("const q=document.querySelector('.qrs-discovery-search');q.value='';q.dispatchEvent(new Event('input'));document.querySelectorAll('.qrs-discovery-collections button')[0].click();document.querySelector('.qrs-discovery-instance').open=false;document.querySelector('.qrs-discovery').scrollTop=0;return true;");
+ evaluate("const q=document.querySelector('.qrs-discovery-search');q.value='';q.dispatchEvent(new Event('input'));document.querySelectorAll('.qrs-discovery-collections button')[0].click();document.querySelector('.qrs-discovery').scrollTop=0;return true;");
  check('Desktop catalog has no horizontal overflow',"const e=document.querySelector('.qrs-discovery');return{ok:e.scrollWidth<=e.clientWidth,width:e.clientWidth,scrollWidth:e.scrollWidth};");
  screenshot('discovery-featured');
  evaluate("document.querySelectorAll('.qrs-discovery-collections button')[1].click();const tags=document.querySelector('.qrs-discovery-tags');tags.value='';tags.dispatchEvent(new Event('change'));return true;");

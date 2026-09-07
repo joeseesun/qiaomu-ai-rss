@@ -53,8 +53,6 @@
 .qrs-root.qrs-focus .qrs-layout { grid-template-columns:minmax(0,1fr); }
 .qrs-root.qrs-focus .qrs-sidebar,.qrs-root.qrs-focus .qrs-resize { display:none; }
 .qrs-article { max-width:var(--qrs-article-width); margin:0 auto; padding:30px clamp(24px,5%,60px) 90px; }
-.qrs-article-meta { display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:var(--text-muted); font-size:11px; line-height:1.6; margin-bottom:14px; }
-.qrs-ai-label { font-size:10px; padding:0 5px; border:1px solid var(--background-modifier-border); border-radius:4px; }
 .qrs-article h1 { font-size:clamp(24px,2.5cqw,32px); line-height:1.5; letter-spacing:-.025em; margin:0 0 26px; overflow-wrap:anywhere; font-weight:600; text-wrap:balance; }
 .qrs-feedback { border-radius:6px; background:var(--background-secondary); padding:8px 12px; margin:16px 0; font-size:12px; color:var(--text-muted); }
 .qrs-article h1,.qrs-prose { font-family:var(--qrs-font-family,"Songti SC",Georgia,serif); }
@@ -165,11 +163,6 @@
 .qrs-discovery-filters button { box-shadow:none; background:transparent; font-size:13px; border:1px solid transparent; }
 .qrs-discovery-filters button[aria-pressed=true] { background:var(--background-secondary); border-color:var(--background-modifier-border); color:var(--text-normal); }
 .qrs-discovery-provider { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:20px 0 12px; font-size:12px; color:var(--text-muted); }
-.qrs-discovery-instance { font-size:12px; color:var(--text-muted); margin-bottom:24px; }
-.qrs-discovery-instance summary { cursor:pointer; padding:4px 0; }
-.qrs-discovery-instance p { line-height:1.7; overflow-wrap:anywhere; }
-.qrs-discovery-instance-form { display:flex; gap:8px; align-items:center; }
-.qrs-discovery-instance-form input { flex:1; }
 .qrs-discovery-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; }
 .qrs-discovery-card { min-width:0; display:flex; flex-direction:column; padding:20px; border:1px solid var(--background-modifier-border); border-radius:12px; background:var(--background-primary); }
 .qrs-discovery-card-heading { display:flex; align-items:center; gap:10px; }
@@ -213,3 +206,5 @@
 
 /* The reader provides its own compact navigation and actions. */
 .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-header { display: none; }
+
+.qrs-filters .qrs-settings-button { margin-left:auto; }

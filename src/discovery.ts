@@ -1,12 +1,10 @@
-import { serviceUrl } from './model';
 import blogCatalog from './data/independent-blogs.json';
 export const blogCatalogSource = blogCatalog.source;
 export const blogCatalogRevision = blogCatalog.revision;
 
-export const DEFAULT_RSSHUB = 'https://rsshub.rssforever.com';
 const BUILT_IN_FEED_URLS = new Set(['https://blog.qiaomu.ai/feed.xml']);
 export const categories = ['全部', 'AI 与技术', '产品与工具', '人文与生活'] as const;
-export type DiscoveryCollection = 'featured' | 'blogs' | 'rsshub';
+export type DiscoveryCollection = 'featured' | 'blogs';
 export interface DiscoveryFeed {
   id: string;
   name: string;
@@ -14,8 +12,7 @@ export interface DiscoveryFeed {
   category: typeof categories[number] | '独立博客';
   language: '中文' | '英文';
   icon: string;
-  url?: string;
-  route?: string;
+  url: string;
   site?: string;
   tags?: string[];
 }
@@ -33,23 +30,14 @@ export const discoveryFeeds: DiscoveryFeed[] = [
   { id: 'reorx', name: 'Reorx’s Forge', description: '软件开发、生产力工具与数字生活的独立思考。', category: '产品与工具', language: '中文', icon: 'hammer', url: 'https://reorx.com/feed.xml', site: 'https://reorx.com/' },
   { id: 'pseudoyu', name: 'pseudoyu', description: '技术实践、个人成长与生活周报，完整记录思考过程。', category: '人文与生活', language: '中文', icon: 'notebook-pen', url: 'https://www.pseudoyu.com/zh/index.xml', site: 'https://www.pseudoyu.com/zh/' },
 ];
-export const rsshubFeeds: DiscoveryFeed[] = [
-  { id: 'github', name: 'GitHub 今日趋势', description: '发现今天受到开发者关注的开源项目。', category: 'AI 与技术', language: '英文', icon: 'git-fork', route: '/github/trending/daily/any' },
-  { id: '36kr', name: '36氪快讯', description: '快速浏览商业、融资与科技公司的最新消息。', category: '产品与工具', language: '中文', icon: 'newspaper', route: '/36kr/newsflashes' },
-];
 export const independentBlogs: DiscoveryFeed[] = blogCatalog.items
   .filter(blog => !BUILT_IN_FEED_URLS.has(blog.url))
   .map(blog => ({ ...blog, description: blog.tags.join(' · ') || '中文独立博客', category: '独立博客', language: '中文', icon: 'notebook-pen' }));
 export const blogTags = [...new Set(independentBlogs.flatMap(blog => blog.tags ?? []))].sort((a, b) => a.localeCompare(b, 'zh'));
 
-export function discoveryUrl(feed: DiscoveryFeed, instance: string): string {
-  if (feed.url) return feed.url;
-  if (!feed.route?.startsWith('/') || feed.route.startsWith('//')) throw new Error('订阅路由无效。');
-  return serviceUrl(instance) + feed.route;
-}
 export function filterDiscovery(query: string, category: string, collection: DiscoveryCollection = 'featured', tag = ''): DiscoveryFeed[] {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  const source = collection === 'blogs' ? independentBlogs : collection === 'rsshub' ? rsshubFeeds : discoveryFeeds;
+  const source = collection === 'blogs' ? independentBlogs : discoveryFeeds;
   return source.filter(feed => (collection === 'blogs' ? !tag || feed.tags?.includes(tag) : category === '全部' || feed.category === category)
-    && terms.every(term => `${feed.name} ${feed.description} ${feed.category} ${feed.language} ${feed.route ? 'RSSHub' : 'RSS Atom'} ${feed.site ?? ''} ${feed.url ?? feed.route}`.toLocaleLowerCase().includes(term)));
+    && terms.every(term => `${feed.name} ${feed.description} ${feed.category} ${feed.language} RSS Atom ${feed.site ?? ''} ${feed.url}`.toLocaleLowerCase().includes(term)));
 }
