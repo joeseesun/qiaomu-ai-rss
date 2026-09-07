@@ -1,6 +1,17 @@
 # Obsidian Community submission
 
-Status: release prepared for directory submission; **not submitted or approved**.
+Status: **published** in the [Obsidian Community directory](https://community.obsidian.md/plugins/qiaomu-ai-rss) on 2026-09-07.
+
+## Publication evidence
+
+- Version 0.3.0, reviewed commit `00f2d0ae75f3411ef2a4ae41c48198e99137cdb0`.
+- Automated review completed. Dependency scan passed; the reviewer reproduced release `main.js` byte-for-byte from source. Vault-write behavior passed.
+- Non-blocking feedback: CSS `text-decoration` partial compatibility with Obsidian 1.11.4 (the plugin requires 1.13.0), use of `!important`, and a recommendation to add GitHub artifact attestations for `main.js` and `styles.css`.
+- The public page and its `obsidian://show-plugin?id=qiaomu-ai-rss` installation link were verified both in the browser and with an unauthenticated HTTP request.
+- Listing includes an RSS icon, English descriptions, three actual desktop screenshots, free pricing, and Research / Import / Integrations categories.
+- Listing owner: 向阳乔木 (`vista8`); source repository: `joeseesun/qiaomu-ai-rss`.
+
+The initial-submission workflow below is retained for reference.
 
 The current official workflow uses [community.obsidian.md](https://community.obsidian.md), not a new entry PR to the old `community-plugins.json` list. References checked on 2026-09-07:
 
@@ -26,4 +37,4 @@ The current official workflow uses [community.obsidian.md](https://community.obs
 3. Review its scan results and fix any findings with a new version/release.
 4. Complete the listing and choose Publish. Installation through the official directory remains conditional on review acceptance.
 
-The owner must accept the directory's maintenance/policy commitments and any account agreements personally. No official approval is implied by passing local lint or producing a release.
+The directory requires acceptance of its developer policies and ongoing maintenance commitments. Future releases remain subject to review; a successful local build alone does not establish directory approval.

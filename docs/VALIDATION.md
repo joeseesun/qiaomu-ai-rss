@@ -62,3 +62,7 @@ The subscription smoke runner adds/removes its named public test sources, create
 `node scripts/discovery-layout.mjs` checks desktop and 390px narrow layouts with light/dark themes, both subscription URL and group inputs, no horizontal overflow, and the discovery search focus. Focus emulation is enabled during these checks so that background app windows still render real `:focus` CSS; it is disabled afterward, with viewport and theme restored. Screenshots are from the running Obsidian view. The entire purple focus border is visible on all sides; unlike the 0.2.0 screenshot, it is now inside the input box. Developer errors were empty.
 
 The earlier reader and subscription integration records above are retained as versioned baseline evidence. The 0.3.0 run adds the discovery checks; it does not imply that all 1,342 blog feeds have been fetched. Individual blog URLs can be stale. See DISCOVERY.md for source provenance, live probes and limitations. No physical mobile-device tests were performed.
+
+## Official directory — 2026-09-07
+
+Version 0.3.0 completed the directory's automatic review and was published. The public listing displays an Add to Obsidian link, three uploaded desktop screenshots, and the correct repository/version. Anonymous HTTP readback confirms the listing is public. See [submission record](SUBMISSION.md) for non-blocking review recommendations.
