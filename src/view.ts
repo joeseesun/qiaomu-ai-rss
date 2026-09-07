@@ -104,7 +104,8 @@ export class ReaderView extends ItemView {
   }
   private selectSource(source: string) {
     this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
-    this.bundle = null; this.articleVersion++; this.contentEl.removeClass('qrs-has-article');
+    this.bundle = null; this.articleVersion++; this.focused = false;
+    this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
     this.renderChannel(); this.renderReader(); this.renderList(); void this.loadEntries();
   }
   private toggleSearch(show = this.searchBox.hasClass('is-hidden')) {
