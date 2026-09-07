@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1 — 2026-09-07
+
+- Move reading appearance to the right-hand article actions.
+- Preserve reader keyboard focus when toolbar or list controls are rebuilt, accept J/K in either case, and render fetched articles without waiting for settings persistence.
+- Verify rapid navigation during delayed requests, stale-response protection, and preservation of Daily Note editor focus.
+
 ## 0.8.0 — 2026-09-07
 
 - Bundle Source Han Serif, Source Han Sans, LXGW WenKai Screen, LXGW ZhenKai and Zhuque Fangsong for offline reading.

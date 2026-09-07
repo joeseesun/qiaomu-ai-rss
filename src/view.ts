@@ -239,7 +239,8 @@ export class ReaderView extends ItemView {
     }
     if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
       (target?.closest?.('input,textarea,select,[contenteditable=true]'))) return;
-    if (event.key === 'j' || event.key === 'k') { event.preventDefault(); this.navigate(event.key === 'j' ? 1 : -1); }
+    const key = event.key.toLowerCase();
+    if (key === 'j' || key === 'k') { event.preventDefault(); event.stopPropagation(); this.navigate(key === 'j' ? 1 : -1); }
     if (event.key === '[' || event.key === 'f') { event.preventDefault(); this.toggleFocus(); }
     if (event.key === '/') { event.preventDefault(); this.toggleSearch(true); }
     if (event.key === 'Escape') { this.focused = false; this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article'); }
@@ -326,6 +327,7 @@ export class ReaderView extends ItemView {
     });
   }
   private renderList() {
+    const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
     const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
     if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
     for (const entry of entries) {
@@ -352,6 +354,7 @@ export class ReaderView extends ItemView {
       button.disabled = this.loading; button.addEventListener('click', () => { void this.loadEntries(true); });
     }
     this.list.scrollTop = scroll;
+    if (restoreFocus) this.reader.focus({ preventScroll: true });
   }
   private async openArticle(entry: Entry) {
     const version = ++this.articleVersion; const state = this.plugin.state;
@@ -367,7 +370,7 @@ export class ReaderView extends ItemView {
     try {
       const { bundle, warnings } = await this.plugin.api().article(entry.id);
       if (this.closed || version !== this.articleVersion) return;
-      this.bundle = bundle; this.message = warnings.join('；'); this.plugin.remember(bundle); await this.plugin.persist();
+      this.bundle = bundle; this.message = warnings.join('；'); this.plugin.remember(bundle); this.run(() => this.plugin.persist());
     } catch (error) {
       if (this.closed || version !== this.articleVersion) return;
       const cached = this.bundle.fetchedAt ? ` 正在显示 ${new Date(this.bundle.fetchedAt).toLocaleString()} 的缓存。` : ' 可重新打开文章重试。';
@@ -419,10 +422,15 @@ export class ReaderView extends ItemView {
     }
   }
   private renderReader(keepContent = false) {
+    const active = this.contentEl.ownerDocument.activeElement;
+    const restoreFocus = active !== this.reader && this.reader.contains(active);
     const scroll = this.reader.scrollTop;
     const previous = keepContent ? this.reader.querySelector('.qrs-article') : null;
     if (!previous) this.clearImages();
-    this.reader.empty(); const bundle = this.bundle;
+    this.reader.empty();
+    // A removed toolbar button must not leave keyboard focus on document.body.
+    if (restoreFocus) this.reader.focus({ preventScroll: true });
+    const bundle = this.bundle;
     if (!bundle) {
       const empty = this.reader.createDiv('qrs-welcome'); setIcon(empty.createDiv('qrs-welcome-icon'), 'book-open');
       empty.createEl('h2', { text: '选一篇，开始读。' }); empty.createEl('p', { text: '上下篇：j / k · 收起列表：[ · 搜索：/' }); return;
@@ -434,12 +442,12 @@ export class ReaderView extends ItemView {
     for (const [mode, label] of Object.entries(modeLabels).filter(([mode]) => bundle.entry.origin !== 'local' || mode === 'original')) select.createEl('option', { value: mode, text: label });
     select.disabled = bundle.entry.origin === 'local';
     select.value = this.mode; select.onchange = () => { this.mode = modeSchema.parse(select.value); this.renderReader(); };
-    const appearance = this.addIconButton(toolbar, 'type', '阅读设置', () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
-    appearance.setAttribute('aria-expanded', String(this.appearanceOpen)); appearance.setAttribute('aria-controls', this.appearanceId);
     const nav = toolbar.createDiv('qrs-reader-nav');
     this.addIconButton(nav, 'chevron-up', '上一篇 K', () => this.navigate(-1));
     this.addIconButton(nav, 'chevron-down', '下一篇 J', () => this.navigate(1));
     const actions = toolbar.createDiv('qrs-actions');
+    const appearance = this.addIconButton(actions, 'type', '阅读设置', () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
+    appearance.setAttribute('aria-expanded', String(this.appearanceOpen)); appearance.setAttribute('aria-controls', this.appearanceId);
     const favorite = !!this.plugin.state.favorites[bundle.entry.id];
     const bookmark = this.addIconButton(actions, 'bookmark', favorite ? '取消收藏' : '收藏文章', () => this.run(async () => {
       if (favorite) delete this.plugin.state.favorites[bundle.entry.id]; else this.plugin.state.favorites[bundle.entry.id] = bundle;
