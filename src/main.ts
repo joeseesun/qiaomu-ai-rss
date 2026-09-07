@@ -1,8 +1,8 @@
-import { Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
+import { MarkdownView, Notice, Platform, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, modeLabels, modeSchema, noteName, serviceUrl, withServiceOrigin, type Bundle, type Mode, type State } from './model';
-import { noteMarkdown } from './content';
+import { folderPath, initialState, modeLabels, modeSchema, serviceUrl, withServiceOrigin, type Bundle, type Entry, type State } from './model';
+import { appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
@@ -14,7 +14,7 @@ export default class QiaomuRssPlugin extends Plugin {
   images!: LocalImages;
   subscriptions!: Subscriptions;
   private saving: Promise<void> = Promise.resolve();
-  private exports = new Map<string, Promise<TFile>>();
+  private dailyNoteWrite: Promise<unknown> = Promise.resolve();
   async onload() {
     const data: unknown = await this.loadData();
     try { this.state = initialState(data); }
@@ -52,27 +52,60 @@ export default class QiaomuRssPlugin extends Plugin {
     this.state.cache = Object.fromEntries(recent.map(value => [value.entry.id, value]));
     if (this.state.favorites[bundle.entry.id]) this.state.favorites[bundle.entry.id] = bundle;
   }
-  async saveArticle(bundle: Bundle, mode: Mode, doc: Document): Promise<TFile> {
-    const folder = folderPath(this.state.settings.folder);
-    const path = `${folder}/${noteName(bundle.entry, mode)}`;
-    const pending = this.exports.get(path);
-    if (pending) return pending;
+  private async ensureFolder(path: string) {
+    let current = '';
+    for (const segment of path.split('/').slice(0, -1)) {
+      current = current ? `${current}/${segment}` : segment;
+      if (!this.app.vault.getAbstractFileByPath(current)) {
+        try { await this.app.vault.createFolder(current); }
+        catch (error) { if (!this.app.vault.getAbstractFileByPath(current)) throw error; }
+      }
+    }
+  }
+  async appendToDailyNote(entry: Entry): Promise<{ file: TFile; added: boolean }> {
+    let result!: { file: TFile; added: boolean };
     const write = async () => {
-      const existing = this.app.vault.getAbstractFileByPath(path);
-      if (existing instanceof TFile) return existing;
-      const markdown = noteMarkdown(bundle, mode, doc, this.state.settings.remoteImages);
-      let current = '';
-      for (const segment of folder.split('/')) {
-        current = current ? `${current}/${segment}` : segment;
-        if (!this.app.vault.getAbstractFileByPath(current)) {
-          try { await this.app.vault.createFolder(current); }
-          catch (error) { if (!this.app.vault.getAbstractFileByPath(current)) throw error; }
+      const settings = await readDailyNoteSettings(this.app.vault);
+      const path = dailyNotePath(settings);
+      let existing = this.app.vault.getAbstractFileByPath(path);
+      let added = false;
+      if (existing && !(existing instanceof TFile)) throw new Error('今日日记路径已被文件夹占用。');
+      if (!(existing instanceof TFile)) {
+        await this.ensureFolder(path);
+        let template = '';
+        if (settings.template) {
+          const templateFile = this.app.vault.getAbstractFileByPath(`${settings.template}.md`);
+          if (templateFile instanceof TFile) template = renderDailyNoteTemplate(await this.app.vault.read(templateFile), path.split('/').at(-1)?.replace(/\.md$/i, '') || '');
+        }
+        const next = appendDailyNoteLink(template, entry); added = next.added;
+        try { existing = await this.app.vault.create(path, next.content); }
+        catch (error) {
+          existing = this.app.vault.getAbstractFileByPath(path);
+          if (!(existing instanceof TFile)) throw error;
         }
       }
-      return this.app.vault.create(path, markdown);
+      if (!(existing instanceof TFile)) throw new Error('无法创建今日日记。');
+      if (!added) {
+        await this.app.vault.process(existing, content => {
+          const next = appendDailyNoteLink(content, entry); added = next.added; return next.content;
+        });
+      }
+      result = { file: existing, added };
     };
-    const promise = write(); this.exports.set(path, promise);
-    try { return await promise; } finally { this.exports.delete(path); }
+    this.dailyNoteWrite = this.dailyNoteWrite.catch(() => undefined).then(write);
+    await this.dailyNoteWrite;
+    return result;
+  }
+  async noteArticle(entry: Entry): Promise<{ file: TFile; added: boolean }> {
+    const result = await this.appendToDailyNote(entry);
+    let leaf = this.app.workspace.getLeavesOfType('markdown').find(candidate => candidate.view instanceof MarkdownView && candidate.view.file?.path === result.file.path);
+    if (!leaf) leaf = Platform.isMobileApp ? this.app.workspace.getLeaf('tab') : this.app.workspace.getLeaf('split', 'vertical');
+    await leaf.openFile(result.file, { active: true }); await this.app.workspace.revealLeaf(leaf);
+    if (leaf.view instanceof MarkdownView) {
+      const lastLine = Math.max(0, leaf.view.editor.lineCount() - 1);
+      leaf.view.editor.setCursor(lastLine, leaf.view.editor.getLine(lastLine).length); leaf.view.editor.focus();
+    }
+    return result;
   }
   manageSubscriptions() {
     new SubscriptionManager(this, () => {
@@ -144,7 +177,7 @@ class RssSettings extends PluginSettingTab {
             } catch (error) { new Notice(error instanceof Error ? error.message : '无法保存设置。'); }
           }));
       } },
-      { name: '笔记文件夹', desc: '库内保存位置。重复保存会打开已有笔记，不覆盖编辑。', render: setting => {
+      { name: 'OPML 导出文件夹', desc: '导出的 OPML 文件保存在这个库内文件夹。文章链接会写入 Obsidian 的今日日记。', render: setting => {
         setting.addText(text => text.setValue(settings.folder).onChange(value => { this.pendingFolder = value; }))
           .addButton(button => button.setButtonText('保存').onClick(async () => {
             try { settings.folder = folderPath(this.pendingFolder ?? settings.folder); await this.plugin.persist(); new Notice('文件夹已保存。'); }
@@ -159,7 +192,7 @@ class RssSettings extends PluginSettingTab {
           });
         });
       } },
-      { name: '显示文章图片', desc: '图片下载到本库插件缓存后显示（最多 64 MB），再次阅读优先使用本地文件。导出笔记保留原图片链接。', render: setting => {
+      { name: '显示文章图片', desc: '正文与列表缩略图下载到本库插件缓存后显示（最多 64 MB），再次阅读优先使用本地文件。', render: setting => {
         setting.addToggle(toggle => toggle.setValue(settings.remoteImages).onChange(async value => {
           settings.remoteImages = value; await this.plugin.persist(); this.plugin.resetViews();
         }));

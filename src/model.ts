@@ -14,7 +14,7 @@ export const translationSchema = z.object({
 export const entrySchema = z.object({
   id: z.string().min(1), sourceId: z.string(), origin: z.enum(['local', 'qiaomu']).optional(), sourceName: optionalText, title: z.string(), titleZh: optionalText,
   link: optionalText, author: optionalText, published: optionalText, publishedTs: z.number().nullish(),
-  summary: optionalText, summaryZh: optionalText, content: optionalText,
+  summary: optionalText, summaryZh: optionalText, content: optionalText, image: optionalText,
   rewrite: rewriteSchema.nullish(),
 });
 export type Entry = z.infer<typeof entrySchema>;
@@ -66,13 +66,6 @@ export function folderPath(value: string): string {
   }
   return segments.join('/');
 }
-export function noteName(entry: Entry, mode: Mode): string {
-  const title = [...titleOf(entry)].map(c => c.charCodeAt(0) < 32 ? ' ' : c).join('').replace(/[\\/:*?"<>|#[\]^]/g, ' ').trim().replace(/[. ]+$/g, '').slice(0, 65) || '未命名文章';
-  const id = entry.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48);
-  if (!id) throw new Error('文章标识无效。');
-  return `${title} - ${id} - ${mode}.md`;
-}
-
 export function withServiceOrigin(state: State, baseUrl: string): State {
   return initialState({ settings: { ...state.settings, baseUrl: serviceUrl(baseUrl) }, subscriptions: state.subscriptions,
     favorites: Object.fromEntries(Object.entries(state.favorites).filter(([, bundle]) => bundle.entry.origin === 'local')),

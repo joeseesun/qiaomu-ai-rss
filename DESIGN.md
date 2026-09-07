@@ -30,7 +30,7 @@ Use Obsidian theme variables. No imported fonts, marketing hero, dashboard stati
 
 ## Acceptance
 
-Desktop and 390px screenshots; real loaded image with nonzero natural dimensions and Blob URL; resize/persistence; sidebar focus toggle retaining scroll; search/channel modal; keyboard next/previous; correct icons; note export; offline image cache; no runtime errors or horizontal overflow.
+Desktop and 390px screenshots; real loaded article images and list thumbnails with nonzero natural dimensions and Blob URLs; resize/persistence; sidebar focus toggle retaining scroll; grouped channel modal; keyboard next/previous; correct icons; Daily Note append/split; offline image cache; no runtime errors or horizontal overflow.
 
 ## Personal subscriptions (0.2.0)
 

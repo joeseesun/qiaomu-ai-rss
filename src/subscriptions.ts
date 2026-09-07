@@ -49,7 +49,7 @@ export class Subscriptions {
   async remove(id: string) {
     const state = this.state(); state.subscriptions = state.subscriptions.filter(feed => feed.id !== id);
     for (const [key, bundle] of Object.entries(state.cache)) if (bundle.entry.sourceId === id) delete state.cache[key];
-    // Favorites are independent snapshots, and already exported notes are never removed.
+    // Favorites are independent snapshots, and links already added to Daily Notes are never removed.
     await this.persist();
   }
   async refresh(ids: string[], doc: Document, force = false, updated?: () => void): Promise<void> {

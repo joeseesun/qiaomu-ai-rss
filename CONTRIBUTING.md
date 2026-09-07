@@ -1,6 +1,6 @@
 # Contributing
 
-Use feature branches and pull requests. Run `npm ci` then `npm run check`. For changes to the API client, also run the read-only `npm run test:live` against the configured service. Test UI changes in a separate Obsidian vault, including narrow panes, light/dark themes, offline fallback, and repeated note exports.
+Use feature branches and pull requests. Run `npm ci` then `npm run check`. For changes to the API client, also run the read-only `npm run test:live` against the configured service. Test UI changes in a separate Obsidian vault, including narrow panes, light/dark themes, offline fallback, list thumbnails, and repeated Daily Note actions.
 
 Keep runtime code independent of Node.js/Electron so mobile support remains possible. Never execute remote scripts, render external Markdown through executable plugin processors, upload vault content, or bundle credentials. Keep network/account/payment disclosures up to date.
 

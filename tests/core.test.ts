@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
 import { RssApi } from '../src/api';
-import { articleFragment, noteMarkdown } from '../src/content';
-import { folderPath, initialState, noteName, safeUrl, serviceUrl, type Bundle } from '../src/model';
+import { articleFragment } from '../src/content';
+import { appendDailyNoteLink, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate } from '../src/daily-note';
+import { folderPath, initialState, safeUrl, serviceUrl, type Bundle } from '../src/model';
 const bundle: Bundle = {
   entry: { id: 'abc123', sourceId: 'example', title: 'Title: "quotes"\n---', link: 'https://example.com/news', content: '<h2>Original</h2><p>Full text</p>' },
   rewrite: { body: '# Title\n\n**Hello** [source](/path)\n\n```dataviewjs\nthrow Error("never execute");\n```' },
@@ -36,20 +37,23 @@ describe('untrusted remote content', () => {
     expect(fragment.textContent).toContain('<script>literal text</script>');
     expect(articleFragment({ ...bundle, rewrite: null }, 'rewrite', document, false)).toBeNull();
   });
-  it('exports safe frontmatter and inert Markdown with provenance', () => {
-    const note = noteMarkdown(bundle, 'rewrite', document, false);
-    expect(note).toContain('rss_id: "abc123"');
-    expect(note).toContain('title: "Title: \\"quotes\\"\\n---"');
-    expect(note).not.toContain('```dataviewjs');
-    expect(note).toContain('[source](https://example.com/path)');
-    expect(() => noteMarkdown({ ...bundle, rewrite: null }, 'rewrite', document, false)).toThrow();
+  it('appends only a linked title to a daily note and avoids duplicates', () => {
+    expect(dailyNoteLink(bundle.entry)).toBe('- [Title: "quotes" ---](<https://example.com/news>)');
+    const first = appendDailyNoteLink('# Daily\n', bundle.entry);
+    expect(first).toEqual({ content: '# Daily\n\n- [Title: "quotes" ---](<https://example.com/news>)\n', added: true });
+    expect(appendDailyNoteLink(first.content, bundle.entry)).toEqual({ content: first.content, added: false });
+    expect(first.content).not.toContain('Full text'); expect(first.content).not.toContain('rss_id');
+  });
+  it('respects daily-note folders, formats and common template tokens', () => {
+    const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;
+    expect(dailyNotePath({ folder: 'Daily', format: 'YYYY/MM/DD', template: '' }, now)).toBe('Daily/2026/09/07.md');
+    expect(renderDailyNoteTemplate('# {{title}}\n{{date}} {{time}}', '2026-09-07', now)).toBe('# 2026-09-07\n2026-09-07 12:30');
   });
 });
 describe('paths and persistence', () => {
   it('rejects path traversal, hidden folders and absolute paths', () => {
     for (const value of ['../secret', '.obsidian', '/tmp', 'a//b', 'a/../b', 'C:\\x']) expect(() => folderPath(value)).toThrow();
     expect(folderPath('阅读/文章')).toBe('阅读/文章');
-    expect(noteName(bundle.entry, 'rewrite')).not.toMatch(/[/:*?"<>|\n]/);
   });
   it('accepts HTTPS origins only, without embedded credentials', () => {
     expect(serviceUrl('https://rss.qiaomu.ai/')).toBe('https://rss.qiaomu.ai');
