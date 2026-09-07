@@ -1,4 +1,4 @@
-# Validation — 0.16.0
+# Validation — 0.17.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -139,3 +139,11 @@ List layout was measured in Obsidian at widths 240, 300 and 380 px: 25 article r
 - `npm run check`: lint, 49 unit tests, TypeScript and production build. Removed the obsolete provider-instance test with the feature.
 - `node scripts/reading-controls-smoke.cjs`: 8 desktop Obsidian checks covering metadata removal, settings entry, discovery removal, same-tab Daily Note regression, adjacent split reuse and existing-note preservation. Uses an isolated note fixture instead of writing to the real journal.
 - iOS hardware is not available for validation.
+
+## 0.17.0 targeted checks
+
+- `npm run check`: lint, 50 unit tests, TypeScript and build. Checkpoint round-trip validation added.
+- `node scripts/channel-navigation-smoke.cjs`: 15 checks covering hidden mobile panes, A/B article and offset restoration, same-channel no-op, search/Enter, persistence/view recreation, delayed layout, user scroll and request races.
+- `node scripts/navigation-smoke.mjs`: 9 keyboard/loading regressions pass.
+- `node scripts/mobile-sources-smoke.cjs`: 17 existing typography, selection and local-source checks pass with updated picker assertions.
+- 390px CDP simulation: bottom sheet, no autofocus keyboard, 44px touch rows, group expansion, viewport-resize survival, Escape and absence of tooltips checked. Desktop and mobile screenshots inspected. iOS hardware is not tested.

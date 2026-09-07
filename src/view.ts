@@ -1,39 +1,53 @@
-import { Component, MarkdownRenderer, ItemView, Menu, FuzzySuggestModal, Notice, Platform, setIcon, type App, type FuzzyMatch, type WorkspaceLeaf } from 'obsidian';
+import { ChannelPicker, channelMark, type ChannelChoice } from './channel-picker';
+import { Component, MarkdownRenderer, ItemView, Menu, Notice, Platform, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { vaultSourceId } from './vault-source';
 import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
 import { readingFonts } from './fonts';
 import { articleFragment } from './content';
-import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type Bundle, type Entry, type Mode } from './model';
+import { modeLabels, modeSchema, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
-type ChannelSection = '聚合' | '订阅分组' | '乔木频道' | '我的订阅源' | '库内文件夹';
-interface ChannelChoice { id: string; name: string; section: ChannelSection; subtitle: string; icon?: string; monogram?: string }
-function channelMark(parent: HTMLElement, choice: ChannelChoice) {
-  const mark = parent.createSpan('qrs-channel-mark');
-  if (choice.icon) setIcon(mark, choice.icon); else mark.setText(choice.monogram || choice.name.trim().slice(0, 1).toLocaleUpperCase());
-  return mark;
-}
-function feedHost(url: string) {
-  try { return new URL(url).hostname || 'RSS'; } catch { return 'RSS'; }
-}
-class ChannelPicker extends FuzzySuggestModal<ChannelChoice> {
-  constructor(app: App, private choices: ChannelChoice[], private active: string, private choose: (source: ChannelChoice) => void) {
-    super(app); this.setPlaceholder('选择频道或搜索订阅…'); this.modalEl.addClass('qrs-channel-modal');
-  }
-  getItems() { return this.choices; }
-  getItemText(choice: ChannelChoice) { return `${choice.name} ${choice.subtitle} ${choice.section}`; }
-  renderSuggestion(match: FuzzyMatch<ChannelChoice>, el: HTMLElement) {
-    const choice = match.item; el.addClass('qrs-channel-row'); el.dataset.channelId = choice.id;
-    channelMark(el, choice); const text = el.createSpan('qrs-channel-copy');
-    text.createSpan({ cls: 'qrs-channel-name', text: choice.name });
-    text.createSpan({ cls: 'qrs-channel-subtitle', text: `${choice.section} · ${choice.subtitle}` });
-    if (choice.id === this.active) setIcon(el.createSpan('qrs-channel-check'), 'check');
-  }
-  onChooseItem(choice: ChannelChoice) { this.choose(choice); }
-}
+function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
 export class ReaderView extends ItemView {
+  private channelPicker?: ChannelPicker;
+  private restoreObserver?: ResizeObserver;
+  private pendingScroll?: { listTop: number; readerTop: number };
+  private checkpointTimer?: number;
+  private lastListTop = 0;
+  private lastReaderTop = 0;
+  private channelKey() { return JSON.stringify([this.plugin.state.settings.baseUrl, this.source]); }
+  private saveChannel() {
+    if (!this.list || !this.reader) return;
+    this.plugin.state.channelStates[this.channelKey()] = {
+      entries: this.entries, bundle: this.bundle, mode: this.mode, filter: this.filter, query: this.query,
+      unread: [...this.unreadSession], cursor: this.cursor, hasMore: this.hasMore,
+      listTop: this.pendingScroll?.listTop ?? (this.list.clientHeight ? this.list.scrollTop : this.lastListTop),
+      readerTop: this.pendingScroll?.readerTop ?? (this.reader.clientHeight ? this.reader.scrollTop : this.lastReaderTop), articlePending: this.articleLoading,
+    };
+  }
+  private stopRestoring() { this.pendingScroll = undefined; this.restoreObserver?.disconnect(); }
+  private restoreOffsets() {
+    this.restoreObserver?.disconnect();
+    if (!this.pendingScroll) return;
+    const apply = () => { if (this.pendingScroll) {
+      this.list.scrollTop = this.pendingScroll.listTop; this.reader.scrollTop = this.pendingScroll.readerTop;
+    } };
+    apply(); this.restoreObserver = new ResizeObserver(apply);
+    const article = this.reader.querySelector('.qrs-article'); if (article) this.restoreObserver.observe(article);
+    this.restoreObserver.observe(this.list); this.restoreObserver.observe(this.reader);
+  }
+  private restoreChannel(saved: ChannelState) {
+    this.entries = saved.entries; this.bundle = saved.bundle; this.mode = saved.mode;
+    this.filter = saved.filter; this.query = saved.query; this.unreadSession = new Set(saved.unread);
+    this.cursor = saved.cursor; this.hasMore = saved.hasMore; this.lastListTop = saved.listTop; this.lastReaderTop = saved.readerTop;
+    this.pendingScroll = { listTop: saved.listTop, readerTop: saved.readerTop };
+    this.searchInput.value = this.query; this.searchBox.toggleClass('is-hidden', !this.query);
+    this.contentEl.toggleClass('qrs-has-article', !!this.bundle);
+    this.renderFilters(); this.renderList(); this.renderReader(); this.restoreOffsets();
+    if (saved.articlePending && saved.bundle) void this.openArticle(saved.bundle.entry, saved);
+  }
   private markdownComponent?: Component;
   private selectionCapture?: SelectionCapture;
   private list!: HTMLElement;
@@ -126,11 +140,15 @@ export class ReaderView extends ItemView {
     return Promise.resolve();
   }
   onClose(): Promise<void> {
+    this.saveChannel(); this.channelPicker?.close(false); this.stopRestoring();
+    if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
     this.selectionCapture?.dispose();
     this.closed = true; this.listVersion++; this.articleVersion++; this.clearImages(); this.clearThumbnails(); this.contentEl.onkeydown = null;
-    return Promise.resolve();
+    return this.plugin.persist().catch(() => undefined);
   }
   reset() {
+    this.channelPicker?.close(false); this.stopRestoring();
+    if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
     this.unreadSession.clear();
     this.closed = false; this.listVersion++; this.articleVersion++; this.clearThumbnails();
     const remembered = this.plugin.state.settings.lastSource;
@@ -140,7 +158,10 @@ export class ReaderView extends ItemView {
     this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
     this.mode = this.plugin.state.settings.defaultMode;
     this.entries = this.personalScope() ? this.localEntries() : this.source ? [] : this.plugin.state.entries;
-    this.build(); this.renderList(); this.renderReader(); void this.loadEntries();
+    this.build();
+    const saved = this.plugin.state.channelStates[this.channelKey()];
+    if (saved) { this.restoreChannel(saved); if (!this.entries.length) void this.loadEntries(); }
+    else { this.renderList(); this.renderReader(); void this.loadEntries(); }
   }
   private run(action: () => Promise<void>) {
     void action().catch(error => { if (!this.closed) new Notice(error instanceof Error ? error.message : '操作失败，请重试。'); });
@@ -188,6 +209,15 @@ export class ReaderView extends ItemView {
     this.createResizeHandle(body);
     this.reader = body.createEl('section', { cls: 'qrs-reader', attr: { tabindex: '0' } });
     root.onkeydown = event => this.onReaderKey(event);
+    for (const element of [this.list, this.reader]) {
+      for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const) element.addEventListener(event, () => this.stopRestoring(), { passive: true });
+      element.addEventListener('scroll', () => {
+        if (this.list.clientHeight) this.lastListTop = this.list.scrollTop;
+        if (this.reader.clientHeight) this.lastReaderTop = this.reader.scrollTop;
+        if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
+        this.checkpointTimer = window.setTimeout(() => { this.saveChannel(); this.run(() => this.plugin.persist()); }, 700);
+      });
+    }
   }
   private renderChannel() {
     this.channelButton.empty();
@@ -216,7 +246,7 @@ export class ReaderView extends ItemView {
       ...this.plugin.state.sources.filter(source => source.enabled !== false).map(source => ({ id: source.id, name: source.name, section: '乔木频道' as const,
         subtitle: ({ article: '文章', news: '新闻', podcast: '播客' } as Record<string, string>)[source.category || ''] || source.category || '乔木内容频道', monogram: source.name.trim().slice(0, 1) })),
       ...feeds.map(feed => ({ id: feed.id, name: feed.name, section: '我的订阅源' as const,
-        subtitle: `${feed.group ? `${feed.group} · ` : ''}${feedHost(feed.url)} · ${feed.entries.length} 篇`, monogram: feed.name.trim().slice(0, 1) })),
+        subtitle: `${feed.group ? `${feed.group} · ` : ''}${feedHost(feed.url)} · ${feed.entries.length} 篇`, monogram: feed.name.trim().slice(0, 1), group: feed.group })),
     ];
   }
   private vaultScope() { return this.source.startsWith('@vault:'); }
@@ -231,18 +261,26 @@ export class ReaderView extends ItemView {
     if (this.plugin.state.subscriptions.some(feed => feed.id === id)) this.selectSource(id, false);
   }
   private pickChannel() {
-    new ChannelPicker(this.app, this.channelChoices(), this.source, source => this.selectSource(source.id)).open();
+    if (this.channelPicker) { this.channelPicker.close(); return; }
+    this.channelPicker = new ChannelPicker(this.channelButton, this.channelChoices(), this.source, source => this.selectSource(source.id), () => { this.channelPicker = undefined; });
+    this.channelPicker.load();
   }
   private selectSource(source: string, refresh = true) {
+    if (source === this.source) { if (!refresh) void this.loadEntries(); return; }
+    this.saveChannel(); this.stopRestoring();
     this.unreadSession.clear();
     this.listVersion++; this.loading = false; this.refreshButton.removeClass('is-loading');
     this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
     this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
     this.plugin.state.settings.lastSource = source; this.run(() => this.plugin.persist());
-    this.bundle = null; this.articleVersion++; this.focused = false;
+    this.bundle = null; this.articleVersion++; this.focused = false; this.contentEl.removeClass('qrs-focus');
     this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
     this.entries = this.personalScope() ? this.localEntries() : source ? [] : this.plugin.state.entries;
-    this.status.setText(''); this.renderChannel(); this.renderReader(); this.renderList();
+    this.status.setText(''); this.renderChannel();
+    const saved = this.plugin.state.channelStates[this.channelKey()];
+    if (saved) { this.restoreChannel(saved); if (!this.entries.length && refresh) void this.loadEntries(); return; }
+    this.filter = 'all'; this.query = ''; this.searchInput.value = ''; this.searchBox.addClass('is-hidden'); this.lastListTop = 0; this.lastReaderTop = 0;
+    this.renderFilters(); this.renderReader(); this.renderList(); this.list.scrollTop = 0; this.reader.scrollTop = 0;
     if (refresh) void this.loadEntries();
   }
   private toggleSearch(show = this.searchBox.hasClass('is-hidden')) {
@@ -404,14 +442,16 @@ export class ReaderView extends ItemView {
     this.list.scrollTop = scroll;
     if (restoreFocus) this.reader.focus({ preventScroll: true });
   }
-  private async openArticle(entry: Entry) {
+  private async openArticle(entry: Entry, resume?: ChannelState) {
+    this.stopRestoring();
     // Keep this unread reading session navigable after opening marks entries read.
     if (this.filter === 'unread') this.unreadSession.add(entry.id);
     const version = ++this.articleVersion; const state = this.plugin.state;
     this.bundle = state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
     state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000); this.run(() => this.plugin.persist());
     this.mode = entry.origin === 'local' || entry.origin === 'vault' ? 'original' : state.settings.defaultMode; this.message = ''; this.articleLoading = true; this.reader.setAttribute('aria-busy', 'true');
-    this.contentEl.addClass('qrs-has-article'); this.renderReader(); this.reader.scrollTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
+    this.contentEl.addClass('qrs-has-article'); this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
+    if (resume) { this.mode = resume.mode; this.pendingScroll = { listTop: resume.listTop, readerTop: resume.readerTop }; this.renderReader(); this.restoreOffsets(); }
     if (entry.origin === 'local') {
       this.bundle = { entry, rewrite: null, translation: null, fetchedAt: Date.now() };
       this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
@@ -429,10 +469,11 @@ export class ReaderView extends ItemView {
     if (!this.closed && version === this.articleVersion) { this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); this.renderList(); }
   }
   showSavedArticle(bundle: Bundle, mode: Mode) {
+    this.stopRestoring();
     this.articleVersion++; this.articleLoading = false;
     this.bundle = bundle; this.mode = mode; this.message = '';
     this.reader.setAttribute('aria-busy', 'false'); this.contentEl.addClass('qrs-has-article');
-    this.renderReader(); this.reader.scrollTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
+    this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
   }
   private noteCurrent() {
     const bundle = this.bundle; if (!bundle) return;
@@ -533,7 +574,7 @@ export class ReaderView extends ItemView {
       const rect = more.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });
     if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
-    if (previous) { this.reader.append(previous); this.reader.scrollTop = scroll; return; }
+    if (previous) { this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); return; }
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
     article.createEl('h1', { text: titleOf(bundle.entry) });
     if (this.message) article.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
@@ -550,7 +591,7 @@ export class ReaderView extends ItemView {
       else article.createDiv({ cls: 'qrs-empty', text: this.articleLoading ? '正在获取正文…' : `${modeLabels[this.mode]}暂无正文。可以切换版本，或从“更多”中打开原文。` });
       }
     } catch { article.createDiv({ cls: 'qrs-empty', text: '正文无法显示，请打开原文阅读。' }); }
-    this.reader.scrollTop = scroll;
+    this.reader.scrollTop = scroll; this.restoreOffsets();
   }
   private renderAppearanceSettings(anchor: HTMLElement) {
     const settings = this.plugin.state.settings;

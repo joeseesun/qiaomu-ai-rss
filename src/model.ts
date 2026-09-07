@@ -29,6 +29,13 @@ export const subscriptionSchema = z.object({
   entries: z.array(entrySchema).default([]), updatedAt: z.number().default(0), error: z.string().default(''),
 });
 export type Subscription = z.infer<typeof subscriptionSchema>;
+export const channelStateSchema = z.object({
+  entries: z.array(entrySchema), bundle: bundleSchema.nullable(), mode: modeSchema,
+  filter: z.enum(['all', 'unread', 'favorites']), query: z.string(), unread: z.array(z.string()),
+  cursor: z.string(), hasMore: z.boolean(), listTop: z.number().nonnegative(), readerTop: z.number().nonnegative(),
+  articlePending: z.boolean(),
+});
+export type ChannelState = z.infer<typeof channelStateSchema>;
 export const stateSchema = z.object({
   settings: z.object({
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
@@ -42,6 +49,7 @@ export const stateSchema = z.object({
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),
+  channelStates: z.record(z.string(), channelStateSchema).catch({}).default({}),
   savedArticles: z.record(z.string(), bundleSchema).default({}),
   cache: z.record(z.string(), bundleSchema).default({}), updatedAt: z.number().default(0),
 });
