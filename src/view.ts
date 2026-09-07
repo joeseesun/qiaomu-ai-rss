@@ -1,3 +1,4 @@
+import { addSearchClear } from './search-clear';
 import { ChannelPicker, channelMark, type ChannelChoice } from './channel-picker';
 import { Component, MarkdownRenderer, ItemView, Menu, Notice, Platform, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
@@ -201,6 +202,7 @@ export class ReaderView extends ItemView {
     this.searchBox = sidebar.createDiv('qrs-search-box'); this.searchBox.toggleClass('is-hidden', !this.query);
     const searchId = `${this.appearanceId}-search`; this.searchBox.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索已载入文章', attr: { for: searchId } });
     this.searchInput = this.searchBox.createEl('input', { type: 'search', placeholder: '搜索当前列表…', attr: { id: searchId } });
+    addSearchClear(this.searchInput);
     this.searchInput.value = this.query;
     this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.unreadSession.clear(); this.renderList(); });
     this.searchInput.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); this.toggleSearch(false); } });

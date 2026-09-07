@@ -1,3 +1,4 @@
+import { addSearchClear } from './search-clear';
 import { Component, ItemView, Notice, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { blogCatalogSource, blogTags, categories, discoveryFeeds, filterDiscovery, independentBlogs, type DiscoveryCollection } from './discovery';
@@ -36,6 +37,7 @@ export class DiscoveryPanel extends Component {
     attribution.createSpan({ text: '，由 Tim Qian 与社区维护（MIT）。收录不代表持续可用，添加时会验证。' });
     const fieldId = crypto.randomUUID(); page.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索订阅目录', attr: { for: `qrs-discovery-search-${fieldId}` } });
     const search = page.createEl('input', { type: 'search', cls: 'qrs-discovery-search', placeholder: '搜索名称、主题或语言…', attr: { id: `qrs-discovery-search-${fieldId}` } });
+    addSearchClear(search);
     search.value = this.query; search.oninput = () => { this.query = search.value; this.limit = 60; this.refresh(); };
     const filters = page.createDiv({ cls: 'qrs-discovery-filters' });
     for (const category of categories) {

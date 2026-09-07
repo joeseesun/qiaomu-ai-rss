@@ -35,7 +35,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ### 官方插件库
 
-已收录 [Obsidian Community](https://community.obsidian.md/plugins/qiaomu-ai-rss)。在 Obsidian 的 **设置 → 第三方插件 → 浏览** 中搜索 **Qiaomu AI RSS**，安装并启用；也可以打开官方页面，点击 **Add to Obsidian**。
+官方目录目前尚不可搜索安装：最近一次自动审核因扫描超时未完成，正在等待复核。GitHub Release 可用不代表官方市场已收录。
 
 以下 BRAT 与手动安装方式仍然可用。
 
@@ -50,7 +50,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 3. 在 Obsidian 的第三方插件设置中启用 **Qiaomu AI RSS**。
 4. 点击侧边栏 RSS 图标，或运行命令 **Qiaomu AI RSS: 打开乔木 RSS 阅读器**。
 
-2026-09-07 完成官方自动审核并发布。当前版本为 0.17.0。
+2026-09-07 核实：官方后台 0.14.0 审核扫描超时；当前 GitHub 版本为 0.17.0。
 
 ## 使用
 

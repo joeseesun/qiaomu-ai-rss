@@ -220,3 +220,14 @@
 .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-header { display: none; }
 
 .qrs-filters .qrs-settings-button { margin-left:auto; }
+
+.qrs-clearable-search { position:relative; flex-shrink:0; width:100%; }
+.qrs-clearable-search input[type=search] { padding-right:36px; margin-bottom:0; }
+.qrs-clearable-search input::-webkit-search-cancel-button { -webkit-appearance:none; }
+.qrs-clearable-search .qrs-search-clear { position:absolute; right:2px; top:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; width:30px; height:28px; padding:0; border:0; box-shadow:none; background:transparent; color:var(--text-muted); }
+.qrs-clearable-search .qrs-search-clear:hover { color:var(--text-normal); background:var(--background-modifier-hover); }
+.qrs-search-clear svg { width:16px; height:16px; }
+.qrs-clearable-search input:placeholder-shown + .qrs-search-clear { display:none; }
+.qrs-channel-picker .qrs-clearable-search { margin-bottom:8px; }
+.is-mobile .qrs-clearable-search input[type=search], .qrs-channel-picker.is-sheet .qrs-clearable-search input[type=search] { min-height:44px; padding-right:44px; }
+.is-mobile .qrs-clearable-search .qrs-search-clear, .qrs-channel-picker.is-sheet .qrs-search-clear { width:40px; height:40px; }

@@ -217,9 +217,9 @@ export default class QiaomuRssPlugin extends Plugin {
     }
     return result;
   }
-  openSettings() {
+  openSettings(tabId = this.manifest.id) {
     const app = this.app as App & { setting: { open(): void; openTabById(id: string): void } };
-    app.setting.open(); app.setting.openTabById(this.manifest.id);
+    app.setting.open(); app.setting.openTabById(tabId);
   }
   manageSubscriptions(tab: SubscriptionTab = 'mine') {
     this.subscriptionManager?.close();
@@ -340,6 +340,17 @@ class RssSettings extends PluginSettingTab {
           settings.remoteImages = value; await this.plugin.persist(); this.plugin.resetViews();
         }));
       } },
+      { type: 'group', heading: '版本与更新', items: [
+        { name: `当前版本 ${this.plugin.manifest.version}`, desc: '在 Obsidian 第三方插件中检查并安装更新。更新记录可随时在这里查看。', render: setting => {
+          setting.addButton(button => button.setButtonText('管理插件更新').onClick(() => this.plugin.openSettings('community-plugins')));
+        } },
+        { name: '更新记录', render: setting => {
+          const details = setting.descEl.createEl('details');
+          details.createEl('summary', { text: '查看本次更新' });
+          details.createEl('p', { text: '搜索框增加清除按钮；设置中增加版本与更新记录入口。频道切换保留文章、列表和阅读位置。' });
+          details.createEl('a', { text: '完整更新记录', href: 'https://github.com/joeseesun/qiaomu-ai-rss/releases', attr: { target: '_blank', rel: 'noopener noreferrer' } });
+        } },
+      ] },
       { name: '本地数据', desc: '已读、收藏与缓存保存在当前库。浏览频道、切换文章或刷新时请求服务，不会上传你的笔记。' },
     ];
   }
