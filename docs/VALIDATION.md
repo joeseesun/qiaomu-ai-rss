@@ -89,4 +89,4 @@ Version 0.4.0 completed the directory's automatic review and was published. The 
 
 `node scripts/font-smoke.mjs` verifies all five embedded font faces load in Obsidian, are applied to article text, preserve the article DOM, and persist the selection. Font assets are byte-identical to the documented upstream files after gzip decompression. No font network requests are used. Mobile-device verification remains pending.
 
-`node scripts/navigation-smoke.mjs` passes eight actual-Obsidian checks for toolbar grouping, immediate repeated J/K navigation, focus after redraw, out-of-order network responses, non-stealing editor focus, and rendering independent of slow persistence.
+`node scripts/navigation-smoke.mjs` passes nine actual-Obsidian checks for toolbar grouping, immediate repeated J/K navigation, focus after redraw, out-of-order network responses, non-stealing editor focus, rendering independent of slow persistence, and backward navigation in an unread reading session.

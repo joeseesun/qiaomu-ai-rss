@@ -42,9 +42,12 @@ try{
  const saving=v.openArticle(list[0]);pending.get(list[0].id)(response(list[0]));
  await Promise.race([saving,new Promise((_,reject)=>setTimeout(()=>reject(Error('Rendering waits for persistence')),500))]);
  check('Article renders without waiting for slow persistence',!v.articleLoading);
+ v.filter='unread';v.unreadSession.clear();p.state.readIds=p.state.readIds.filter(id=>!id.startsWith('qa-nav-'));
+ v.openArticle(list[0]);key('j');key('k');
+ check('Unread session supports previous after marking articles read',v.bundle.entry.id===list[0].id);
  window.__qrsNavigationQA={results};
 }finally{
- p.api=api;p.persist=persist;v.entries=entries;v.filter=filter;v.source=source;v.query=query;
+ v.articleVersion++;v.unreadSession.clear();p.api=api;p.persist=persist;v.entries=entries;v.filter=filter;v.source=source;v.query=query;
  for(const e of list){delete p.state.cache[e.id];}p.state.readIds=p.state.readIds.filter(id=>!id.startsWith('qa-nav-'));
  v.appearanceOpen=false;if(entries[0])void v.openArticle(entries[0]);
 }
