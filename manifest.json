@@ -1,0 +1,10 @@
+{
+  "id": "qiaomu-ai-rss",
+  "name": "Qiaomu AI RSS",
+  "version": "0.1.0",
+  "minAppVersion": "1.13.0",
+  "description": "Read Qiaomu RSS feeds, explore Chinese AI rewrites and translations, and save articles as Markdown notes.",
+  "author": "向阳乔木",
+  "authorUrl": "https://github.com/joeseesun",
+  "isDesktopOnly": false
+}
