@@ -8,7 +8,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 ## 功能
 
-- **探索订阅**：11 个精选源与 1,342 个中文独立博客，按名称/主题搜索、一键订阅；支持 RSSHub 与自定义实例。乔木博客由服务内置，无需重复订阅。
+- **探索订阅**：10 个严格筛选的中文作者与 1,342 个中文独立博客，按名称/主题搜索、一键订阅；RSSHub 内容放在单独入口。乔木博客由服务内置，无需重复订阅。
 - **我的订阅**：添加 RSS / Atom 地址、重命名、分组、取消订阅；OPML 导入预览、去重与导出。个人订阅直接在本机获取，无需乔木账号。
 
 - 阅读优先双栏：44px 正文工具栏、可拖动调宽的列表、一键专注阅读；窄屏使用列表与正文两级导航。
@@ -42,7 +42,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 3. 在 Obsidian 的第三方插件设置中启用 **Qiaomu AI RSS**。
 4. 点击侧边栏 RSS 图标，或运行命令 **Qiaomu AI RSS: 打开阅读器**。
 
-2026-09-07 完成官方自动审核并发布。当前版本为 0.4.0。
+2026-09-07 完成官方自动审核并发布。当前版本为 0.5.0。
 
 ## 使用
 
@@ -52,11 +52,12 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 
 点击列表顶部 **+ → 探索订阅**，或运行命令 **Qiaomu AI RSS: 探索订阅**。
 
-- **精选订阅**：少数派、爱范儿、NASA 等，以及 RSSHub 的 36氪快讯和 GitHub 今日趋势；乔木博客直接作为内置频道提供。
+- **精选订阅**：首批只保留潮流周刊、阮一峰、云风、宝玉、和菜头、张鑫旭、小众软件、月光博客、Reorx 与 pseudoyu。标准是长期原创、持续更新、RSS 直连与鲜明的个人辨识度，宁缺毋滥；乔木博客直接作为内置频道提供。
 - **独立博客**：来自 [timqian/chinese-independent-blogs](https://github.com/timqian/chinese-independent-blogs) 的 1,342 个带 RSS 地址的博客，保留名称、主页与主题标签；支持搜索、主题筛选和分批浏览。
+- **RSSHub**：36氪快讯和 GitHub 今日趋势保留在单独的 RSSHub 页签，不计入 10 个精选作者。
 - 点击“订阅”会读取并验证源，按主题加入“我的订阅”，并让阅读器记住这个新频道；切回阅读器即可看到文章。已经添加的源显示“已订阅”，点击“开始阅读”可查看全部个人订阅。
 - 目录离线内置，不会在浏览时请求所有网站。独立博客是社区目录快照，部分旧地址可能失效；添加失败时显示原因和重试入口。
-- RSSHub 默认使用第三方公共实例 `rsshub.rssforever.com`，可以展开“RSSHub 实例”改为自己的 HTTPS 实例。仅影响以后添加的源，已有订阅保持不变。
+- RSSHub 页签默认使用第三方公共实例 `rsshub.rssforever.com`，可以展开“RSSHub 实例”改为自己的 HTTPS 实例。仅影响以后添加的源，已有订阅保持不变。
 
 [目录来源、授权与可用性记录](docs/DISCOVERY.md) · [精选目录截图](docs/images/discovery-featured.png)
 

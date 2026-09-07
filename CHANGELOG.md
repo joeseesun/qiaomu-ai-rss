@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 — 2026-09-07
+
+- Replace the broad featured catalog with 10 high-signal Chinese authors and independent publications using verified direct feeds.
+- Show the curation standard in Explore and move RSSHub routes into their own tab.
+- Correct the duplicated hecaitou.com link by using 阮一峰's official Atom feed separately from 和菜头's feed.
+
 ## 0.4.0 — 2026-09-07
 
 - Open a newly added discovery subscription in the reader automatically and remember that channel across reloads.

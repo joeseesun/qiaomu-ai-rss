@@ -1,6 +1,8 @@
-# Discovery catalog — 0.4.0
+# Discovery catalog — 0.5.0
 
-The Explore subscriptions view bundles 11 featured feeds and 1,342 Chinese independent blogs. Catalog search, category/theme filtering, and pagination are local. Selecting a source fetches and validates it through the existing subscription service before storing it, then stages that source as the reader's active channel. Blogs are rendered in batches of 60; discovery never subscribes to the entire directory automatically. Existing limits of 100 personal subscriptions and 50 cached articles per feed apply. Qiaomu Blog is already a built-in service channel and is intentionally not offered as a duplicate personal subscription.
+The Explore subscriptions view separates three different jobs: 10 editorially selected direct feeds, 1,342 searchable Chinese independent blogs, and 2 RSSHub routes. The featured list only includes identifiable authors or long-running independent publications with original work, recent activity, direct RSS/Atom endpoints, and a distinct editorial voice. It is intentionally short. Qiaomu Blog is already a built-in service channel and is not offered as a duplicate personal subscription.
+
+Catalog search, category/theme filtering, and pagination are local. Selecting a source fetches and validates it through the existing subscription service before storing it, then stages that source as the reader's active channel. Blogs are rendered in batches of 60; discovery never subscribes to the entire directory automatically. Existing limits of 100 personal subscriptions and 50 cached articles per feed apply.
 
 ## Chinese independent blogs
 
@@ -21,21 +23,29 @@ This script is a development tool; the plugin does not fetch remote catalog code
 
 ## Featured feeds and live probes
 
-All 11 featured endpoints returned parseable RSS/Atom with articles on 2026-09-07. This is a point-in-time check, not a future availability promise.
+All 10 direct featured endpoints returned parseable RSS/Atom with articles on 2026-09-07. This is a point-in-time check, not a future availability promise.
 
 | Source | Feed | Observed items |
 | --- | --- | ---: |
-| Simon Willison | https://simonwillison.net/atom/everything/ | 30 |
-| 少数派 | https://sspai.com/feed | 10 |
-| 爱范儿 | https://www.ifanr.com/feed | 20 |
-| 极客公园 | https://www.geekpark.net/rss | 30 |
-| IT之家 | https://www.ithome.com/rss/ | 60 |
-| Hacker News (hnrss) | https://hnrss.org/frontpage | 20 |
-| The Verge | https://www.theverge.com/rss/index.xml | 10 |
-| Quanta Magazine | https://www.quantamagazine.org/feed/ | 5 |
-| NASA | https://www.nasa.gov/feed/ | 10 |
-| 36氪快讯 (RSSHub) | https://rsshub.rssforever.com/36kr/newsflashes | 20 |
-| GitHub trending (RSSHub) | https://rsshub.rssforever.com/github/trending/daily/any | 18 |
+| 潮流周刊 · Tw93 | https://weekly.tw93.fun/rss.xml | 12 |
+| 阮一峰的网络日志 | https://www.ruanyifeng.com/blog/atom.xml | 3 |
+| 云风的 BLOG | https://blog.codingnow.com/atom.xml | 15 |
+| 宝玉的分享 | https://baoyu.io/feed.xml | 50 |
+| 槽边往事 · 和菜头 | https://www.hecaitou.com/feeds/posts/default?alt=rss | 25 |
+| 张鑫旭的技术作品 | https://www.zhangxinxu.com/wordpress/feed/ | 5 |
+| 小众软件 | https://www.appinn.com/feed/ | 10 |
+| 月光博客 | https://www.williamlong.info/rss.xml | 10 |
+| Reorx’s Forge | https://reorx.com/feed.xml | 50 |
+| pseudoyu | https://www.pseudoyu.com/zh/index.xml | 50 |
+
+The user supplied the desired editorial direction. Their duplicated `hecaitou.com` link was assigned only to 和菜头; 阮一峰 uses the direct Atom endpoint documented on his own site. RSSHub-derived items are not counted as featured feeds.
+
+## RSSHub routes
+
+| Source | Route |
+| --- | --- |
+| 36氪快讯 | `/36kr/newsflashes` |
+| GitHub trending | `/github/trending/daily/any` |
 
 RSSHub route definitions were checked against the upstream implementation: [36kr/index.ts](https://github.com/DIYgod/RSSHub/blob/master/lib/routes/36kr/index.ts), [github/trending.tsx](https://github.com/DIYgod/RSSHub/blob/master/lib/routes/github/trending.tsx). The latter needs GitHub credentials configured by the RSSHub instance operator, not in the Obsidian plugin.
 

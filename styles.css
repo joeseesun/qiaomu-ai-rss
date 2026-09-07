@@ -124,6 +124,7 @@
 .qrs-discovery-collections { display:flex; gap:24px; border-bottom:1px solid var(--background-modifier-border); margin-bottom:20px; }
 .qrs-discovery-collections button { border-radius:0; border:0; border-bottom:2px solid transparent; box-shadow:none; background:transparent; padding:0 0 12px; height:auto; color:var(--text-muted); }
 .qrs-discovery-collections button[aria-pressed=true] { border-bottom-color:var(--text-normal); color:var(--text-normal); font-weight:600; }
+.qrs-discovery-standard { margin:-4px 0 16px; color:var(--text-muted); font-size:12px; line-height:1.7; }
 .qrs-discovery-attribution { color:var(--text-muted); font-size:12px; line-height:1.8; margin-bottom:16px; }
 .qrs-discovery-tags { margin-top:16px; max-width:100%; }
 .qrs-discovery-more { display:block; margin:24px auto; }
@@ -133,7 +134,6 @@
 .qrs-discovery-filters button { box-shadow:none; background:transparent; font-size:13px; border:1px solid transparent; }
 .qrs-discovery-filters button[aria-pressed=true] { background:var(--background-secondary); border-color:var(--background-modifier-border); color:var(--text-normal); }
 .qrs-discovery-provider { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:20px 0 12px; font-size:12px; color:var(--text-muted); }
-.qrs-discovery-toggle { display:flex; align-items:center; gap:8px; cursor:pointer; }
 .qrs-discovery-instance { font-size:12px; color:var(--text-muted); margin-bottom:24px; }
 .qrs-discovery-instance summary { cursor:pointer; padding:4px 0; }
 .qrs-discovery-instance p { line-height:1.7; overflow-wrap:anywhere; }

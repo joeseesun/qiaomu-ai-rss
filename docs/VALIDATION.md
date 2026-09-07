@@ -1,4 +1,4 @@
-# Validation — 0.4.0
+# Validation — 0.5.0
 
 Checked on 2026-09-07. This is an original plugin connected to the real public Qiaomu RSS API. The Obsidian checks use a disposable **Qiaomu RSS QA** vault, never a personal knowledge vault.
 
@@ -57,9 +57,15 @@ The subscription smoke runner adds/removes its named public test sources, create
 
 The Qiaomu RSS QA vault reproduced the reported state: CoolShell was stored under the Independent Blogs group with 15 cached articles while the reader remained on Qiaomu Picks. Version 0.4.0 removes the duplicate Qiaomu Blog discovery card because `qiaomu-blog` is already returned by the built-in service source list. A discovery subscription now becomes the reader's active channel and is stored as the last source.
 
-The real Reorx discovery card fetched 50 articles and immediately changed the existing reader to that exact feed. A separate CoolShell check displayed all 15 cached articles, opened the first article as original content, then reloaded the plugin and reopened the reader; the CoolShell channel and 15 entries were restored. The featured discovery view contained 11 cards, no `qiaomu` card, and the reader channel picker still contained the built-in Qiaomu Blog source. Obsidian reported no developer errors. The desktop and 390px layout checks passed with no horizontal overflow and complete inset focus rings.
+The real Reorx discovery card fetched 50 articles and immediately changed the existing reader to that exact feed. A separate CoolShell check displayed all 15 cached articles, opened the first article as original content, then reloaded the plugin and reopened the reader; the CoolShell channel and 15 entries were restored. In 0.5.0, the featured discovery view contains exactly 10 direct feeds, displays its selection standard, and keeps the 2 RSSHub routes in a separate tab. The reader channel picker still contains the built-in Qiaomu Blog source. Obsidian reported no developer errors. The desktop and 390px layout checks passed with no horizontal overflow and complete inset focus rings.
 
 The broader discovery smoke reached and passed the new Reorx activation assertion, then stopped when the third-party RSSHub 36kr endpoint timed out. This external endpoint result is not counted as a complete discovery-smoke pass for 0.4.0.
+
+## Curated discovery — 0.5.0
+
+All 10 featured URLs returned HTTP 200 on 2026-09-07 and were parsed with the plugin's production `parseFeed` function, yielding 3 to 50 cached entries per source. The test used the exact bundled URLs, including the redirect from `baoyu.io/feed.xml` to `s.baoyu.io/feed.xml`. No RSSHub route is present in the featured array.
+
+The built plugin was installed and reloaded in Obsidian 1.13.7. The Explore view showed three distinct tabs (10 featured, 1,342 independent blogs, 2 RSSHub routes), displayed the curation standard, and had no horizontal overflow. Subscribing to the real Tw93 feed produced 12 entries and immediately made that exact feed the reader source. Obsidian reported no developer errors. The broader discovery smoke passed the new featured/blog separation and the real 36kr route, then stopped when the third-party RSSHub GitHub-trending route timed out; that external result is not counted as a full smoke pass.
 
 ## Discovery and focus regression — 0.3.0
 
@@ -73,4 +79,4 @@ The earlier reader and subscription integration records above are retained as ve
 
 ## Official directory — 2026-09-07
 
-Version 0.3.0 completed the directory's automatic review and was published. The public listing displays an Add to Obsidian link, three uploaded desktop screenshots, and the correct repository/version. Anonymous HTTP readback confirms the listing is public. See [submission record](SUBMISSION.md) for non-blocking review recommendations.
+Version 0.4.0 completed the directory's automatic review and was published. The public listing displays an Add to Obsidian link, three uploaded desktop screenshots, and the correct repository/version. Anonymous HTTP readback confirms the listing is public. See [submission record](SUBMISSION.md) for non-blocking review recommendations.
