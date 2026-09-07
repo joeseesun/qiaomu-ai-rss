@@ -210,3 +210,6 @@
 .is-mobile .qrs-subscription-modal .modal-content { max-height:none; flex:1; }
 .is-mobile .qrs-subscription-tabs button { min-height:44px; padding:6px; }
 .is-mobile .qrs-selection-popup button { width:44px; height:44px; }
+
+/* The reader provides its own compact navigation and actions. */
+.workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-header { display: none; }

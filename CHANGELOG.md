@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 — 2026-09-07
+
+- Open captured article links directly in the reader from Reading View and Live Preview; load deferred reader tabs before navigating.
+- Save dragged images to the native attachment folder and explicitly insert image embeds, including drags without native file payloads.
+- Hide the redundant native header only in RSS reader panes.
+- Rename RSSHub exploration to 网站与公众号 and add public WeChat RSS directory and self-hosted subscription guidance.
+
 ## 0.14.0 — 2026-09-07
 
 - Name the reader command 打开乔木 RSS 阅读器.
