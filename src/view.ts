@@ -1,4 +1,4 @@
-import { Component, MarkdownRenderer, ItemView, Menu, Modal, Notice, setIcon, type App, type WorkspaceLeaf } from 'obsidian';
+import { Component, MarkdownRenderer, ItemView, Menu, FuzzySuggestModal, Notice, Platform, setIcon, type App, type FuzzyMatch, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { vaultSourceId } from './vault-source';
 import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
@@ -18,36 +18,20 @@ function channelMark(parent: HTMLElement, choice: ChannelChoice) {
 function feedHost(url: string) {
   try { return new URL(url).hostname || 'RSS'; } catch { return 'RSS'; }
 }
-class ChannelPicker extends Modal {
-  private query = '';
+class ChannelPicker extends FuzzySuggestModal<ChannelChoice> {
   constructor(app: App, private choices: ChannelChoice[], private active: string, private choose: (source: ChannelChoice) => void) {
-    super(app);
+    super(app); this.setPlaceholder('选择频道或搜索订阅…'); this.modalEl.addClass('qrs-channel-modal');
   }
-  onOpen() {
-    this.modalEl.addClass('qrs-channel-modal'); this.setTitle('选择频道');
-    const searchId = `qrs-channel-search-${crypto.randomUUID()}`;
-    this.contentEl.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索频道', attr: { for: searchId } });
-    const input = this.contentEl.createEl('input', { type: 'search', cls: 'qrs-channel-search', placeholder: '搜索频道、分组或订阅源…', attr: { id: searchId } });
-    const list = this.contentEl.createDiv('qrs-channel-list');
-    const render = () => {
-      list.empty(); const query = this.query.trim().toLocaleLowerCase();
-      const matches = this.choices.filter(choice => !query || `${choice.name} ${choice.subtitle}`.toLocaleLowerCase().includes(query));
-      for (const section of ['聚合', '订阅分组', '乔木频道', '我的订阅源', '库内文件夹'] as const) {
-        const choices = matches.filter(choice => choice.section === section); if (!choices.length) continue;
-        const group = list.createEl('section', { cls: 'qrs-channel-section' }); group.createEl('h3', { text: section });
-        for (const choice of choices) {
-          const row = group.createEl('button', { cls: 'qrs-channel-row', attr: { 'data-channel-id': choice.id } }); row.toggleClass('is-active', choice.id === this.active);
-          channelMark(row, choice); const text = row.createSpan('qrs-channel-copy');
-          text.createSpan({ cls: 'qrs-channel-name', text: choice.name }); text.createSpan({ cls: 'qrs-channel-subtitle', text: choice.subtitle });
-          if (choice.id === this.active) setIcon(row.createSpan('qrs-channel-check'), 'check');
-          row.onclick = () => { this.close(); this.choose(choice); };
-        }
-      }
-      if (!matches.length) list.createDiv({ cls: 'qrs-channel-empty', text: '没有匹配的频道。' });
-    };
-    input.oninput = () => { this.query = input.value; render(); }; render(); input.focus();
+  getItems() { return this.choices; }
+  getItemText(choice: ChannelChoice) { return `${choice.name} ${choice.subtitle} ${choice.section}`; }
+  renderSuggestion(match: FuzzyMatch<ChannelChoice>, el: HTMLElement) {
+    const choice = match.item; el.addClass('qrs-channel-row'); el.dataset.channelId = choice.id;
+    channelMark(el, choice); const text = el.createSpan('qrs-channel-copy');
+    text.createSpan({ cls: 'qrs-channel-name', text: choice.name });
+    text.createSpan({ cls: 'qrs-channel-subtitle', text: `${choice.section} · ${choice.subtitle}` });
+    if (choice.id === this.active) setIcon(el.createSpan('qrs-channel-check'), 'check');
   }
-  onClose() { this.contentEl.empty(); }
+  onChooseItem(choice: ChannelChoice) { this.choose(choice); }
 }
 export class ReaderView extends ItemView {
   private markdownComponent?: Component;
@@ -92,7 +76,16 @@ export class ReaderView extends ItemView {
   getIcon() { return 'rss'; }
   onOpen(): Promise<void> {
     this.reset();
+    this.registerDomEvent(this.contentEl.ownerDocument, 'pointerdown', event => {
+      const target = event.target as HTMLElement;
+      if (!this.appearanceOpen || target.closest?.('.qrs-reading-settings') || target.closest?.('[data-qrs-label="阅读设置"]')) return;
+      this.appearanceOpen = false; this.reader.querySelector('.qrs-reading-settings')?.remove();
+      this.reader.querySelector('[aria-controls="' + this.appearanceId + '"]')?.setAttribute('aria-expanded', 'false');
+      this.run(() => this.plugin.persist());
+    });
     this.registerDomEvent(this.contentEl, 'contextmenu', event => {
+      // Let mobile WebViews open their native text-selection handles.
+      if (Platform.isMobileApp || (event as PointerEvent).pointerType === 'touch') return;
       const target = event.target;
       if (!(target instanceof this.contentEl.ownerDocument.defaultView!.HTMLElement) || !target.closest('.qrs-article') || !this.bundle) return;
       event.preventDefault();
@@ -216,7 +209,7 @@ export class ReaderView extends ItemView {
     return [
       { id: '', name: '乔木精选', section: '聚合', subtitle: '乔木筛选的高质量内容', icon: 'tree-deciduous' },
       { id: '@local', name: '我的订阅', section: '聚合', subtitle: `${feeds.length} 个个人订阅源`, icon: 'rss' },
-      ...this.plugin.state.settings.markdownFolders.map(folder => ({ id: vaultSourceId(folder), name: folder === '/' ? '整个库' : folder.split('/').at(-1)!, section: '库内文件夹' as const, subtitle: folder, icon: 'folder-open' })),
+      ...this.plugin.state.settings.markdownFolders.map(folder => ({ id: vaultSourceId(folder), name: folder === '/' ? '整个库' : folder.split('/').at(-1)!, section: '库内文件夹' as const, subtitle: folder, icon: folder.endsWith('.md') ? 'file-text' : 'folder-open' })),
       ...groups.map(group => ({ id: `@group:${group}`, name: group, section: '订阅分组' as const,
         subtitle: `${feeds.filter(feed => feed.group === group).length} 个订阅源`, icon: 'folder' })),
       ...this.plugin.state.sources.filter(source => source.enabled !== false).map(source => ({ id: source.id, name: source.name, section: '乔木频道' as const,
@@ -568,7 +561,6 @@ export class ReaderView extends ItemView {
     const headingId = `${this.appearanceId}-heading`;
     const panel = anchor.createEl('section', { cls: 'qrs-reading-settings', attr: { id: this.appearanceId, 'aria-labelledby': headingId } });
     const header = panel.createDiv('qrs-reading-settings-head'); header.createEl('strong', { text: '阅读设置', attr: { id: headingId } });
-    const close = header.createEl('button', { text: '完成' }); close.onclick = () => { this.appearanceOpen = false; this.renderReader(true); };
     const fields = panel.createDiv('qrs-reading-settings-fields');
     const row = (label: string) => { const el = fields.createEl('label', { cls: 'qrs-reading-setting' }); el.createSpan({ text: label }); return el; };
     const fontRow = row('字体');
@@ -585,15 +577,9 @@ export class ReaderView extends ItemView {
     width.value = String(settings.lineWidth);
     const update = () => { sizeValue.setText(`${settings.fontSize} px`); heightValue.setText(`${settings.lineHeight.toFixed(1)} 倍`); this.applyAppearance(); };
     font.onchange = () => { settings.fontFamily = readingFontSchema.parse(font.value); update(); this.run(() => this.plugin.persist()); };
-    size.oninput = () => { settings.fontSize = Number(size.value); update(); }; size.onchange = () => this.run(() => this.plugin.persist());
-    height.oninput = () => { settings.lineHeight = Number(height.value); update(); }; height.onchange = () => this.run(() => this.plugin.persist());
+    size.oninput = () => { settings.fontSize = Number(size.value); update(); this.run(() => this.plugin.persist()); }; size.onchange = () => this.run(() => this.plugin.persist());
+    height.oninput = () => { settings.lineHeight = Number(height.value); update(); this.run(() => this.plugin.persist()); }; height.onchange = () => this.run(() => this.plugin.persist());
     width.onchange = () => { settings.lineWidth = Number(width.value) as 28 | 36 | 44; update(); this.run(() => this.plugin.persist()); };
-    const reset = panel.createEl('button', { text: '恢复默认', cls: 'qrs-reading-reset' });
-    reset.onclick = () => {
-      settings.fontFamily = 'fangsong'; settings.fontSize = 19; settings.lineHeight = 1.9; settings.lineWidth = 36;
-      font.value = settings.fontFamily; size.value = String(settings.fontSize); height.value = String(settings.lineHeight); width.value = String(settings.lineWidth);
-      update(); this.run(() => this.plugin.persist());
-    };
     panel.onkeydown = event => { if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.appearanceOpen = false; this.renderReader(true); } };
   }
 }

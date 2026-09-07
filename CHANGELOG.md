@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0 — 2026-09-07
+
+- Name the reader command 打开乔木 RSS 阅读器.
+- Apply and save typography immediately; dismiss on outside taps, without Done or Reset buttons.
+- Preserve mobile native long-press selection and show capture actions after selection-handle changes.
+- Use Obsidian native searchable channel suggestions with readable selection and hover colors.
+- Combine personal subscriptions, embedded exploration and local sources in one tabbed manager. Native file/folder search can add individual Markdown files or recursive folders as reader sources.
+
 ## 0.13.0 — 2026-09-07
 
 - Enable the selection popup by default with separate Daily Note and current-note icon actions and tooltips.

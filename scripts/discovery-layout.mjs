@@ -25,7 +25,7 @@ try{
  cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
  evaluate("document.body.removeClass('theme-light');document.body.addClass('theme-dark');return true;");pause();
  check('Narrow dark URL and group focus stays inside bounds',focusCheck);screenshot('subscriptions-narrow');
- evaluate(close+'return true;');pause();
+ evaluate(close+'return true;');command('command','id=qiaomu-ai-rss:explore-subscriptions');pause();
  check('390px blog catalog fits and search retains full focus ring',"const e=document.querySelector('.qrs-discovery'),q=e.querySelector('input[type=search]');q.focus();return{ok:e.scrollWidth<=e.clientWidth&&getComputedStyle(q).boxShadow.includes('inset'),width:e.clientWidth,scrollWidth:e.scrollWidth,cards:e.querySelectorAll('.qrs-discovery-card').length};");
  screenshot('discovery-narrow');
 }finally{

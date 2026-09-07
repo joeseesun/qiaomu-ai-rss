@@ -1,10 +1,10 @@
-import { ItemView, Notice, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { Component, ItemView, Notice, setIcon, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { blogCatalogSource, blogTags, categories, DEFAULT_RSSHUB, discoveryFeeds, discoveryUrl, filterDiscovery, independentBlogs, rsshubFeeds, type DiscoveryCollection } from './discovery';
 import { serviceUrl } from './model';
 
 export const DISCOVERY_VIEW_TYPE = 'qiaomu-ai-rss-discovery';
-export class DiscoveryView extends ItemView {
+export class DiscoveryPanel extends Component {
   private cards!: HTMLElement;
   private count!: HTMLElement;
   private query = '';
@@ -16,14 +16,11 @@ export class DiscoveryView extends ItemView {
   private pending = new Set<string>();
   private errors = new Map<string, string>();
   private closed = false;
-  constructor(leaf: WorkspaceLeaf, private plugin: QiaomuRssPlugin) { super(leaf); }
-  getViewType() { return DISCOVERY_VIEW_TYPE; }
-  getDisplayText() { return '探索订阅'; }
-  getIcon() { return 'compass'; }
-  onOpen(): Promise<void> {
+  constructor(private contentEl: HTMLElement, private plugin: QiaomuRssPlugin, private embedded = false) { super(); }
+  onload() {
     this.closed = false; this.contentEl.empty(); this.contentEl.addClass('qrs-discovery');
     const page = this.contentEl.createDiv('qrs-discovery-page');
-    const header = page.createDiv('qrs-discovery-header');
+    const header = page.createDiv('qrs-discovery-header'); header.toggleClass('qrs-hidden', this.embedded);
     const intro = header.createDiv();
     intro.createEl('h1', { text: '发现值得读的内容' });
     intro.createEl('p', { text: '从一个好订阅开始，把阅读留给自己。' });
@@ -72,7 +69,7 @@ export class DiscoveryView extends ItemView {
         try {
           const url = serviceUrl(instance.value); this.plugin.state.settings.rsshubUrl = url;
           await this.plugin.persist(); instance.value = url; summary.setText(`RSSHub 实例 · ${new URL(url).hostname}`);
-          message.setText('已保存，已有订阅地址保持不变。'); this.errors.clear(); this.plugin.refreshDiscovery();
+          message.setText('已保存，已有订阅地址保持不变。'); this.errors.clear(); this.refresh(); this.plugin.refreshDiscovery();
         } catch { message.setText('请输入完整的 HTTPS 实例地址，不包含路径、账号或查询参数。'); }
       })();
     };
@@ -92,10 +89,9 @@ export class DiscoveryView extends ItemView {
     };
     featured.onclick = () => switchCollection('featured'); blogs.onclick = () => switchCollection('blogs'); rsshub.onclick = () => switchCollection('rsshub'); switchCollection(this.collection);
     page.createEl('p', { cls: 'qrs-discovery-footnote', text: '目录保存在本地，点击订阅时才读取内容，并按主题分组。公共源可能限流或失效；失败时可以重试。' });
-    this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.refresh()));
-    return Promise.resolve();
+    this.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => this.refresh()));
   }
-  onClose(): Promise<void> { this.closed = true; return Promise.resolve(); }
+  onunload() { this.closed = true; }
   refresh() {
     if (this.closed || !this.cards) return;
     // Preserve keyboard focus when a pending card finishes or another view updates.
@@ -129,7 +125,7 @@ export class DiscoveryView extends ItemView {
           new Notice(`已订阅 ${feed.name}`);
         }).catch((error: unknown) => {
           this.errors.set(feed.id, error instanceof Error ? error.message : '添加失败，请重试。');
-        }).finally(() => { this.pending.delete(feed.id); this.plugin.refreshDiscovery(); });
+        }).finally(() => { this.pending.delete(feed.id); this.refresh(); this.plugin.refreshDiscovery(); });
       };
       const error = this.errors.get(feed.id);
       if (error && !subscribed) card.createDiv({ cls: 'qrs-subscription-error', text: error, attr: { role: 'status' } });
@@ -139,4 +135,15 @@ export class DiscoveryView extends ItemView {
       (card?.querySelector<HTMLElement>('button:not(:disabled)') ?? card)?.focus({ preventScroll: true });
     }
   }
+}
+
+/** Restores existing workspace tabs; new exploration opens inside subscription management. */
+export class DiscoveryView extends ItemView {
+  private panel?: DiscoveryPanel;
+  constructor(leaf: WorkspaceLeaf, private plugin: QiaomuRssPlugin) { super(leaf); }
+  getViewType() { return DISCOVERY_VIEW_TYPE; }
+  getDisplayText() { return '探索订阅'; }
+  getIcon() { return 'compass'; }
+  onOpen(): Promise<void> { this.panel = new DiscoveryPanel(this.contentEl, this.plugin); this.addChild(this.panel); return Promise.resolve(); }
+  refresh() { this.panel?.refresh(); }
 }

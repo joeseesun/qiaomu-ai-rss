@@ -8,7 +8,7 @@ import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
 import { readingFonts, ReadingFonts } from './fonts';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
-import { SubscriptionManager } from './subscription-ui';
+import { SubscriptionManager, type SubscriptionTab } from './subscription-ui';
 import { DiscoveryView, DISCOVERY_VIEW_TYPE } from './discovery-view';
 
 export default class QiaomuRssPlugin extends Plugin {
@@ -17,6 +17,7 @@ export default class QiaomuRssPlugin extends Plugin {
   state: State = initialState(null);
   images!: LocalImages;
   subscriptions!: Subscriptions;
+  private subscriptionManager?: SubscriptionManager;
   private lastNote: TFile | null = null;
   private saving: Promise<void> = Promise.resolve();
   private dailyNoteWrite: Promise<unknown> = Promise.resolve();
@@ -36,8 +37,8 @@ export default class QiaomuRssPlugin extends Plugin {
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
     this.registerView(DISCOVERY_VIEW_TYPE, leaf => new DiscoveryView(leaf, this));
     this.addCommand({ id: 'explore-subscriptions', name: '探索订阅', callback: () => { void this.openDiscovery(); } });
-    this.addRibbonIcon('rss', '打开 RSS 阅读器', () => { void this.openReader(); });
-    this.addCommand({ id: 'open-reader', name: '打开阅读器', callback: () => { void this.openReader(); } });
+    this.addRibbonIcon('rss', '打开乔木 RSS 阅读器', () => { void this.openReader(); });
+    this.addCommand({ id: 'open-reader', name: '打开乔木 RSS 阅读器', callback: () => { void this.openReader(); } });
     this.addSettingTab(new RssSettings(this.app, this));
     this.registerEvent(this.app.workspace.on('file-open', file => { if (file?.extension === 'md') this.cleanNoteMarkers(file); }));
     this.app.workspace.onLayoutReady(() => {
@@ -183,22 +184,19 @@ export default class QiaomuRssPlugin extends Plugin {
     }
     return result;
   }
-  manageSubscriptions() {
-    new SubscriptionManager(this, () => {
+  manageSubscriptions(tab: SubscriptionTab = 'mine') {
+    this.subscriptionManager?.close();
+    this.subscriptionManager = new SubscriptionManager(this, () => {
       this.refreshDiscovery();
       for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
         if (leaf.view instanceof ReaderView) leaf.view.showSubscriptions();
       }
-    }).open();
+    }, tab);
+    this.subscriptionManager.open();
   }
-  async openDiscovery() {
-    try {
-      let leaf = this.app.workspace.getLeavesOfType(DISCOVERY_VIEW_TYPE)[0];
-      if (!leaf) { leaf = this.app.workspace.getLeaf('tab'); await leaf.setViewState({ type: DISCOVERY_VIEW_TYPE, active: true }); }
-      await this.app.workspace.revealLeaf(leaf);
-    } catch { new Notice('无法打开订阅目录。'); }
-  }
+  openDiscovery(): Promise<void> { this.manageSubscriptions('explore'); return Promise.resolve(); }
   refreshDiscovery() {
+    this.subscriptionManager?.refresh();
     for (const leaf of this.app.workspace.getLeavesOfType(DISCOVERY_VIEW_TYPE)) {
       if (leaf.view instanceof DiscoveryView) leaf.view.refresh();
     }
