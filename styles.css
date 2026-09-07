@@ -73,7 +73,7 @@
 .qrs-prose td,.qrs-prose th { border:1px solid var(--background-modifier-border); padding:8px; }
 .qrs-prose a { color:var(--text-accent); text-decoration-thickness:1px; text-underline-offset:3px; }
 .qrs-prose ::selection { background:var(--text-selection); }
-.qrs-reading-settings { position:absolute; z-index:5; top:52px; right:12px; width:min(300px,calc(100% - 24px)); padding:14px; border:1px solid var(--background-modifier-border); border-radius:10px; background:var(--background-primary); box-shadow:var(--shadow-s); }
+.qrs-reading-settings { position:absolute; z-index:5; top:100%; right:12px; max-height:calc(100vh - 180px); overflow:auto; width:min(300px,calc(100% - 24px)); padding:14px; border:1px solid var(--background-modifier-border); border-radius:10px; background:var(--background-primary); box-shadow:var(--shadow-s); }
 .qrs-reading-settings-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .qrs-reading-settings-head strong { font-size:14px; }
 .qrs-reading-settings-head button,.qrs-reading-reset { box-shadow:none; font-size:12px; }

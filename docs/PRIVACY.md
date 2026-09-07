@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective: 2026-09-07 (0.9.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
+Effective: 2026-09-07 (0.10.0). Maintainer: 向阳乔木, [GitHub](https://github.com/joeseesun).
 
 Qiaomu AI RSS is a local reader for a remote Qiaomu RSS API. It requests public sources, entry lists, article details, and existing translation/rewrite assets. The default server is `rss.qiaomu.ai`. A user-configured server is governed by its own operator's policy.
 
@@ -23,3 +23,9 @@ Canceling a subscription removes its list/cache, but keeps favorited article sna
 ## Discovery and RSSHub
 
 The bundled catalog is read locally. Search terms, topic filters and browsing behavior are not sent to GitHub, Qiaomu, RSSHub or the blogs. There are no remote favicons or live catalog requests. Clicking Subscribe fetches the selected feed. RSSHub routes use the displayed instance (default `https://rsshub.rssforever.com`, operated by a third party); it sees the requested route and standard request metadata, and obtains content from upstream sites. Users can configure another HTTPS instance. The plugin never silently switches providers, and previously saved feed URLs are unchanged. Clicking a blog home-page or catalog-source link opens that destination in the browser.
+
+## Vault Markdown folders
+
+Only explicitly selected vault folders (including their descendants) are listed as local Markdown sources. File names, modification times and frontmatter are used locally; bodies are read when opened and recent/favorite/captured snapshots remain in plugin data. They are never sent to Qiaomu. Removing a folder source does not delete files or existing saved snapshots. Native Obsidian Markdown rendering resolves internal links and attachments and follows native/plugin rendering behavior, including requests for remote embeds present in the selected note. The RSS image-cache setting applies to RSS HTML, not native Markdown embeds.
+
+The selection popup is disabled by default. Turning it on and typography preferences are stored in the vault plugin settings.

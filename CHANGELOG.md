@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.0 — 2026-09-07
+
+- Default selection popup off and add an immediate settings toggle, independent of text dragging.
+- Add original-source links alongside Daily Note reader-return links.
+- Expose font, size, line-height and measure in settings; anchor the reader panel to the sticky toolbar.
+- Read selected vault Markdown folders and descendants with native folder typeahead, Markdown rendering, attachments and internal links. Local sources never call the Qiaomu API.
+
 ## 0.9.1 — 2026-09-07
 
 - Encode vault-name spaces as %20 for Obsidian protocol routing; repair legacy links when rendered or appended.

@@ -1,10 +1,11 @@
 import { MarkdownView, Notice, Platform, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, modeLabels, modeSchema, serviceUrl, withServiceOrigin, type Bundle, type Entry, type Mode, type State } from './model';
+import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, serviceUrl, withServiceOrigin, type Bundle, type Entry, type Mode, type State } from './model';
 import { repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
-import { ReadingFonts } from './fonts';
+import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
+import { readingFonts, ReadingFonts } from './fonts';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
 import { SubscriptionManager } from './subscription-ui';
@@ -12,6 +13,7 @@ import { DiscoveryView, DISCOVERY_VIEW_TYPE } from './discovery-view';
 
 export default class QiaomuRssPlugin extends Plugin {
   fonts = new ReadingFonts();
+  vaultSources = new VaultSources(this.app);
   state: State = initialState(null);
   images!: LocalImages;
   subscriptions!: Subscriptions;
@@ -83,7 +85,7 @@ export default class QiaomuRssPlugin extends Plugin {
   async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original'): Promise<{ file: TFile; added: boolean }> {
     let result!: { file: TFile; added: boolean };
     const write = async () => {
-      const id = `${entry.origin === 'local' ? 'local' : this.state.settings.baseUrl}|${entry.id}`;
+      const id = `${entry.origin === 'local' ? 'local' : entry.origin === 'vault' ? 'vault' : this.state.settings.baseUrl}|${entry.id}`;
       const bundle = this.state.cache[entry.id] || this.state.favorites[entry.id] || { entry, rewrite: entry.rewrite || null, translation: null, fetchedAt: Date.now() };
       this.state.savedArticles[id] = bundle;
       await this.persist();
@@ -174,6 +176,11 @@ export default class QiaomuRssPlugin extends Plugin {
     const path = `${folder}/subscriptions-${Date.now()}.opml`;
     await this.app.vault.create(path, content); return path;
   }
+  refreshPreferences() {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+      if (leaf.view instanceof ReaderView) leaf.view.refreshPreferences();
+    }
+  }
   resetViews() {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
       if (leaf.view instanceof ReaderView) leaf.view.reset();
@@ -184,7 +191,46 @@ class RssSettings extends PluginSettingTab {
   constructor(app: App, private plugin: QiaomuRssPlugin) { super(app, plugin); }
   getSettingDefinitions(): SettingDefinitionItem[] {
     const settings = this.plugin.state.settings;
+    const saveReading = async () => { this.plugin.refreshPreferences(); await this.plugin.persist(); };
     return [
+      { type: 'group', heading: '阅读与摘录', items: [
+        { name: '选中文字时显示摘录浮层', desc: '默认关闭。关闭后仍可拖拽选中文字到笔记。', render: setting => {
+          setting.addToggle(toggle => toggle.setValue(settings.selectionPopup).onChange(async value => { settings.selectionPopup = value; await saveReading(); }));
+        } },
+        { name: '正文字体', render: setting => { setting.addDropdown(drop => {
+          for (const font of readingFonts) drop.addOption(font.id, font.name);
+          drop.setValue(settings.fontFamily).onChange(async value => { settings.fontFamily = readingFontSchema.parse(value); await saveReading(); });
+        }); } },
+        { name: '正文字号', render: setting => { setting.addDropdown(drop => {
+          for (let size = 14; size <= 32; size++) drop.addOption(String(size), size + ' px');
+          drop.setValue(String(settings.fontSize)).onChange(async value => { settings.fontSize = Number(value); await saveReading(); });
+        }); } },
+        { name: '正文行距', render: setting => { setting.addDropdown(drop => {
+          for (let value = 15; value <= 24; value++) drop.addOption((value / 10).toFixed(1), (value / 10).toFixed(1) + ' 倍');
+          drop.setValue(settings.lineHeight.toFixed(1)).onChange(async value => { settings.lineHeight = Number(value); await saveReading(); });
+        }); } },
+        { name: '正文宽度', render: setting => { setting.addDropdown(drop => {
+          for (const width of [28, 36, 44]) drop.addOption(String(width), width + ' 字');
+          drop.setValue(String(settings.lineWidth)).onChange(async value => { settings.lineWidth = Number(value) as 28 | 36 | 44; await saveReading(); });
+        }); } },
+      ] },
+      { type: 'group', heading: '库内 Markdown 来源', items: [
+        { name: '阅读文件夹', desc: '包含子文件夹。可选择剪藏目录或其他 Markdown 文件夹；通过频道菜单进入。', render: setting => {
+          setting.addButton(button => button.setButtonText('添加文件夹').onClick(() => {
+            new VaultFolderPicker(this.app, folder => {
+              if (!settings.markdownFolders.includes(folder.path)) settings.markdownFolders.push(folder.path);
+              settings.lastSource = vaultSourceId(folder.path);
+              void this.plugin.persist().then(() => { this.plugin.resetViews(); this.update(); });
+            }).open();
+          }));
+        } },
+        ...settings.markdownFolders.map(folder => ({ name: folder === '/' ? '整个库' : folder, render: (setting: import('obsidian').Setting) => {
+          setting.addButton(button => button.setButtonText('移除').onClick(async () => {
+            settings.markdownFolders = settings.markdownFolders.filter(path => path !== folder);
+            await this.plugin.persist(); this.plugin.resetViews(); this.update();
+          }));
+        } })),
+      ] },
       { name: '我的订阅', desc: '添加 RSS / Atom、分组与 OPML 导入导出。', render: setting => {
         setting.addButton(button => button.setButtonText('管理订阅').onClick(() => this.plugin.manageSubscriptions()));
       } },
