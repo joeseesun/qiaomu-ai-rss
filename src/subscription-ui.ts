@@ -93,8 +93,11 @@ export class SubscriptionManager extends Modal {
       const row = this.list.createDiv('qrs-subscription-row');
       const info = row.createDiv('qrs-subscription-info');
       info.createDiv({ cls: 'qrs-subscription-name', text: feed.name });
-      info.createDiv({ cls: 'qrs-subscription-detail', text: `${feed.group || '未分组'} · ${new URL(feed.url).hostname} · ${feed.entries.length} 篇` });
+      info.createDiv({ cls: 'qrs-subscription-detail', text: `${feed.group || '未分组'} · ${new URL(feed.url).hostname} · ${feed.entries.length} 篇${feed.paused ? ' · 已暂停自动刷新' : ''}` });
       if (feed.error) info.createDiv({ cls: 'qrs-subscription-error', text: feed.error });
+      const pause = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `${feed.paused ? '恢复' : '暂停'}自动刷新 ${feed.name}` } });
+      setIcon(pause, feed.paused ? 'play' : 'pause'); pause.createSpan({ cls: 'qrs-visually-hidden', text: `${feed.paused ? '恢复' : '暂停'}自动刷新 ${feed.name}` });
+      pause.onclick = () => { void this.plugin.subscriptions.setPaused(feed.id, !feed.paused).then(() => { this.renderList(); this.changed(); }); };
       const edit = row.createEl('button', { cls: 'qrs-subscription-icon', attr: { 'data-qrs-label': `编辑 ${feed.name}` } });
       setIcon(edit, 'pencil'); edit.createSpan({ cls: 'qrs-visually-hidden', text: `编辑 ${feed.name}` });
       edit.onclick = () => new EditSubscription(this.plugin, feed, () => { this.renderList(); this.changed(); }).open();

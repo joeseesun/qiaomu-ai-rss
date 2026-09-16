@@ -27,11 +27,13 @@ export const pageSchema = z.object({ entries: z.array(entrySchema), hasMore: z.b
 export const subscriptionSchema = z.object({
   id: z.string(), url: z.string(), name: z.string(), group: z.string().default(''),
   entries: z.array(entrySchema).default([]), updatedAt: z.number().default(0), error: z.string().default(''),
+  etag: optionalText, lastModified: optionalText, paused: z.boolean().default(false),
+  errorCount: z.number().int().default(0), lastErrorAt: z.number().default(0),
 });
 export type Subscription = z.infer<typeof subscriptionSchema>;
 export const channelStateSchema = z.object({
   entries: z.array(entrySchema), bundle: bundleSchema.nullable(), mode: modeSchema,
-  filter: z.enum(['all', 'unread', 'favorites']), query: z.string(), unread: z.array(z.string()),
+  filter: z.enum(['all', 'unread', 'favorites', 'later']), query: z.string(), unread: z.array(z.string()),
   cursor: z.string(), hasMore: z.boolean(), listTop: z.number().nonnegative(), readerTop: z.number().nonnegative(),
   articlePending: z.boolean(),
 });
@@ -47,6 +49,8 @@ export const stateSchema = z.object({
   }).default({ baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
     fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [] }),
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
+  readLater: z.array(z.string()).default([]),
+  readAt: z.record(z.string(), z.number()).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),
   channelStates: z.record(z.string(), channelStateSchema).catch({}).default({}),
@@ -55,6 +59,52 @@ export const stateSchema = z.object({
 });
 export type State = z.infer<typeof stateSchema>;
 export function initialState(data: unknown): State { return stateSchema.parse(data ?? {}); }
+// Content-cache split: entry `content` (95% of persisted bytes) lives in a separate
+// cache file so data.json stays small and every persist() is cheap. In-memory
+// Entry objects always carry content; split/attach convert at the boundary.
+function stripEntry(entry: Entry, cache: Record<string, string>): Entry {
+  if (entry.content) { cache[entry.id] = entry.content; return { ...entry, content: undefined }; }
+  return entry;
+}
+export function splitContentCache(state: State): { slim: State; cache: Record<string, string> } {
+  const cache: Record<string, string> = {};
+  const stripBundle = (bundle: Bundle): Bundle => ({ ...bundle, entry: stripEntry(bundle.entry, cache) });
+  const mapBundles = (record: Record<string, Bundle>): Record<string, Bundle> =>
+    Object.fromEntries(Object.entries(record).map(([key, bundle]) => [key, stripBundle(bundle)]));
+  return {
+    slim: {
+      ...state,
+      subscriptions: state.subscriptions.map(feed => ({ ...feed, entries: feed.entries.map(entry => stripEntry(entry, cache)) })),
+      channelStates: Object.fromEntries(Object.entries(state.channelStates).map(([key, cs]) => [key, {
+        ...cs, entries: cs.entries.map(entry => stripEntry(entry, cache)),
+        bundle: cs.bundle ? stripBundle(cs.bundle) : cs.bundle,
+      }])),
+      entries: state.entries.map(entry => stripEntry(entry, cache)),
+      cache: mapBundles(state.cache), favorites: mapBundles(state.favorites), savedArticles: mapBundles(state.savedArticles),
+    },
+    cache,
+  };
+}
+// Strip bodies from a feed's entries without mutating shared row objects:
+// returns fresh entry objects so an open article (holding the old ref) keeps rendering.
+export function stripFeedBodies(entries: Entry[]): { entries: Entry[]; freedBytes: number; freedCount: number } {
+  let freedBytes = 0, freedCount = 0;
+  const next = entries.map(entry => {
+    if (!entry.content) return entry;
+    freedBytes += entry.content.length; freedCount++;
+    return { ...entry, content: undefined };
+  });
+  return { entries: next, freedBytes, freedCount };
+}
+export function attachContentCache(state: State, cache: Record<string, string>): void {
+  const attach = (entry: Entry): void => { if (!entry.content && typeof cache[entry.id] === 'string') entry.content = cache[entry.id]; };
+  for (const feed of state.subscriptions) for (const entry of feed.entries) attach(entry);
+  for (const cs of Object.values(state.channelStates)) { for (const entry of cs.entries) attach(entry); if (cs.bundle) attach(cs.bundle.entry); }
+  for (const entry of state.entries) attach(entry);
+  for (const bundle of Object.values(state.cache)) attach(bundle.entry);
+  for (const bundle of Object.values(state.favorites)) attach(bundle.entry);
+  for (const bundle of Object.values(state.savedArticles)) attach(bundle.entry);
+}
 export function titleOf(entry: Entry): string { return entry.titleZh?.trim() || entry.title; }
 export function safeUrl(value: string, base?: string): string | null {
   try {

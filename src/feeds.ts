@@ -83,7 +83,8 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
   const name = plain(text(parent, 'title'), doc).slice(0, 200) || new URL(url).hostname;
   const sourceId = `local:${await stableId(url)}`;
   const items = atom ? children(root, 'entry') : children(root.localName === 'RDF' ? root : parent, 'item');
-  const entries: Entry[] = []; const ids = new Set<string>(); let size = 0;
+  // Phase 1: cheap field extraction (no hashing, no sanitizing).
+  const pre: { item: Element; link: string | null; title: string; published: string; raw: string; contentBase: string; author: string; identity: string }[] = [];
   for (const item of items.slice(0, 200)) {
     const linkNode = atom ? children(item, 'link').find(el => !el.getAttribute('rel') || el.getAttribute('rel') === 'alternate') : child(item, 'link');
     const linkValue = atom ? linkNode?.getAttribute('href') : linkNode?.textContent;
@@ -94,15 +95,24 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     const title = plain(atom ? atomContent(child(item, 'title')) : text(item, 'title'), doc).slice(0, 300) || plain(raw, doc).slice(0, 80) || '未命名文章';
     const published = (atom ? text(item, 'published') || text(item, 'updated') : text(item, 'pubDate') || text(item, 'date')) || '';
     const identity = (atom ? text(item, 'id') : text(item, 'guid')) || link || `${title}\n${published}`;
-    const id = `local-${await stableId(`${sourceId}\n${identity}`)}`;
-    if (ids.has(id)) continue; ids.add(id);
-    const publishedTs = Date.parse(published);
     const contentBase = contentNode && hasXmlBase(contentNode) ? baseUrl(contentNode, url) : link || base;
-    const parsedContent = contentWithBase(raw.slice(0, 100_000), contentBase, doc);
-    const entry: Entry = { id, sourceId, origin: 'local', sourceName: name, title, link: link || url, image: entryImage(item, parsedContent.image, contentBase),
-      published, publishedTs: Number.isNaN(publishedTs) ? null : publishedTs,
-      author: atom ? text(child(item, 'author') || root, 'name') : text(item, 'creator') || text(item, 'author'),
-      summary: plain(raw, doc).slice(0, 240), content: (parsedContent.html || '<p>订阅源没有提供正文，请打开原文阅读。</p>') + (raw.length > 100_000 ? '<p>正文较长，已缓存部分内容。请打开原文阅读全文。</p>' : '') };
+    const author = atom ? text(child(item, 'author') || root, 'name') : text(item, 'creator') || text(item, 'author');
+    pre.push({ item, link, title, published, raw, contentBase, author, identity });
+  }
+  // Phase 2: hash all identities in parallel (was 200 sequential crypto awaits).
+  // Identity strings are byte-identical to before, so existing ids/readIds/favorites keep working.
+  const digests = await Promise.all(pre.map(p => stableId(`${sourceId}\n${p.identity}`)));
+  // Phase 3: sanitize in document order with size/entry caps.
+  const entries: Entry[] = []; const ids = new Set<string>(); let size = 0;
+  for (const [index, p] of pre.entries()) {
+    const id = `local-${digests[index]}`;
+    if (ids.has(id)) continue; ids.add(id);
+    const publishedTs = Date.parse(p.published);
+    const parsedContent = contentWithBase(p.raw.slice(0, 100_000), p.contentBase, doc);
+    const entry: Entry = { id, sourceId, origin: 'local', sourceName: name, title: p.title, link: p.link || url, image: entryImage(p.item, parsedContent.image, p.contentBase),
+      published: p.published, publishedTs: Number.isNaN(publishedTs) ? null : publishedTs,
+      author: p.author,
+      summary: plain(p.raw, doc).slice(0, 240), content: (parsedContent.html || '<p>订阅源没有提供正文，请打开原文阅读。</p>') + (p.raw.length > 100_000 ? '<p>正文较长，已缓存部分内容。请打开原文阅读全文。</p>' : '') };
     size += new TextEncoder().encode(JSON.stringify(entry)).byteLength;
     if (size > MAX_STORED_FEED) break;
     entries.push(entry);

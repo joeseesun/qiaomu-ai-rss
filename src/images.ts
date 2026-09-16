@@ -24,6 +24,30 @@ export class LocalImages {
     const promise = this.read(safe).finally(() => this.pending.delete(safe));
     this.pending.set(safe, promise); return promise;
   }
+  async clear(): Promise<{ files: number; bytes: number }> {
+    let files = 0, bytes = 0;
+    try {
+      if (!await this.vault.adapter.exists(this.directory)) return { files, bytes };
+      const { files: names } = await this.vault.adapter.list(this.directory);
+      for (const file of names.filter(name => /\/[a-f0-9]{64}\.img$/.test(name))) {
+        try { bytes += (await this.vault.adapter.stat(file))?.size || 0; await this.vault.adapter.remove(file); files++; }
+        catch { /* keep going */ }
+      }
+    } catch { /* cache dir unreadable; nothing to do */ }
+    return { files, bytes };
+  }
+  async usage(): Promise<{ files: number; bytes: number }> {
+    let files = 0, bytes = 0;
+    try {
+      if (!await this.vault.adapter.exists(this.directory)) return { files, bytes };
+      const { files: names } = await this.vault.adapter.list(this.directory);
+      for (const file of names.filter(name => /\/[a-f0-9]{64}\.img$/.test(name))) {
+        try { bytes += (await this.vault.adapter.stat(file))?.size || 0; files++; }
+        catch { /* keep going */ }
+      }
+    } catch { /* ignore */ }
+    return { files, bytes };
+  }
   private async read(url: string): Promise<Blob> {
     const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(url));
     const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
