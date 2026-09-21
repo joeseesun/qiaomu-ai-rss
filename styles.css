@@ -225,8 +225,10 @@
 
 /* The reader provides its own compact navigation and actions. */
 .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-header { display: none; }
-/* The host already keeps the phone status bar safe; don't reserve another gap for the hidden header. */
-.is-phone .mod-root .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-content { margin-top:0; }
+/* With the host header hidden, reserve the status-bar inset but not its former header height. */
+.is-phone .mod-root .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-content { margin-top:max(var(--safe-area-inset-top,0px),env(safe-area-inset-top,0px)); }
+.is-phone .qrs-sidebar-toolbar .qrs-channel { min-height:44px; }
+.is-phone .qrs-sidebar-toolbar .qrs-icon { width:44px; height:44px; }
 
 .qrs-filters .qrs-settings-button { margin-left:auto; }
 
