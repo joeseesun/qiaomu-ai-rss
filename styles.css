@@ -225,8 +225,8 @@
 
 /* The reader provides its own compact navigation and actions. */
 .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-header { display: none; }
-/* Obsidian's phone view spacing includes a hidden header. Keep only the status-bar safe area. */
-.is-phone .mod-root .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-content { margin-top:var(--safe-area-inset-top,env(safe-area-inset-top,0px)); }
+/* The host already keeps the phone status bar safe; don't reserve another gap for the hidden header. */
+.is-phone .mod-root .workspace-leaf-content[data-type="qiaomu-ai-rss-reader"] > .view-content { margin-top:0; }
 
 .qrs-filters .qrs-settings-button { margin-left:auto; }
 
