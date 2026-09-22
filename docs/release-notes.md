@@ -1,2 +1,2 @@
-- All-In 与 Joe Rogan 两个 YouTube 播客改用 Podscribe API 提供完整单集列表和源文稿；已有订阅自动切到完整节目，保留历史收藏与已读记录。
-- YouTube Shorts 不再被当作完整播客单集请求文稿。历史短片或未匹配的单集会说明真实原因，不再笼统提示暂时无法取得。
+- 播客探索页新增 Reader 服务已启用的小宇宙节目，当前包括张小珺、42章经、晚点聊、半拿铁与 Next Token；海外精选与搜索继续保留。
+- All-In 与 Joe Rogan 等现有 YouTube 播客使用 Podscribe 单集与源文稿，不再把 Shorts 当成完整单集。服务端没有完整逐字稿的小宇宙节目仍按实际可用内容展示。
