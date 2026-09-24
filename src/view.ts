@@ -12,7 +12,7 @@ import { articleFragment } from './content';
 import { saveArticlePdf } from './desktop-export';
 import { saveArticleToVault } from './vault-export';
 import { cleanExcerpt } from './excerpt';
-import { renderMedia, stopMedia, youtubeEmbedUrl } from './media';
+import { AudioDock, pauseVideos, renderMedia, stopMedia, youtubeEmbedUrl } from './media';
 import { sameRemoteContent, uniqueRemoteEntries, wechatArticleKey, xiaoyuzhouEpisodeKey } from './wechat-articles';
 import { featuredXiaoyuzhouPodcasts, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuDividerIcons, qiaomuDividers, qiaomuFeaturedEntries, readerChannelSources } from './discovery';
 import { articleNoteKey, modeLabels, modeSchema, podcastDefaultMode, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
@@ -72,6 +72,7 @@ export class ReaderView extends ItemView {
   private selectionCapture?: SelectionCapture;
   private list!: HTMLElement;
   private reader!: HTMLElement;
+  private audioDock?: AudioDock;
   private status!: HTMLElement;
   private channelButton!: HTMLButtonElement;
   private searchBox!: HTMLElement;
@@ -164,7 +165,7 @@ export class ReaderView extends ItemView {
     return Promise.resolve();
   }
   onClose(): Promise<void> {
-    stopMedia(this.reader);
+    stopMedia(this.reader); this.audioDock?.stop();
     this.saveChannel(); this.channelPicker?.close(false); this.stopRestoring();
     if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
     this.selectionCapture?.dispose();
@@ -173,6 +174,7 @@ export class ReaderView extends ItemView {
   }
   reset() {
     if (this.reader) stopMedia(this.reader);
+    this.audioDock?.stop();
     this.channelPicker?.close(false); this.stopRestoring();
     if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
     this.unreadSession.clear();
@@ -254,6 +256,7 @@ export class ReaderView extends ItemView {
     this.list = sidebar.createDiv({ cls: 'qrs-list' });
     this.createResizeHandle(body);
     this.reader = body.createEl('section', { cls: 'qrs-reader', attr: { tabindex: '0' } });
+    this.audioDock = new AudioDock(root, entry => this.openEpisode(entry));
     root.onkeydown = event => this.onReaderKey(event);
     for (const element of [this.list, this.reader]) {
       for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const) element.addEventListener(event, () => this.stopRestoring(), { passive: true });
@@ -338,7 +341,7 @@ export class ReaderView extends ItemView {
     if (refresh) void this.loadEntries();
   }
   private toggleSearch(show = this.searchBox.hasClass('is-hidden')) {
-    this.focused = false; this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
+    this.focused = false; this.contentEl.removeClass('qrs-focus'); this.showList();
     this.searchBox.toggleClass('is-hidden', !show);
     if (show) this.searchInput.focus();
     else { this.query = ''; this.searchInput.value = ''; this.unreadSession.clear(); this.renderList(); this.contentEl.focus(); }
@@ -366,9 +369,15 @@ export class ReaderView extends ItemView {
       event.preventDefault(); resize(this.plugin.state.settings.listWidth + (event.key === 'ArrowLeft' ? -20 : 20)); this.run(() => this.plugin.persist());
     };
   }
+  /** On narrow layouts this hides the reader, so a playing video has no visible controls. */
+  private showList() { this.contentEl.removeClass('qrs-has-article'); pauseVideos(this.reader); }
+  private openEpisode(entry: Entry) {
+    if (this.bundle?.entry.id !== entry.id) { void this.openArticle(entry); return; }
+    this.contentEl.addClass('qrs-has-article'); this.reader.focus({ preventScroll: true });
+  }
   private toggleFocus() {
     if (!this.bundle) return;
-    if (this.contentEl.clientWidth <= 650) { this.contentEl.removeClass('qrs-has-article'); return; }
+    if (this.contentEl.clientWidth <= 650) { this.showList(); return; }
     this.focused = !this.focused; this.contentEl.toggleClass('qrs-focus', this.focused); this.renderReader(true);
   }
   private onReaderKey(event: KeyboardEvent) {
@@ -382,7 +391,7 @@ export class ReaderView extends ItemView {
     if (key === 'j' || key === 'k') { event.preventDefault(); event.stopPropagation(); this.navigate(key === 'j' ? 1 : -1); }
     if (event.key === '[' || event.key === 'f') { event.preventDefault(); this.toggleFocus(); }
     if (event.key === '/') { event.preventDefault(); this.toggleSearch(true); }
-    if (event.key === 'Escape') { this.focused = false; this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article'); }
+    if (event.key === 'Escape') { this.focused = false; this.contentEl.removeClass('qrs-focus'); this.showList(); }
   }
   private navigate(direction: number) {
     const entries = this.visibleEntries(); const index = entries.findIndex(entry => entry.id === this.bundle?.entry.id);
@@ -561,6 +570,7 @@ export class ReaderView extends ItemView {
     // Keep this unread reading session navigable after opening marks entries read.
     if (this.filter === 'unread') this.unreadSession.add(entry.id);
     const version = ++this.articleVersion; const state = this.plugin.state;
+    this.audioDock?.open(entry);
     this.bundle = state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
     state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000); this.run(() => this.plugin.persist());
     this.mode = entry.origin === 'local' || entry.origin === 'vault' ? 'original'
@@ -592,7 +602,7 @@ export class ReaderView extends ItemView {
   showSavedArticle(bundle: Bundle, mode: Mode) {
     this.stopRestoring();
     this.articleVersion++; this.articleLoading = false;
-    this.bundle = bundle; this.mode = mode; this.message = '';
+    this.bundle = bundle; this.mode = mode; this.message = ''; this.audioDock?.open(bundle.entry);
     this.reader.setAttribute('aria-busy', 'false'); this.contentEl.addClass('qrs-has-article');
     this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
   }
@@ -649,6 +659,9 @@ export class ReaderView extends ItemView {
     const scroll = this.reader.scrollTop;
     const previous = keepContent ? this.reader.querySelector('.qrs-article') : null;
     if (!previous) { stopMedia(this.reader); this.clearImages(); }
+    // An episode the listener has started keeps playing while they browse; otherwise follow the shown article.
+    const dock = this.audioDock;
+    if (dock && dock.entry?.id !== this.bundle?.entry.id && !dock.started()) { if (this.bundle) dock.open(this.bundle.entry); else dock.stop(); }
     this.reader.empty();
     // A removed toolbar button must not leave keyboard focus on document.body.
     if (restoreFocus) this.reader.focus({ preventScroll: true });

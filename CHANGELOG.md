@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.1
+
+- Move podcast audio into a player bar at the bottom of the reader. It keeps playing with visible controls after returning to the list or switching channels; opening another article stops it, the episode title jumps back to the episode, and the close button stops playback. Embedded YouTube videos pause when the reader is hidden on narrow layouts.
+
 ## 0.20.0 — local development candidate
 
 - Add Discover subscriptions with six editorial recommendations and WeChat, podcast and independent-blog catalogs.
