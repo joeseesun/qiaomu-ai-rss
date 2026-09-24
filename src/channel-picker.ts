@@ -94,7 +94,7 @@ export class ChannelPicker extends Component {
       if (this.icons && choice.section === '我的订阅源') this.icons.render(button, choice); else channelMark(button, choice); const copy = button.createSpan('qrs-channel-copy');
       copy.createSpan({ cls: 'qrs-channel-name', text: query ? choice.name : choice.short || choice.name });
       if (query && this.where(choice)) copy.createSpan({ cls: 'qrs-channel-subtitle', text: this.where(choice) });
-      else if (choice.section === '乔木分组' || choice.section === '订阅分组') copy.createSpan({ cls: 'qrs-channel-count', text: String(this.children(choice).length) });
+      else if (choice.section === '乔木分组' || choice.section === '订阅分组') { copy.addClass('has-count'); copy.createSpan({ cls: 'qrs-channel-count', text: String(this.children(choice).length) }); }
       if (choice.id === this.active) setIcon(button.createSpan('qrs-channel-check'), 'check');
       button.onclick = () => { this.close(); this.choose(choice); };
       if (!query && (choice.section === '订阅分组' || choice.section === '乔木分组') && this.children(choice).length) {

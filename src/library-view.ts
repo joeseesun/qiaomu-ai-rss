@@ -104,7 +104,7 @@ export class LibraryPanel extends Component {
     }
   }
   private syncSelection() {
-    for (const check of this.list.querySelectorAll<HTMLInputElement>('input[data-id]')) check.checked = this.selected.has(check.dataset.id!);
+    for (const check of this.list.querySelectorAll<HTMLInputElement>('input[data-id]')) { check.checked = this.selected.has(check.dataset.id!); check.parentElement?.toggleClass('is-selected', check.checked); }
     for (const pick of this.list.querySelectorAll<HTMLInputElement>('input[data-ids]')) {
       const ids = pick.dataset.ids ? pick.dataset.ids.split('\n') : [];
       pick.checked = !!ids.length && ids.every(id => this.selected.has(id)); pick.indeterminate = !pick.checked && ids.some(id => this.selected.has(id));
@@ -170,7 +170,7 @@ export class LibraryPanel extends Component {
       for (const item of items) {
         if (shown++ >= this.limit) continue;
         const row = section.createDiv({ cls: 'qrs-subscription-row', attr: { 'data-source': item.id } });
-        const check = row.createEl('input', { type: 'checkbox' }); check.checked = this.selected.has(item.id);
+        const check = row.createEl('input', { type: 'checkbox' }); check.checked = this.selected.has(item.id); row.toggleClass('is-selected', check.checked);
         const labelId = crypto.randomUUID(); check.setAttribute('aria-labelledby', labelId);
         check.dataset.id = item.id;
         check.onchange = () => { if (check.checked) this.selected.add(item.id); else this.selected.delete(item.id); this.syncSelection(); };

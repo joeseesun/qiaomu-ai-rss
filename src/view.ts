@@ -418,8 +418,8 @@ export class ReaderView extends ItemView {
         for (let i = 0; i < ids.length; i += 8) results.push(...await Promise.allSettled(ids.slice(i, i + 8).map(id => api.entries(id, '', 12).then(page => page.entries))));
         if (this.closed || version !== this.listVersion) return;
         const entries = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
-        const failed = results.filter(result => result.status === 'rejected');
-        if (!entries.length && failed.length) throw (failed[0] as PromiseRejectedResult).reason;
+        const failed = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        if (!entries.length && failed.length) throw failed[0].reason;
         this.entries = [...new Map(entries.map(entry => [entry.id, entry])).values()].sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
         this.cursor = ''; this.hasMore = false;
         await this.plugin.persist();
