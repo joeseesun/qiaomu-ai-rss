@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0
+
+- Localize the interface into eight languages that follow Obsidian's language setting: 简体中文, English, 繁體中文, 日本語, 한국어, Español, Français and Deutsch. Menus, dialogs, settings, notices, reading versions, font names and relative dates all translate; feed content, group names and note text stay as written.
+- Enable identifier minification so the eight-language message tables fit the 5 MB release budget.
+
 ## 0.20.1
 
 - Move podcast audio into a player bar at the bottom of the reader. It keeps playing with visible controls after returning to the list or switching channels; opening another article stops it, the episode title jumps back to the episode, and the close button stops playback. Embedded YouTube videos pause when the reader is hidden on narrow layouts.

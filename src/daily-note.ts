@@ -1,5 +1,6 @@
 import { moment, normalizePath, type Vault } from 'obsidian';
 import { safeUrl, titleOf, type Entry, type Mode } from './model';
+import { fail, t } from './i18n';
 
 export interface DailyNoteSettings { folder: string; format: string; template: string }
 export interface DateFormatter { format(pattern: string): string }
@@ -37,8 +38,8 @@ export function articleNoteUrl(options: CaptureOptions): string {
 export function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
 export function dailyNoteLink(entry: Entry, options: CaptureOptions = {}): string {
   const link = options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
-  if (!link) throw new Error('这篇文章没有可用的链接。');
-  const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || '未命名文章');
+  if (!link) fail('error.noArticleLink');
+  const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || t('untitled.article'));
   const original = (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
   return `[${title}](<${link}>)` + (options.article && original ? ` · [原文](<${original}>)` : '');
 }

@@ -1,7 +1,8 @@
 import TurndownService from 'turndown';
 import { gfm } from 'turndown-plugin-gfm';
 import { articleFragment } from './content';
-import { modeLabels, safeUrl, titleOf, type Bundle, type Mode } from './model';
+import { modeLabel, safeUrl, titleOf, type Bundle, type Mode } from './model';
+import { t } from './i18n';
 
 function escapeMarkdown(value: string): string {
   return value.replace(/[\r\n]+/g, ' ').replace(/([\\`*_{}[\]()#+.!|>])/g, '\\$1').trim();
@@ -9,8 +10,8 @@ function escapeMarkdown(value: string): string {
 
 /** A file-system-safe base name shared by every export format: "<title> - <mode>". */
 export function exportBaseName(bundle: Bundle, mode: Mode): string {
-  const title = [...titleOf(bundle.entry).replace(/[\\/:*?"<>|#^[\]]/g, ' ')].filter(char => char.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 90) || '文章';
-  return `${title} - ${modeLabels[mode]}`;
+  const title = [...titleOf(bundle.entry).replace(/[\\/:*?"<>|#^[\]]/g, ' ')].filter(char => char.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 90) || t('export.untitledArticle');
+  return `${title} - ${modeLabel(mode)}`;
 }
 
 export function articleExportBody(bundle: Bundle, mode: Mode, doc: Document, images: boolean): HTMLElement | null {
@@ -40,9 +41,9 @@ export function articleExportMarkdown(bundle: Bundle, mode: Mode, body: HTMLElem
   if (!content) return null;
   const entry = bundle.entry;
   const title = escapeMarkdown(titleOf(entry)).replace(/\\([#+.!|>()])/g, '$1');
-  const facts = [entry.sourceName?.trim(), entry.author?.trim(), entry.published?.trim().slice(0, 10), modeLabels[mode]].filter(Boolean);
+  const facts = [entry.sourceName?.trim(), entry.author?.trim(), entry.published?.trim().slice(0, 10), modeLabel(mode)].filter(Boolean);
   const header = [`# ${title}`, facts.length ? `> ${facts.map(value => escapeMarkdown(value!)).join(' · ')}` : ''];
   const source = entry.link ? safeUrl(entry.link) : null;
-  if (source) header.push(`> [原文链接](<${source}>)`);
+  if (source) header.push(`> [${t('export.originalLink')}](<${source}>)`);
   return `${header.filter(Boolean).join('\n\n')}\n\n${content}\n`;
 }

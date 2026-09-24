@@ -4,9 +4,10 @@ import { fontFamily, readingFonts } from './fonts';
 import { safeUrl, titleOf, type Bundle, type Mode } from './model';
 import type { State } from './model';
 import type { LocalImages } from './images';
+import { fail, t } from './i18n';
 
 function desktop() {
-  if (!Platform.isDesktopApp) throw new Error('此导出方式目前仅支持 Obsidian 桌面版。');
+  if (!Platform.isDesktopApp) fail('error.desktopOnly');
   // Obsidian's desktop renderer provides CommonJS require; native dynamic import cannot resolve electron here.
   // eslint-disable-next-line @typescript-eslint/no-require-imports, no-undef -- Obsidian exposes Electron through require in its desktop renderer.
   const { remote } = require('electron') as typeof import('electron');
@@ -24,7 +25,7 @@ async function choosePdfFile(bundle: Bundle, mode: Mode, directory: string): Pro
   const { remote, path } = desktop();
   const name = `${exportBaseName(bundle, mode)}.pdf`;
   const result = await remote.dialog.showSaveDialog(remote.getCurrentWindow(), {
-    title: '导出为 PDF',
+    title: t('reader.exportPdf'),
     defaultPath: directory ? path.join(directory, name) : name,
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
@@ -33,7 +34,7 @@ async function choosePdfFile(bundle: Bundle, mode: Mode, directory: string): Pro
 
 async function assertNewFile(file: string): Promise<void> {
   const { fs } = desktop();
-  try { await fs.access(file); throw new Error('文件已存在，请选择其他文件名。'); }
+  try { await fs.access(file); fail('error.fileExists'); }
   catch (error) { if ((error as { code?: string }).code !== 'ENOENT') throw error; }
 }
 
@@ -47,7 +48,7 @@ async function embedImages(article: HTMLElement, original: HTMLElement, images: 
       if (source?.complete && source.naturalWidth) drawable = source;
       else {
         const url = img.dataset.qrsImage || img.getAttribute('src');
-        if (!url) throw new Error('图片地址不可用。');
+        if (!url) fail('error.imageUrlUnavailable');
         drawable = await createImageBitmap(await images.load(url));
       }
       const width = drawable instanceof HTMLImageElement ? drawable.naturalWidth : drawable.width;
@@ -55,7 +56,7 @@ async function embedImages(article: HTMLElement, original: HTMLElement, images: 
       const canvas = article.ownerDocument.createElement('canvas');
       canvas.width = Math.min(1200, width); canvas.height = Math.round(height * canvas.width / width);
       const context = canvas.getContext('2d');
-      if (!context) throw new Error('图片绘制不可用。');
+      if (!context) fail('error.imageDrawUnavailable');
       context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(drawable, 0, 0, canvas.width, canvas.height);
       img.src = canvas.toDataURL('image/jpeg', 0.85);
@@ -88,7 +89,7 @@ a{color:#245d9b;text-decoration:underline;overflow-wrap:anywhere}
 export async function saveArticlePdf(bundle: Bundle, mode: Mode, currentArticle: HTMLElement, images: LocalImages, settings: State['settings']): Promise<{ path: string; missingImages: number } | null> {
   const article = currentArticle.cloneNode(true) as HTMLElement;
   const prose = article.querySelector('.qrs-prose');
-  if (!prose || (!prose.textContent?.trim() && !prose.querySelector('img'))) throw new Error('当前阅读版本没有可导出的正文。');
+  if (!prose || (!prose.textContent?.trim() && !prose.querySelector('img'))) fail('error.noExportableContent');
   article.querySelectorAll('.qrs-media,.qrs-feedback,.qrs-empty,audio,video,iframe,button,script,style,object,embed').forEach(element => element.remove());
   const file = await choosePdfFile(bundle, mode, settings.pdfDirectory);
   if (!file) return null;
@@ -97,7 +98,7 @@ export async function saveArticlePdf(bundle: Bundle, mode: Mode, currentArticle:
   const source = bundle.entry.link ? safeUrl(bundle.entry.link) : null;
   if (source) {
     const footer = article.ownerDocument.createElement('p'); footer.className = 'qrs-export-source';
-    const anchor = article.ownerDocument.createElement('a'); anchor.href = source; anchor.textContent = `原文链接：${source}`;
+    const anchor = article.ownerDocument.createElement('a'); anchor.href = source; anchor.textContent = t('export.originalLinkPrefix', { source });
     footer.append(anchor); article.append(footer);
   }
   const title = article.ownerDocument.createElement('title'); title.textContent = titleOf(bundle.entry);
@@ -118,7 +119,7 @@ export async function saveArticlePdf(bundle: Bundle, mode: Mode, currentArticle:
     await win.loadFile(page);
     await win.webContents.executeJavaScript('document.fonts.ready.then(() => Promise.all(Array.from(document.images).map(image => image.decode().catch(() => {}))))');
     const pdf = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true });
-    if (new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-') throw new Error('PDF 生成失败。');
+    if (new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-') fail('error.pdfFailed');
     await fs.writeFile(file, pdf, { flag: 'wx' });
     settings.pdfDirectory = path.dirname(file);
     return { path: file, missingImages };

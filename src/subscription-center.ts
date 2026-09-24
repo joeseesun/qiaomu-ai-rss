@@ -2,6 +2,7 @@ import { ItemView, Modal, type App, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { DiscoveryPanel } from './discovery-view';
 import { LibraryPanel } from './library-view';
+import { t } from './i18n';
 
 export type CenterTab = 'library' | 'discover';
 
@@ -14,8 +15,8 @@ export class SubscriptionCenter extends Modal {
   onOpen() {
     this.modalEl.addClass('qrs-modal', 'qrs-center');
     const head = this.contentEl.createDiv('qrs-center-head');
-    this.tabs = head.createDiv({ cls: 'qrs-center-tabs', attr: { role: 'tablist', 'aria-label': '订阅中心' } });
-    for (const [tab, label] of [['library', '订阅管理'], ['discover', '发现订阅']] as const) {
+    this.tabs = head.createDiv({ cls: 'qrs-center-tabs', attr: { role: 'tablist', 'aria-label': t('center.aria') } });
+    for (const [tab, label] of [['library', t('center.tab.library')], ['discover', t('center.tab.discover')]] as const) {
       const button = this.tabs.createEl('button', { text: label, attr: { role: 'tab', 'data-tab': tab } });
       button.onclick = () => this.show(tab);
       button.onkeydown = e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); const next = tab === 'library' ? 'discover' : 'library'; this.show(next); this.tabs.querySelector<HTMLElement>(`[data-tab=${next}]`)?.focus(); } };
@@ -49,6 +50,6 @@ export const RETIRED_VIEW_TYPES = ['qiaomu-ai-rss-discovery', 'qiaomu-ai-rss-lib
 export class RetiredView extends ItemView {
   constructor(leaf: WorkspaceLeaf, private type: string) { super(leaf); }
   getViewType() { return this.type; }
-  getDisplayText() { return '订阅中心'; }
+  getDisplayText() { return t('center.aria'); }
   onOpen() { window.setTimeout(() => this.leaf.detach(), 0); return Promise.resolve(); }
 }

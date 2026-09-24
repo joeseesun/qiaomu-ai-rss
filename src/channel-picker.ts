@@ -3,6 +3,7 @@ import { addSearchClear } from './search-clear';
 import { compareChannelNames } from './channel-order';
 import { qiaomuDividers } from './discovery';
 import { Component, Platform, setIcon } from 'obsidian';
+import { dividerLabel, t } from './i18n';
 export type ChannelSection = '聚合' | '乔木分组' | '订阅分组' | '乔木频道' | '我的订阅源';
 export interface ChannelChoice { id: string; name: string; section: ChannelSection; subtitle: string; icon?: string; monogram?: string; group?: string; divider?: string; short?: string; site?: string; url?: string; image?: string; kind?: string }
 export function channelMark(parent: HTMLElement, choice: ChannelChoice) {
@@ -30,14 +31,14 @@ export class ChannelPicker extends Component {
     let startY = 0;
     handle.onpointerdown = e => { startY = e.clientY; handle.setPointerCapture(e.pointerId); };
     handle.onpointerup = e => { if (e.clientY - startY > 60) this.close(); };
-    this.panel.createEl('h2', { text: '切换频道', cls: mobile ? 'qrs-channel-heading' : 'qrs-visually-hidden', attr: { id: titleId } });
+    this.panel.createEl('h2', { text: t('channel.switch'), cls: mobile ? 'qrs-channel-heading' : 'qrs-visually-hidden', attr: { id: titleId } });
     const searchId = titleId + '-search';
-    this.panel.createEl('label', { text: '搜索频道', cls: 'qrs-visually-hidden', attr: { for: searchId } });
+    this.panel.createEl('label', { text: t('channel.search'), cls: 'qrs-visually-hidden', attr: { for: searchId } });
     const top = this.panel.createDiv('qrs-channel-top');
-    this.search = top.createEl('input', { type: 'search', placeholder: '搜索频道…', attr: { id: searchId } });
+    this.search = top.createEl('input', { type: 'search', placeholder: t('channel.searchPlaceholder'), attr: { id: searchId } });
     addSearchClear(this.search);
     if (this.manage) {
-      const manage = top.createEl('button', { cls: 'qrs-channel-manage' }); setIcon(manage.createSpan(), 'settings-2'); manage.createSpan({ text: '管理订阅' });
+      const manage = top.createEl('button', { cls: 'qrs-channel-manage' }); setIcon(manage.createSpan(), 'settings-2'); manage.createSpan({ text: t('channel.manage') });
       manage.onclick = () => { this.close(false); this.manage!(); };
     }
     this.rows = this.panel.createDiv('qrs-channel-options');
@@ -81,9 +82,9 @@ export class ChannelPicker extends Component {
     return [];
   }
   private where(choice: ChannelChoice) {
-    if (choice.section === '乔木频道') return `乔木精选 · ${choice.divider}`;
-    if (choice.section === '我的订阅源') return `我的订阅${choice.group ? ` · ${this.choices.find(c => c.id === `@group:${choice.group}`)?.name ?? ''}` : ''}`;
-    return choice.section === '乔木分组' ? '乔木精选' : choice.section === '订阅分组' ? '我的订阅' : '';
+    if (choice.section === '乔木频道') return `${t('channel.featured')} · ${dividerLabel(choice.divider || '')}`;
+    if (choice.section === '我的订阅源') return `${t('channel.mine')}${choice.group ? ` · ${this.choices.find(c => c.id === `@group:${choice.group}`)?.name ?? ''}` : ''}`;
+    return choice.section === '乔木分组' ? t('channel.featured') : choice.section === '订阅分组' ? t('channel.mine') : '';
   }
   private render() {
     this.icons?.clear(); this.rows.empty();
@@ -100,7 +101,7 @@ export class ChannelPicker extends Component {
       if (!query && (choice.section === '订阅分组' || choice.section === '乔木分组') && this.children(choice).length) {
         const key = choice.id, open = this.expanded.has(key);
         const toggle = wrap.createEl('button', { cls: 'qrs-channel-expand', attr: { 'aria-expanded': String(open), 'data-group-toggle': key } });
-        setIcon(toggle, open ? 'chevron-down' : 'chevron-right'); toggle.createSpan({ cls: 'qrs-visually-hidden', text: `${open ? '收起' : '展开'}${choice.name}` });
+        setIcon(toggle, open ? 'chevron-down' : 'chevron-right'); toggle.createSpan({ cls: 'qrs-visually-hidden', text: t(open ? 'channel.collapse' : 'channel.expand', { name: choice.name }) });
         toggle.onclick = () => {
           if (open) this.expanded.delete(key); else this.expanded.add(key);
           if (choice.section === '订阅分组') this.groupState?.save(key.slice(7), open);
@@ -112,13 +113,13 @@ export class ChannelPicker extends Component {
     if (query) {
       const matches = this.choices.filter(c => `${c.name} ${c.subtitle} ${this.where(c)}`.toLocaleLowerCase().includes(query));
       matches.forEach(c => row(c));
-      if (!matches.length) this.rows.createDiv({ cls: 'qrs-channel-empty', text: '没有匹配频道' });
+      if (!matches.length) this.rows.createDiv({ cls: 'qrs-channel-empty', text: t('channel.noMatch') });
       return;
     }
-    this.rows.createDiv({ cls: 'qrs-channel-section', text: '乔木精选' });
+    this.rows.createDiv({ cls: 'qrs-channel-section', text: t('channel.featured') });
     this.choices.filter(c => c.id === '').forEach(c => row(c));
     for (const divider of qiaomuDividers) { const group = this.choices.find(c => c.id === `@qiaomu:${divider}`); if (group && this.children(group).length) row(group, 1); }
-    this.rows.createDiv({ cls: 'qrs-channel-section', text: '我的订阅' });
+    this.rows.createDiv({ cls: 'qrs-channel-section', text: t('channel.mine') });
     this.choices.filter(c => c.id === '@local').forEach(c => row(c));
     this.choices.filter(c => c.section === '订阅分组').forEach(c => row(c, 1));
     this.choices.filter(c => c.section === '我的订阅源' && !c.group).forEach(c => row(c, 1));

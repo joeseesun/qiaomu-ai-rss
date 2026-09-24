@@ -1,9 +1,12 @@
 import { migrateLibrary } from './personal-library';
 import { z } from 'zod';
+import { t } from './i18n';
 
 export const modeSchema = z.enum(['rewrite', 'translation', 'original']);
 export type Mode = z.infer<typeof modeSchema>;
-export const modeLabels: Record<Mode, string> = { rewrite: '乔木改写', translation: '中文翻译', original: '原文' };
+export function modeLabel(mode: Mode): string {
+  return t(mode === 'rewrite' ? 'mode.rewrite' : mode === 'translation' ? 'mode.translation' : 'mode.original');
+}
 export const readingFontSchema = z.enum(['serif', 'sans', 'sourceHanSerif', 'sourceHanSans', 'wenkai', 'zhenkai', 'fangsong', 'custom']);
 export type ReadingFont = z.infer<typeof readingFontSchema>;
 const optionalText = z.string().nullish();
@@ -102,14 +105,14 @@ export function safeUrl(value: string, base?: string): string | null {
 export function serviceUrl(value: string): string {
   const url = new URL(value.trim());
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || !['', '/'].includes(url.pathname)) {
-    throw new Error('请输入 HTTPS 服务地址，不包含路径、账号或查询参数。');
+    throw new Error(t('error.serviceUrlInvalid'));
   }
   return url.origin;
 }
 export function folderPath(value: string): string {
   const segments = value.trim().replace(/\\/g, '/').split('/');
   if (!segments.length || segments.some(s => !s || s.startsWith('.') || /[:*?"<>|]/.test(s) || [...s].some(c => c.charCodeAt(0) < 32))) {
-    throw new Error('请输入库内文件夹名称，不包含隐藏目录、空段或特殊字符。');
+    throw new Error(t('error.folderNameInvalid'));
   }
   return segments.join('/');
 }
