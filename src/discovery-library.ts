@@ -2,6 +2,7 @@ import { z } from 'zod';
 import tidings from './data/tidings.json';
 import { discoveryFeeds, independentBlogs, podcastRecommendations, wechatFeeds } from './discovery';
 import { feedUrl } from './feeds';
+import { t } from './i18n';
 export type DiscoverKind = 'wechat' | 'podcast' | 'blogs' | 'more';
 export interface DiscoverSource { id: string; name: string; url?: string; site?: string; image?: string; podcastId?: string; kind: DiscoverKind; description: string; group: string; language: string; provenance: string; recommended?: boolean; tags?: string[] }
 const feedSchema = z.object({ id: z.string(), title: z.string(), feed_url: z.string(), site_url: z.string().optional(), description: z.string().default(''), category: z.string(), kind: z.string(), language: z.string(), packs: z.array(z.string()), validated_at: z.string().optional() });
@@ -10,19 +11,17 @@ export type TidingsData = z.infer<typeof tidingsSchema>;
 export const tidingsSnapshot: TidingsData = tidingsSchema.parse(tidings);
 export const tidingsSource = tidings.source;
 export function tidingsItems(data: TidingsData): DiscoverSource[] {
-  return data.feeds.flatMap(feed => { try { return [{ id: `tidings-${feed.id}`, name: feed.title, url: feedUrl(feed.feed_url), site: feed.site_url, description: feed.description, group: feed.category, language: feed.language === 'zh' ? '中文' : '英文', provenance: 'Tidings · 目录收录', tags: feed.packs, kind: feed.packs.includes('wechat') ? 'wechat' as const : feed.kind === 'podcast' || feed.packs.includes('podcasts') ? 'podcast' as const : feed.packs.includes('blogs') ? 'blogs' as const : 'more' as const }]; } catch { return []; } });
+  return data.feeds.flatMap(feed => { try { return [{ id: `tidings-${feed.id}`, name: feed.title, url: feedUrl(feed.feed_url), site: feed.site_url, description: feed.description, group: feed.category, language: feed.language === 'zh' ? '中文' : '英文', provenance: t('discovery.tidingsProvenance'), tags: feed.packs, kind: feed.packs.includes('wechat') ? 'wechat' as const : feed.kind === 'podcast' || feed.packs.includes('podcasts') ? 'podcast' as const : feed.packs.includes('blogs') ? 'blogs' as const : 'more' as const }]; } catch { return []; } });
 }
-export const typeLabels: Record<DiscoverKind, string> = { wechat: '公众号', podcast: '播客', blogs: '独立博客', more: '其他来源' };
 export type DiscoverCollection = 'wechat' | 'podcast' | 'blogs';
-export const collectionLabels: Record<DiscoverCollection, string> = { wechat: '公众号', podcast: '播客', blogs: '独立博客和其他' };
 export function inCollection(item: DiscoverSource, collection: DiscoverCollection) { return collection === 'blogs' ? item.kind === 'blogs' || item.kind === 'more' : item.kind === collection; }
 export function baseDiscovery(data = tidingsSnapshot): DiscoverSource[] {
   return dedupeDiscovery([
-    ...discoveryFeeds.map(f => ({ id: f.id, name: f.name, url: f.url, site: f.site, description: f.description, group: f.category, language: f.language, provenance: '编辑推荐', recommended: true, kind: 'blogs' as const })),
-    ...wechatFeeds.map(f => ({ id: f.id, name: f.name, url: f.url, description: f.description, group: '微信公众号', language: '中文', provenance: '编辑推荐', recommended: true, kind: 'wechat' as const })),
-    ...podcastRecommendations.map(f => ({ id: f.sourceId, podcastId: f.sourceId, name: f.name, description: `${f.nameZh} · ${f.description}`, group: '播客', language: '英文', provenance: '编辑推荐', recommended: true, kind: 'podcast' as const })),
+    ...discoveryFeeds.map(f => ({ id: f.id, name: f.name, url: f.url, site: f.site, description: f.description, group: f.category, language: f.language, provenance: t('discovery.editorPick'), recommended: true, kind: 'blogs' as const })),
+    ...wechatFeeds.map(f => ({ id: f.id, name: f.name, url: f.url, description: f.description, group: '微信公众号', language: '中文', provenance: t('discovery.editorPick'), recommended: true, kind: 'wechat' as const })),
+    ...podcastRecommendations.map(f => ({ id: f.sourceId, podcastId: f.sourceId, name: f.name, description: `${f.nameZh} · ${f.description}`, group: '播客', language: '英文', provenance: t('discovery.editorPick'), recommended: true, kind: 'podcast' as const })),
     ...tidingsItems(data),
-    ...independentBlogs.map(f => ({ id: f.id, name: f.name, url: f.url, site: f.site, description: f.description, group: '独立博客', language: f.language, provenance: '中文独立博客列表 · 目录收录', kind: 'blogs' as const, tags: f.tags })),
+    ...independentBlogs.map(f => ({ id: f.id, name: f.name, url: f.url, site: f.site, description: f.description, group: '独立博客', language: f.language, provenance: t('discovery.blogsProvenance'), kind: 'blogs' as const, tags: f.tags })),
   ]);
 }
 const siteKey = (value?: string) => { try { const url = new URL(value!); return `${url.hostname.replace(/^www\./, '')}${url.pathname.replace(/\/+$/, '')}${url.search}`; } catch { return ''; } };

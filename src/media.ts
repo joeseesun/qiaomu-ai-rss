@@ -1,5 +1,6 @@
 import { setIcon } from 'obsidian';
 import { safeUrl, titleOf, type Entry } from './model';
+import { t } from './i18n';
 
 export function audioUrl(entry: Entry): string | null {
   if (!entry.audio) return null;
@@ -47,7 +48,7 @@ export function renderMedia(article: HTMLElement, entry: Entry): void {
     src: `${embed}?autoplay=0&playsinline=1&enablejsapi=1`, allow: 'autoplay; encrypted-media; picture-in-picture',
     sandbox: 'allow-scripts allow-same-origin allow-presentation allow-popups',
     referrerpolicy: 'strict-origin-when-cross-origin', allowfullscreen: '',
-    title: '视频播放器',
+    title: t('media.videoPlayer'),
   } });
 }
 
@@ -66,12 +67,12 @@ export class AudioDock {
     this.el = parent.createDiv({ cls: 'qrs-audio-dock is-hidden' });
     // Close sits at the leading edge: Obsidian's status bar overlaps the bottom-right corner.
     const close = this.el.createEl('button', { cls: 'qrs-icon qrs-audio-close' });
-    setIcon(close, 'x'); close.createSpan({ cls: 'qrs-visually-hidden', text: '关闭播放器' });
+    setIcon(close, 'x'); close.createSpan({ cls: 'qrs-visually-hidden', text: t('media.closePlayer') });
     close.addEventListener('click', () => this.stop());
     this.title = this.el.createEl('button', { cls: 'qrs-audio-title' });
     this.title.addEventListener('click', () => { if (this.entry) this.onOpen(this.entry); });
     this.audio = this.el.createEl('audio', { attr: { controls: '', preload: 'none' } });
-    this.error = this.el.createEl('p', { cls: 'qrs-media-error is-hidden', text: '音频暂时无法播放，可打开原文收听。' });
+    this.error = this.el.createEl('p', { cls: 'qrs-media-error is-hidden', text: t('media.audioError') });
     this.audio.addEventListener('error', () => { if (this.audio.getAttribute('src')) this.error.removeClass('is-hidden'); });
     this.audio.addEventListener('play', () => {
       if (!this.entry || !('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;

@@ -1,5 +1,6 @@
 import { requestUrl, type Vault } from 'obsidian';
 import { safeUrl } from './model';
+import { t } from './i18n';
 const MAX_IMAGE = 8 * 1024 * 1024;
 const MAX_CACHE = 64 * 1024 * 1024;
 export function imageMime(data: ArrayBuffer): string | null {
@@ -19,7 +20,7 @@ export class LocalImages {
   constructor(private vault: Vault, private directory: string) {}
   load(url: string): Promise<Blob> {
     const safe = safeUrl(url);
-    if (!safe) return Promise.reject(new Error('图片地址无效。'));
+    if (!safe) return Promise.reject(new Error(t('error.imageUrlInvalid')));
     const existing = this.pending.get(safe);
     if (existing) return existing;
     const promise = this.read(safe).finally(() => this.pending.delete(safe));
@@ -36,13 +37,13 @@ export class LocalImages {
     try {
       const response = await Promise.race([
         requestUrl({ url, method: 'GET', throw: false }),
-        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('图片加载超时。')), 20000); }),
+        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error(t('error.imageTimeout'))), 20000); }),
       ]);
-      if (response.status < 200 || response.status >= 300) throw new Error('图片加载失败。');
+      if (response.status < 200 || response.status >= 300) throw new Error(t('error.imageLoadFailed'));
       data = response.arrayBuffer;
     } finally { window.clearTimeout(timer); }
     const type = imageMime(data);
-    if (!type || data.byteLength > MAX_IMAGE) throw new Error('图片格式不支持或超过 8 MB。');
+    if (!type || data.byteLength > MAX_IMAGE) throw new Error(t('error.imageUnsupported'));
     const bytes = data;
     this.queue = this.queue.catch(() => undefined).then(async () => {
       if (!await this.vault.adapter.exists(this.directory)) await this.vault.adapter.mkdir(this.directory);

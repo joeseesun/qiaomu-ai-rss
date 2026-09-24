@@ -2,6 +2,7 @@ import { registerSource, ensureGroup } from './personal-library';
 import { requestUrl } from 'obsidian';
 import { feedUrl, MAX_SUBSCRIPTIONS, parseFeed, stableId, type FeedInput } from './feeds';
 import { subscriptionSchema, type State, type Subscription } from './model';
+import { fail, isLocalizedError, LocalizedError, t } from './i18n';
 export type FeedTransport = (url: string) => Promise<{ status: number; text: string }>;
 export class Subscriptions {
   private mutations: Promise<unknown> = Promise.resolve();
@@ -20,25 +21,25 @@ export class Subscriptions {
     try {
       const response = await Promise.race([
         this.transport(url),
-        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('订阅源响应超时，请重试。')), 20000); }),
+        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new LocalizedError(t('error.feedTimeout'))), 20000); }),
       ]);
-      if (response.status < 200 || response.status >= 300) throw new Error(`订阅源暂不可用（HTTP ${response.status}）。`);
+      if (response.status < 200 || response.status >= 300) fail('error.feedUnavailable', { status: response.status });
       return await parseFeed(response.text, url, doc);
     } catch (error) {
       // Do not include transport errors: private feed URLs can contain access tokens.
-      if (error instanceof Error && /^(订阅源|文件超过|不支持包含|XML 格式|这个地址)/.test(error.message)) throw error;
-      throw new Error('无法读取订阅源，请检查地址和网络。');
+      if (isLocalizedError(error)) throw error;
+      fail('error.feedUnreadable');
     } finally { window.clearTimeout(timer); }
   }
   async add(raw: string, group: string, doc: Document): Promise<Subscription> {
     const url = feedUrl(raw);
-    if (this.state().subscriptions.some(feed => feed.url === url)) throw new Error('这个订阅源已经添加。');
-    if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) throw new Error(`最多添加 ${MAX_SUBSCRIPTIONS} 个订阅源。`);
+    if (this.state().subscriptions.some(feed => feed.url === url)) fail('error.feedDuplicate');
+    if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) fail('error.feedLimit', { n: MAX_SUBSCRIPTIONS });
     const parsed = await this.fetch(url, doc);
     const feed = subscriptionSchema.parse({ id: `local:${await stableId(url)}`, url, name: parsed.name, group: group.trim().slice(0, 100), site: parsed.site, image: parsed.image, entries: parsed.entries, updatedAt: Date.now() });
     return this.commit(() => {
-      if (this.state().subscriptions.some(item => item.url === url)) throw new Error('这个订阅源已经添加。');
-      if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) throw new Error(`最多添加 ${MAX_SUBSCRIPTIONS} 个订阅源。`);
+      if (this.state().subscriptions.some(item => item.url === url)) fail('error.feedDuplicate');
+      if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) fail('error.feedLimit', { n: MAX_SUBSCRIPTIONS });
       this.state().subscriptions.push(feed); registerSource(this.state(), feed.id, feed.group); return feed;
     });
   }
@@ -51,7 +52,7 @@ export class Subscriptions {
     return this.commit(() => {
       const existing = new Set(this.state().subscriptions.map(feed => feed.url));
       const additions = prepared.filter(feed => { if (existing.has(feed.url)) return false; existing.add(feed.url); return true; });
-      if (this.state().subscriptions.length + additions.length > MAX_SUBSCRIPTIONS) throw new Error(`导入后超过 ${MAX_SUBSCRIPTIONS} 个订阅源，请减少导入数量。`);
+      if (this.state().subscriptions.length + additions.length > MAX_SUBSCRIPTIONS) fail('error.importLimit', { n: MAX_SUBSCRIPTIONS });
       this.state().subscriptions.push(...additions); for (const feed of additions) registerSource(this.state(), feed.id, feed.group);
       if (additions.length > 60) {
         const state = this.state();
@@ -63,7 +64,7 @@ export class Subscriptions {
   async edit(id: string, name: string, group: string) {
     await this.commit(() => {
       const feed = this.state().subscriptions.find(item => item.id === id); if (!feed) return;
-      if (!name.trim()) throw new Error('订阅名称不能为空。');
+      if (!name.trim()) fail('error.feedNameEmpty');
       feed.name = name.trim().slice(0, 200); feed.group = group.trim().slice(0, 100); registerSource(this.state(), id, feed.group); this.state().sourceMeta[id].groupId = ensureGroup(this.state(), feed.group);
     });
   }
@@ -91,7 +92,7 @@ export class Subscriptions {
         feed.entries = parsed.entries; feed.site = parsed.site || feed.site; feed.image = parsed.image || feed.image; feed.updatedAt = Date.now(); feed.error = '';
       } catch (error) {
         if (!this.state().subscriptions.includes(feed)) return;
-        feed.error = error instanceof Error ? error.message : '订阅源无法读取。';
+        feed.error = error instanceof Error ? error.message : t('error.feedUnreadableShort');
       }
       let bytes = 0;
       for (const item of [...this.state().subscriptions].sort((a, b) => b.updatedAt - a.updatedAt)) {

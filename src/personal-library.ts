@@ -1,4 +1,5 @@
 import type { State } from './model';
+import { fail, t } from './i18n';
 export interface PersonalSource { id: string; name: string; kind: 'rss' | 'podcast' | 'vault'; groupId: string; url?: string; site?: string; image?: string; detail: string }
 /** Group names that mean the same thing (catalogs and OPML files use English categories). */
 const groupAliases: Record<string, string> = { podcast: '播客', podcasts: '播客', '播客': '播客', wechat: '公众号', '微信公众号': '公众号', '公众号': '公众号' };
@@ -46,16 +47,16 @@ export function mergeDuplicateGroups(state: State) {
 }
 export function personalSources(state: State): PersonalSource[] {
   const items: Omit<PersonalSource, 'groupId'>[] = [
-    ...state.subscriptions.map(f => ({ id: f.id, name: f.name, kind: 'rss' as const, url: f.url, site: f.site, image: f.image, detail: f.error || `${f.entries.length} 篇缓存文章` })),
-    ...state.settings.followedPodcasts.map(id => ({ id, name: state.settings.podcastNames[id] || state.sources.find(s => s.id === id)?.name || id.replace(/^podscribe-/, ''), kind: 'podcast' as const, detail: '播客' })),
-    ...state.settings.markdownFolders.map(path => ({ id: `@vault:${path}`, name: path === '/' ? '整个库' : path.split('/').at(-1) || path, kind: 'vault' as const, detail: path })),
+    ...state.subscriptions.map(f => ({ id: f.id, name: f.name, kind: 'rss' as const, url: f.url, site: f.site, image: f.image, detail: f.error || t('library.cachedArticles', { n: f.entries.length }) })),
+    ...state.settings.followedPodcasts.map(id => ({ id, name: state.settings.podcastNames[id] || state.sources.find(s => s.id === id)?.name || id.replace(/^podscribe-/, ''), kind: 'podcast' as const, detail: t('library.kind.podcast') })),
+    ...state.settings.markdownFolders.map(path => ({ id: `@vault:${path}`, name: path === '/' ? t('settings.wholeVault') : path.split('/').at(-1) || path, kind: 'vault' as const, detail: path })),
   ];
   return items.map(item => ({ ...item, name: state.sourceMeta[item.id]?.name || item.name, groupId: state.sourceMeta[item.id]?.groupId || '' }))
     .sort((a, b) => (state.sourceMeta[a.id]?.order || 0) - (state.sourceMeta[b.id]?.order || 0));
 }
 export function groupsInOrder(state: State) { return [...state.subscriptionGroups].sort((a, b) => a.order - b.order); }
 export function moveSources(state: State, ids: string[], groupId: string) {
-  if (groupId && !state.subscriptionGroups.some(g => g.id === groupId)) throw new Error('分组不存在。');
+  if (groupId && !state.subscriptionGroups.some(g => g.id === groupId)) fail('error.groupMissing');
   const name = state.subscriptionGroups.find(g => g.id === groupId)?.name || '';
   for (const id of ids) {
     registerSource(state, id, ''); state.sourceMeta[id].groupId = groupId;
@@ -63,8 +64,8 @@ export function moveSources(state: State, ids: string[], groupId: string) {
   }
 }
 export function renameGroup(state: State, id: string, raw: string) {
-  const name = canonicalGroupName(raw); if (!name || name.length > 100) throw new Error('请输入 1–100 字的分组名称。');
-  const group = state.subscriptionGroups.find(g => g.id === id); if (!group) throw new Error('分组不存在。');
+  const name = canonicalGroupName(raw); if (!name || name.length > 100) fail('error.groupNameInvalid');
+  const group = state.subscriptionGroups.find(g => g.id === id); if (!group) fail('error.groupMissing');
   // Renaming onto an existing name merges the two groups instead of failing.
   const target = state.subscriptionGroups.find(g => g.id !== id && groupKey(g.name) === groupKey(name));
   if (target) { moveSources(state, personalSources(state).filter(s => s.groupId === id).map(s => s.id), target.id); deleteGroup(state, id); return target.id; }

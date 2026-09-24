@@ -1,5 +1,6 @@
 import createDOMPurify from 'dompurify';
 import { safeUrl, type Entry, type Subscription } from './model';
+import { fail, t } from './i18n';
 
 export const MAX_SUBSCRIPTIONS = 2000;
 const MAX_XML = 5 * 1024 * 1024;
@@ -7,7 +8,7 @@ const MAX_STORED_FEED = 1024 * 1024;
 export interface FeedInput { url: string; name: string; group: string }
 export function feedUrl(value: string): string {
   const safe = safeUrl(value.trim());
-  if (!safe) throw new Error('请输入完整的 HTTP 或 HTTPS 订阅地址，不包含账号密码。');
+  if (!safe) fail('error.feedUrlInvalid');
   const url = new URL(safe); url.hash = ''; return url.href;
 }
 export async function stableId(value: string): Promise<string> {
@@ -15,12 +16,12 @@ export async function stableId(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 function xmlDocument(value: string, doc: Document): Document {
-  if (new TextEncoder().encode(value).byteLength > MAX_XML) throw new Error('文件超过 5 MB，请使用较小的订阅文件。');
-  if (/<!DOCTYPE|<!ENTITY/i.test(value)) throw new Error('不支持包含 DTD 或实体声明的订阅文件。');
+  if (new TextEncoder().encode(value).byteLength > MAX_XML) fail('error.xmlTooLarge');
+  if (/<!DOCTYPE|<!ENTITY/i.test(value)) fail('error.xmlDtdUnsupported');
   const win = doc.defaultView;
-  if (!win) throw new Error('阅读窗口不可用。');
+  if (!win) fail('error.windowUnavailable');
   const parsed = new win.DOMParser().parseFromString(value, 'application/xml');
-  if (parsed.getElementsByTagName('parsererror').length) throw new Error('XML 格式无效，请检查订阅地址或文件。');
+  if (parsed.getElementsByTagName('parsererror').length) fail('error.xmlInvalid');
   return parsed;
 }
 function children(node: Element, name: string): Element[] { return Array.from(node.children).filter(child => child.localName === name); }
@@ -91,7 +92,7 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
   const root = xmlDocument(xml, doc).documentElement;
   const atom = root.localName === 'feed' && root.namespaceURI === 'http://www.w3.org/2005/Atom';
   const channel = child(root, 'channel');
-  if (!atom && !(['rss', 'RDF'].includes(root.localName) && channel)) throw new Error('这个地址不是 RSS 或 Atom 订阅源，请填写订阅文件地址。');
+  if (!atom && !(['rss', 'RDF'].includes(root.localName) && channel)) fail('error.notFeed');
   const parent = atom ? root : channel!;
   const name = plain(text(parent, 'title'), doc).slice(0, 200) || new URL(url).hostname;
   const sourceId = `local:${await stableId(url)}`;
@@ -104,7 +105,7 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     const link = linkValue ? safeUrl(linkValue.trim(), linkNode ? baseUrl(linkNode, base) : base) : null;
     const contentNode = atom ? child(item, 'content') || child(item, 'summary') : child(item, 'encoded') || child(item, 'description');
     const raw = atom ? atomContent(contentNode) : contentNode?.textContent || '';
-    const title = plain(atom ? atomContent(child(item, 'title')) : text(item, 'title'), doc).slice(0, 300) || plain(raw, doc).slice(0, 80) || '未命名文章';
+    const title = plain(atom ? atomContent(child(item, 'title')) : text(item, 'title'), doc).slice(0, 300) || plain(raw, doc).slice(0, 80) || t('untitled.article');
     const published = (atom ? text(item, 'published') || text(item, 'updated') : text(item, 'pubDate') || text(item, 'date')) || '';
     const identity = (atom ? text(item, 'id') : text(item, 'guid')) || link || `${title}\n${published}`;
     const id = `local-${await stableId(`${sourceId}\n${identity}`)}`;
@@ -115,7 +116,7 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     const entry: Entry = { id, sourceId, origin: 'local', sourceName: name, title, link: link || url, image: entryImage(item, parsedContent.image, contentBase), audio: entryAudio(item, base),
       published, publishedTs: Number.isNaN(publishedTs) ? null : publishedTs,
       author: atom ? text(child(item, 'author') || root, 'name') : text(item, 'creator') || text(item, 'author'),
-      summary: plain(raw, doc).slice(0, 240), content: (parsedContent.html || '<p>订阅源没有提供正文，请打开原文阅读。</p>') + (raw.length > 100_000 ? '<p>正文较长，已缓存部分内容。请打开原文阅读全文。</p>' : '') };
+      summary: plain(raw, doc).slice(0, 240), content: (parsedContent.html || t('reader.noFeedContent')) + (raw.length > 100_000 ? t('reader.truncatedContent') : '') };
     size += new TextEncoder().encode(JSON.stringify(entry)).byteLength;
     if (size > MAX_STORED_FEED) break;
     entries.push(entry);
@@ -130,7 +131,7 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
 }
 export function parseOpml(xml: string, doc: Document): { feeds: FeedInput[]; skipped: number } {
   const root = xmlDocument(xml, doc).documentElement;
-  if (root.localName !== 'opml' || !child(root, 'body')) throw new Error('请选择有效的 OPML 订阅文件。');
+  if (root.localName !== 'opml' || !child(root, 'body')) fail('error.opmlInvalid');
   const feeds: FeedInput[] = []; const seen = new Set<string>(); let skipped = 0;
   for (const node of Array.from(root.getElementsByTagName('outline'))) {
     const raw = node.getAttribute('xmlUrl') || node.getAttribute('xmlurl'); if (!raw) continue;
@@ -142,7 +143,7 @@ export function parseOpml(xml: string, doc: Document): { feeds: FeedInput[]; ski
       feeds.push({ url, name: (node.getAttribute('title') || node.getAttribute('text') || new URL(url).hostname).slice(0, 200), group: groups.join(' / ').slice(0, 100) });
     } catch { skipped++; }
   }
-  if (!feeds.length) throw new Error('文件中没有有效的 HTTP / HTTPS 订阅地址。');
+  if (!feeds.length) fail('error.opmlEmpty');
   return { feeds, skipped };
 }
 export function exportOpml(feeds: Pick<Subscription, 'url' | 'name' | 'group'>[]): string {

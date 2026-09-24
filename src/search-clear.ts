@@ -1,4 +1,5 @@
 import { setIcon } from 'obsidian';
+import { t } from './i18n';
 
 /** Keep clearing consistent across reader, channel and discovery searches. */
 export function addSearchClear(input: HTMLInputElement) {
@@ -7,7 +8,7 @@ export function addSearchClear(input: HTMLInputElement) {
   input.before(wrapper); wrapper.append(input);
   const button = wrapper.createEl('button', { cls: 'qrs-search-clear', attr: { type: 'button' } });
   setIcon(button, 'x');
-  button.createSpan({ cls: 'qrs-visually-hidden', text: '清除搜索' });
+  button.createSpan({ cls: 'qrs-visually-hidden', text: t('search.clear') });
   button.onpointerdown = event => event.preventDefault();
   button.onclick = () => {
     input.value = '';

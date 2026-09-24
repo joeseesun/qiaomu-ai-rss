@@ -1,5 +1,6 @@
 import { requestUrl } from 'obsidian';
 import { z } from 'zod';
+import { fail, t } from './i18n';
 
 const wechatSchema = z.object({ total: z.number().int().nonnegative(), accounts: z.array(z.object({ id: z.string().regex(/^[a-f0-9]{40}$/), name: z.string(), feedUrl: z.string() })) });
 const podcastSearchSchema = z.object({ podcasts: z.array(z.object({ slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), name: z.string() })) });
@@ -24,9 +25,9 @@ const featuredWechatRank = new Map(featuredWechatIds.map((id, index) => [`wechat
 
 async function catalogJson(url: string): Promise<unknown> {
   let timer: number | undefined;
-  const response = await Promise.race([requestUrl({ url, method: 'GET', throw: false }), new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('目录请求超时。')), 20000); })]).finally(() => window.clearTimeout(timer));
-  if (response.status < 200 || response.status >= 300) throw new Error(`目录暂不可用（HTTP ${response.status}）。`);
-  if (response.text.length > 2_000_000) throw new Error('目录数据过大。');
+  const response = await Promise.race([requestUrl({ url, method: 'GET', throw: false }), new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error(t('error.catalogTimeout'))), 20000); })]).finally(() => window.clearTimeout(timer));
+  if (response.status < 200 || response.status >= 300) fail('error.catalogUnavailable', { status: response.status });
+  if (response.text.length > 2_000_000) fail('error.catalogTooLarge');
   return JSON.parse(response.text) as unknown;
 }
 

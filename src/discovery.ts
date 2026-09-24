@@ -1,5 +1,6 @@
 import blogCatalog from './data/independent-blogs.json';
 import type { Entry, Source } from './model';
+import { t } from './i18n';
 export const blogCatalogSource = blogCatalog.source;
 export const blogCatalogRevision = blogCatalog.revision;
 
@@ -121,7 +122,7 @@ export function qiaomuFeaturedEntries(entries: Entry[]): Entry[] {
 }
 export const independentBlogs: DiscoveryFeed[] = blogCatalog.items
   .filter(blog => !BUILT_IN_FEED_URLS.has(blog.url))
-  .map(blog => ({ ...blog, description: blog.tags.join(' · ') || '中文独立博客', category: '独立博客', language: '中文', icon: 'notebook-pen' }));
+  .map(blog => ({ ...blog, description: blog.tags.join(' · ') || t('discovery.blogFallbackDesc'), category: '独立博客', language: '中文', icon: 'notebook-pen' }));
 export const blogTags = [...new Set(independentBlogs.flatMap(blog => blog.tags ?? []))].sort((a, b) => a.localeCompare(b, 'zh'));
 
 export function filterDiscovery(query: string, category: string, collection: DiscoveryCollection = 'featured', tag = ''): DiscoveryFeed[] {

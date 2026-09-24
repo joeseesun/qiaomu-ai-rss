@@ -1,16 +1,26 @@
 import fangsong from '../fonts/QiaomuReadingFangsong.woff2';
 import type { ReadingFont } from './model';
+import { t, type MessageKey } from './i18n';
 
-export const readingFonts: { id: ReadingFont; name: string; family: string; data?: string }[] = [
-  { id: 'serif', name: '系统宋体', family: '"Songti SC",Georgia,serif' },
-  { id: 'sans', name: '系统黑体', family: 'var(--font-text),"PingFang SC",sans-serif' },
-  { id: 'custom', name: '设备字体…', family: 'serif' },
-  { id: 'sourceHanSerif', name: '思源宋体', family: '"Source Han Serif CN",serif' },
-  { id: 'sourceHanSans', name: '思源黑体', family: '"Source Han Sans CN",sans-serif' },
-  { id: 'wenkai', name: '霞鹜文楷 · 屏幕版', family: '"LXGW WenKai GB Screen",serif' },
-  { id: 'zhenkai', name: '霞鹜臻楷', family: '"LXGW ZhenKai GB",serif' },
-  { id: 'fangsong', name: '朱雀仿宋', family: 'QRS Fangsong', data: fangsong },
+export const readingFonts: { id: ReadingFont; family: string; data?: string }[] = [
+  { id: 'serif', family: '"Songti SC",Georgia,serif' },
+  { id: 'sans', family: 'var(--font-text),"PingFang SC",sans-serif' },
+  { id: 'custom', family: 'serif' },
+  { id: 'sourceHanSerif', family: '"Source Han Serif CN",serif' },
+  { id: 'sourceHanSans', family: '"Source Han Sans CN",sans-serif' },
+  { id: 'wenkai', family: '"LXGW WenKai GB Screen",serif' },
+  { id: 'zhenkai', family: '"LXGW ZhenKai GB",serif' },
+  { id: 'fangsong', family: 'QRS Fangsong', data: fangsong },
 ];
+
+const fontKeys: Record<ReadingFont, MessageKey> = {
+  serif: 'font.serif', sans: 'font.sans', custom: 'font.custom', sourceHanSerif: 'font.sourceHanSerif',
+  sourceHanSans: 'font.sourceHanSans', wenkai: 'font.wenkai', zhenkai: 'font.zhenkai', fangsong: 'font.fangsong',
+};
+/** Display name of a reading font in the current interface language. */
+export function fontName(id: ReadingFont): string {
+  return t(fontKeys[id]);
+}
 
 export const selectableFonts = readingFonts.filter(font => ['fangsong', 'serif', 'sans', 'custom'].includes(font.id));
 export function fontFamily(id: ReadingFont, custom: string) {
