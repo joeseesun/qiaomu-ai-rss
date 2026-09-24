@@ -152,3 +152,59 @@ describe('local subscription lifecycle', () => {
     await vi.advanceTimersByTimeAsync(20001); await assertion; vi.useRealTimers();
   });
 });
+describe('conditional refresh, backoff and pause', () => {
+  it('sends validators, honors 304 without reparsing, and reports progress counts', async () => {
+    const state = initialState(null), persist = vi.fn(async () => {});
+    const transport = vi.fn(async (url: string, headers?: Record<string, string>) => headers?.['If-None-Match']
+      ? { status: 304, text: '', headers: {} }
+      : { status: 200, text: rss(), headers: { ETag: '"v1"' } });
+    const service = new Subscriptions(() => state, persist, transport);
+    const feed = await service.add('https://example.com/feed', '', document);
+    expect(feed.etag).toBe('"v1"');
+    const progress = vi.fn();
+    const summary = await service.refresh([feed.id], document, true, progress);
+    expect(summary).toMatchObject({ refreshed: 1, changed: 1, failed: 0, skipped: 0 });
+    expect(feed.entries).toHaveLength(1);
+    // Second refresh is conditional: server says 304, entries kept, no reparse.
+    feed.updatedAt = Date.now() - 400000;
+    const again = await service.refresh([feed.id], document, false, progress);
+    expect(transport.mock.calls[2][1]).toEqual({ 'If-None-Match': '"v1"' });
+    expect(again).toMatchObject({ changed: 0, unchanged: 1, failed: 0, skipped: 0 });
+    expect(feed.entries).toHaveLength(1);
+    expect(progress).toHaveBeenCalledWith(1, 1);
+  });
+  it('backs off failing feeds and skips paused feeds until forced', async () => {
+    const state = initialState(null), persist = vi.fn(async () => {});
+    const transport = vi.fn(async () => ({ status: 200, text: rss() }));
+    const service = new Subscriptions(() => state, persist, transport);
+    const ok = await service.add('https://example.com/ok', '', document);
+    const bad = await service.add('https://example.com/bad', '', document);
+    transport.mockImplementation(async (url: string) => url.includes('/bad') ? { status: 500, text: '' } : { status: 200, text: rss() });
+    // Force both through: one changes, one fails.
+    const first = await service.refresh([ok.id, bad.id], document, true);
+    expect(first).toMatchObject({ changed: 1, failed: 1 });
+    expect(bad.errorCount).toBe(1);
+    // Immediate retry: ok is fresh (5-min gate), bad is in backoff — no new requests.
+    const calls = transport.mock.calls.length;
+    const second = await service.refresh([ok.id, bad.id], document, false);
+    expect(second).toMatchObject({ refreshed: 2, skipped: 2 });
+    expect(transport.mock.calls.length).toBe(calls);
+    // Paused feeds are skipped until forced.
+    await service.setPaused(ok.id, true);
+    const third = await service.refresh([ok.id], document, false);
+    expect(third.skipped).toBe(1);
+    expect(transport.mock.calls.length).toBe(calls);
+    const fourth = await service.refresh([ok.id], document, true);
+    expect(fourth.changed).toBe(1);
+  });
+  it('skips persist when nothing changed', async () => {
+    const state = initialState(null), persist = vi.fn(async () => {});
+    const transport = vi.fn(async () => ({ status: 200, text: rss(), headers: {} }));
+    const service = new Subscriptions(() => state, persist, transport);
+    const feed = await service.add('https://example.com/feed', '', document);
+    persist.mockClear();
+    // Fresh (5-min gate): skipped, no persist.
+    await service.refresh([feed.id], document, false);
+    expect(persist).not.toHaveBeenCalled();
+  });
+});

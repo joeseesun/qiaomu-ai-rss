@@ -2,7 +2,7 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
+import { attachContentCache, folderPath, initialState, modeLabels, modeSchema, readingFontSchema, splitContentCache, type Bundle, type Entry, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
@@ -12,6 +12,8 @@ import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
 import { SubscriptionManager, type SubscriptionTab } from './subscription-ui';
 import { DiscoveryView, DISCOVERY_VIEW_TYPE } from './discovery-view';
+import { SourceHealthModal } from './source-health';
+import { stripFeedBodies } from './model';
 
 export default class QiaomuRssPlugin extends Plugin {
   fonts = new ReadingFonts();
@@ -33,15 +35,17 @@ export default class QiaomuRssPlugin extends Plugin {
     const data: unknown = await this.loadData();
     try { this.state = initialState(data); }
     catch { new Notice('RSS 配置不兼容，已使用默认设置。'); }
+    await this.loadContentCache();
     this.images = new LocalImages(this.app.vault, `${this.app.vault.configDir}/plugins/${this.manifest.id}/image-cache`);
     registerImageDrops(this);
-    this.subscriptions = new Subscriptions(() => this.state, () => this.persist());
+    this.subscriptions = new Subscriptions(() => this.state, () => this.persist(), undefined, () => this.markBodiesDirty());
     this.addCommand({ id: 'manage-subscriptions', name: '管理我的订阅', callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
     this.registerView(DISCOVERY_VIEW_TYPE, leaf => new DiscoveryView(leaf, this));
     this.addCommand({ id: 'explore-subscriptions', name: '探索订阅', callback: () => { void this.openDiscovery(); } });
     this.addRibbonIcon('rss', '打开乔木 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开乔木 RSS 阅读器', callback: () => { void this.openReader(); } });
+    this.addCommand({ id: 'source-health', name: '来源阅读统计', callback: () => this.openSourceHealth() });
     this.addSettingTab(new RssSettings(this.app, this));
     this.registerEvent(this.app.workspace.on('file-open', file => { if (file?.extension === 'md') this.cleanNoteMarkers(file); }));
     this.app.workspace.onLayoutReady(() => {
@@ -99,10 +103,78 @@ export default class QiaomuRssPlugin extends Plugin {
     } catch { new Notice('无法打开 RSS 阅读器。'); }
   }
   persist(): Promise<void> {
-    this.saving = this.saving.catch(() => undefined).then(() => this.saveData(this.state));
+    this.saving = this.saving.catch(() => undefined).then(() => this.saveSplit());
     return this.saving;
   }
+  private cachePath() { return `${this.app.vault.configDir}/plugins/${this.manifest.id}/content-cache.json`; }
+  private cacheDirty = true;
+  markBodiesDirty() { this.cacheDirty = true; }
+  private async saveSplit(): Promise<void> {
+    // data.json keeps config + metadata only; entry bodies go to a rebuildable cache file,
+    // rewritten only when bodies actually changed (scroll checkpoints must not rewrite 21MB).
+    const { slim, cache } = splitContentCache(this.state);
+    await this.saveData(slim);
+    if (!this.cacheDirty) return;
+    try { await this.app.vault.adapter.write(this.cachePath(), JSON.stringify(cache)); this.cacheDirty = false; }
+    catch { /* body cache is rebuildable from feeds; a write failure must not break state save */ }
+  }
+  private async loadContentCache(): Promise<void> {
+    try {
+      const parsed: unknown = JSON.parse(await this.app.vault.adapter.read(this.cachePath()));
+      if (parsed && typeof parsed === 'object') attachContentCache(this.state, parsed as Record<string, string>);
+    } catch { /* no cache yet; bodies rehydrate on next refresh */ }
+  }
+  isLater(id: string): boolean { return this.state.readLater.includes(id); }
+  openSourceHealth() {
+    new SourceHealthModal(this.app, () => this.state, async id => {
+      await this.subscriptions.remove(id);
+      this.resetViews();
+    }, () => this.resetViews()).open();
+  }
+  async storageStats() {
+    const dir = `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+    const sizeOf = async (path: string): Promise<number> => (await this.app.vault.adapter.stat(path))?.size ?? 0;
+    const [dataJson, cacheJson, images] = await Promise.all([
+      sizeOf(`${dir}/data.json`), sizeOf(`${dir}/content-cache.json`), this.images.usage(),
+    ]);
+    const perSource = this.state.subscriptions.map(feed => ({
+      id: feed.id, name: feed.name, entries: feed.entries.length,
+      bodyBytes: feed.entries.reduce((n, e) => n + (e.content?.length ?? 0), 0),
+      bodyCount: feed.entries.filter(e => e.content).length,
+    })).sort((a, b) => b.bodyBytes - a.bodyBytes);
+    const bodyTotal = perSource.reduce((n, s) => n + s.bodyBytes, 0);
+    return { dataJson, cacheJson, images, perSource, bodyTotal };
+  }
+  async clearSourceBodies(id: string): Promise<{ freedBytes: number; freedCount: number }> {
+    const feed = this.state.subscriptions.find(item => item.id === id);
+    if (!feed) return { freedBytes: 0, freedCount: 0 };
+    const { entries, freedBytes, freedCount } = stripFeedBodies(feed.entries);
+    feed.entries = entries;
+    if (freedCount) this.markBodiesDirty();
+    await this.persist();
+    return { freedBytes, freedCount };
+  }
+  async clearAllBodies(): Promise<{ freedBytes: number; freedCount: number }> {
+    let freedBytes = 0, freedCount = 0;
+    for (const feed of this.state.subscriptions) {
+      const result = stripFeedBodies(feed.entries);
+      feed.entries = result.entries; freedBytes += result.freedBytes; freedCount += result.freedCount;
+    }
+    if (freedCount) this.markBodiesDirty();
+    await this.persist();
+    return { freedBytes, freedCount };
+  }
+  async clearImages(): Promise<{ files: number; bytes: number }> { return this.images.clear(); }
+  async toggleLater(entry: Entry): Promise<boolean> {
+    const queued = this.state.readLater.includes(entry.id);
+    this.state.readLater = queued
+      ? this.state.readLater.filter(id => id !== entry.id)
+      : [...this.state.readLater, entry.id].slice(-200);
+    await this.persist();
+    return !queued;
+  }
   remember(bundle: Bundle) {
+    if (bundle.entry.content) this.markBodiesDirty();
     this.state.cache[bundle.entry.id] = bundle;
     const recent = Object.values(this.state.cache).sort((a, b) => b.fetchedAt - a.fetchedAt).slice(0, 40);
     this.state.cache = Object.fromEntries(recent.map(value => [value.entry.id, value]));
@@ -347,6 +419,7 @@ class RssSettings extends PluginSettingTab {
       ] },
       { name: '我的订阅', desc: '添加 RSS / Atom、分组与 OPML 导入导出。', render: setting => {
         setting.addButton(button => button.setButtonText('管理订阅').onClick(() => this.plugin.manageSubscriptions()));
+        setting.addButton(button => button.setButtonText('阅读统计').onClick(() => this.plugin.openSourceHealth()));
       } },
       { name: 'OPML 导出文件夹', desc: '导出的 OPML 文件保存在这个库内文件夹。文章链接会写入 Obsidian 的今日日记。', render: setting => {
         setting.addText(text => text.setValue(settings.folder).onChange(value => { this.pendingFolder = value; }))
@@ -406,6 +479,49 @@ class RssSettings extends PluginSettingTab {
         } },
       ] },
       { name: '本地数据', desc: '已读、收藏与缓存保存在当前库。浏览频道、切换文章或刷新时请求服务，不会上传你的笔记。' },
+      { type: 'group', heading: '存储与缓存', items: [
+        { name: '占用情况', desc: '切换到本页时计算一次。正文缓存可删、可重建。', render: setting => {
+          const el = setting.descEl.createDiv({ text: '计算中…' });
+          void this.plugin.storageStats().then(stats => {
+            const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+            el.setText(`配置 ${mb(stats.dataJson)} · 正文缓存文件 ${mb(stats.cacheJson)} · 图片 ${stats.images.files} 张 ${mb(stats.images.bytes)} · 内存正文 ${mb(stats.bodyTotal)}`);
+          }).catch(() => el.setText('读取失败。'));
+        } },
+        { name: '清理图片缓存', desc: '缩略图与正文配图会在下次打开时重新下载。', render: setting => {
+          setting.addButton(button => button.setButtonText('清理').onClick(() => {
+            void this.plugin.clearImages().then(result => { new Notice(`已清理 ${result.files} 张图片`); this.update(); });
+          }));
+        } },
+        { name: '清理全部正文缓存', desc: '删除内存与缓存文件中的正文（保留标题、摘要与收藏），下次刷新时重建。', render: setting => {
+          let armed = false;
+          setting.addButton(button => button.setButtonText('清理').onClick(() => {
+            if (!armed) { armed = true; button.setButtonText('确认清理？'); return; }
+            armed = false;
+            void this.plugin.clearAllBodies().then(result => {
+              new Notice(`已清理 ${result.freedCount} 篇正文`);
+              this.update();
+            });
+          }));
+        } },
+        { name: '按源清理正文', desc: '只列正文体积前 8 的源，清理后下次刷新重建。', render: setting => {
+          const el = setting.descEl.createDiv({ text: '计算中…' });
+          void this.plugin.storageStats().then(stats => {
+            el.empty();
+            for (const source of stats.perSource.slice(0, 8)) {
+              if (!source.bodyCount) continue;
+              const row = el.createDiv();
+              row.createSpan({ text: `${source.name} · ${source.bodyCount} 篇 ${(source.bodyBytes / 1024).toFixed(0)} KB ` });
+              const button = row.createEl('button', { text: '清理' });
+              button.addEventListener('click', () => {
+                void this.plugin.clearSourceBodies(source.id).then(result => {
+                  new Notice(`已清理 ${source.name} ${result.freedCount} 篇正文`); this.update();
+                });
+              });
+            }
+            if (!el.hasChildNodes()) el.setText('各源均无正文缓存。');
+          }).catch(() => el.setText('读取失败。'));
+        } },
+      ] },
     ];
     const reading = definitions[0];
     if (!('type' in reading) || reading.type !== 'group') return definitions;
@@ -416,6 +532,7 @@ class RssSettings extends PluginSettingTab {
       '来源': [definitions[2], definitions[1], definitions[3]],
       '摘录': [excerpt, definitions[8]],
       '导出': [definitions[6]],
+      '存储': [definitions[9]],
       '关于': [definitions[7], ...[
         ['反馈 Bug', '在 GitHub 提交问题', 'https://github.com/joeseesun/qiaomu-ai-rss/issues/new'],
         ['联系邮箱', 'vista8@gmail.com', 'mailto:vista8@gmail.com'],

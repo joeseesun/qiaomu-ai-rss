@@ -13,7 +13,7 @@ import { sameRemoteContent, uniqueRemoteEntries, wechatArticleKey, xiaoyuzhouEpi
 import { featuredXiaoyuzhouPodcasts, prependFeaturedPodcasts, qiaomuChannelDivider, qiaomuFeaturedEntries, readerChannelSources } from './discovery';
 import { modeLabels, modeSchema, podcastDefaultMode, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
-type Filter = 'all' | 'unread' | 'favorites';
+type Filter = 'all' | 'unread' | 'favorites' | 'later';
 function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
 function podcastRelativeDateLabel(value: string | null | undefined): string {
   const raw = (value || '').trim();
@@ -35,8 +35,11 @@ export class ReaderView extends ItemView {
   private channelKey() { return JSON.stringify([this.plugin.state.settings.baseUrl, this.source]); }
   private saveChannel() {
     if (!this.list || !this.reader) return;
+    // Strip heavy `content` from channelStates to avoid duplicating subscriptions[].entries[].content
+    // (content is 95% of data.json). Content is re-hydrated from subscriptions on restore.
+    const stripContent = (entry: Entry): Entry => entry.content ? { ...entry, content: undefined } : entry;
     this.plugin.state.channelStates[this.channelKey()] = {
-      entries: this.entries, bundle: this.bundle, mode: this.mode, filter: this.filter, query: this.query,
+      entries: this.entries.map(stripContent), bundle: this.bundle, mode: this.mode, filter: this.filter, query: this.query,
       unread: [...this.unreadSession], cursor: this.cursor, hasMore: this.hasMore,
       listTop: this.pendingScroll?.listTop ?? (this.list.clientHeight ? this.list.scrollTop : this.lastListTop),
       readerTop: this.pendingScroll?.readerTop ?? (this.reader.clientHeight ? this.reader.scrollTop : this.lastReaderTop), articlePending: this.articleLoading,
@@ -54,9 +57,31 @@ export class ReaderView extends ItemView {
     this.restoreObserver.observe(this.list); this.restoreObserver.observe(this.reader);
   }
   private restoreChannel(saved: ChannelState) {
-    this.entries = this.source ? saved.entries : qiaomuFeaturedEntries(saved.entries);
-    this.bundle = !this.source && saved.bundle && !qiaomuFeaturedEntries([saved.bundle.entry]).length ? null : saved.bundle;
+    // Re-hydrate stripped `content` from subscriptions (the single source of truth)
+    const byId = new Map<string, Entry>();
+    for (const feed of this.plugin.state.subscriptions) for (const e of feed.entries) byId.set(e.id, e);
+    // Also consider cached/favorite bundles as fallback
+    for (const b of Object.values(this.plugin.state.cache)) byId.set(b.entry.id, b.entry);
+    for (const b of Object.values(this.plugin.state.favorites)) byId.set(b.entry.id, b.entry);
+    for (const b of Object.values(this.plugin.state.savedArticles)) byId.set(b.entry.id, b.entry);
+    const hydrate = (e: Entry): Entry => {
+      if (e.content) return e;
+      const found = byId.get(e.id);
+      return found?.content ? { ...e, content: found.content, summary: e.summary ?? found.summary } : e;
+    };
+    const entries = saved.entries.map(hydrate);
+    let bundle = saved.bundle;
+    if (bundle && !bundle.entry.content) {
+      const found = byId.get(bundle.entry.id);
+      if (found?.content) bundle = { ...bundle, entry: { ...bundle.entry, content: found.content } };
+    }
+    this.entries = this.source ? entries : qiaomuFeaturedEntries(entries);
+    this.bundle = !this.source && bundle && !qiaomuFeaturedEntries([bundle.entry]).length ? null : bundle;
     this.mode = saved.mode;
+    if (this.bundle) {
+      const idx = this.visibleEntries().findIndex(e => e.id === this.bundle?.entry.id);
+      if (idx >= 0) this.renderedCount = Math.min(this.visibleEntries().length, Math.max(ReaderView.PAGE_SIZE, idx + ReaderView.PAGE_SIZE));
+    }
     this.filter = saved.filter; this.query = saved.query; this.unreadSession = new Set(saved.unread);
     this.cursor = saved.cursor; this.hasMore = saved.hasMore; this.lastListTop = saved.listTop; this.lastReaderTop = saved.readerTop;
     this.pendingScroll = { listTop: saved.listTop, readerTop: saved.readerTop };
@@ -101,6 +126,12 @@ export class ReaderView extends ItemView {
   private thumbnailPending = new Map<string, Promise<string | null>>();
   private thumbnailVersion = 0;
   private imageObserver?: IntersectionObserver;
+  // Windowed list rendering: only first `renderedCount` rows exist in DOM.
+  private renderedCount = 60;
+  private static readonly PAGE_SIZE = 60;
+  private static readonly THUMB_CAP = 60;
+  private listSentinelObserver?: IntersectionObserver;
+  private renderScheduled = false;
   constructor(leaf: WorkspaceLeaf, private plugin: QiaomuRssPlugin) {
     super(leaf); this.mode = plugin.state.settings.defaultMode;
   }
@@ -160,7 +191,7 @@ export class ReaderView extends ItemView {
   }
   onClose(): Promise<void> {
     stopMedia(this.reader);
-    this.saveChannel(); this.channelPicker?.close(false); this.stopRestoring();
+    this.saveChannel(); this.channelPicker?.close(false); this.stopRestoring(); this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined;
     if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
     this.selectionCapture?.dispose();
     this.closed = true; this.listVersion++; this.articleVersion++; this.clearImages(); this.clearThumbnails(); this.contentEl.onkeydown = null;
@@ -175,6 +206,7 @@ export class ReaderView extends ItemView {
     const remembered = this.plugin.state.settings.lastSource;
     const localExists = this.plugin.state.subscriptions.some(feed => feed.id === remembered);
     const groupExists = remembered.startsWith('@group:') && this.plugin.state.subscriptions.some(feed => feed.group === remembered.slice(7));
+    this.resetWindow();
     this.focused = false; this.source = remembered !== 'levelingup' && (remembered === '@local' || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists || this.plugin.state.settings.followedPodcasts.includes(remembered) || readerChannelSources(this.plugin.state.sources).some(source => source.id === remembered)) ? remembered : '';
     this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
     this.mode = this.plugin.state.settings.defaultMode;
@@ -224,7 +256,7 @@ export class ReaderView extends ItemView {
     this.searchInput = this.searchBox.createEl('input', { type: 'search', placeholder: '搜索当前列表…', attr: { id: searchId } });
     addSearchClear(this.searchInput);
     this.searchInput.value = this.query;
-    this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.unreadSession.clear(); this.renderList(); });
+    this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.unreadSession.clear(); this.resetWindow(); this.renderList(); });
     this.searchInput.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); this.toggleSearch(false); } });
     this.status = sidebar.createDiv({ cls: 'qrs-status', attr: { role: 'status', 'aria-live': 'polite' } });
     this.list = sidebar.createDiv({ cls: 'qrs-list' });
@@ -250,9 +282,10 @@ export class ReaderView extends ItemView {
   }
   private renderFilters() {
     this.filters.empty();
-    for (const [value, label] of [['all', '全部'], ['unread', '未读'], ['favorites', '收藏']] as const) {
+    const laterCount = this.plugin.state.readLater.length;
+    for (const [value, label] of [['all', '全部'], ['unread', '未读'], ['favorites', '收藏'], ['later', laterCount ? `稍后读（${laterCount}）` : '稍后读']] as const) {
       const button = this.filters.createEl('button', { text: label, attr: { 'aria-pressed': String(value === this.filter), 'data-filter': value } });
-      button.addEventListener('click', () => { this.filter = value; this.unreadSession.clear(); this.renderFilters(); this.renderList(); });
+      button.addEventListener('click', () => { this.filter = value; this.unreadSession.clear(); this.resetWindow(); this.renderFilters(); this.renderList(); });
     }
     this.addIconButton(this.filters, 'settings', '插件设置', () => this.plugin.openSettings()).addClass('qrs-settings-button');
   }
@@ -304,6 +337,7 @@ export class ReaderView extends ItemView {
     this.bundle = null; this.articleVersion++; this.focused = false; this.contentEl.removeClass('qrs-focus');
     this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
     this.entries = this.personalScope() ? this.localEntries() : source ? [] : qiaomuFeaturedEntries(this.plugin.state.entries);
+    this.resetWindow();
     this.status.setText(''); this.renderChannel();
     const saved = this.plugin.state.channelStates[this.channelKey()];
     if (saved) { this.restoreChannel(saved); if (!this.entries.length && refresh) void this.loadEntries(); return; }
@@ -354,7 +388,11 @@ export class ReaderView extends ItemView {
       (target?.closest?.('input,textarea,select,[contenteditable=true]'))) return;
     const key = event.key.toLowerCase();
     if (key === 'j' || key === 'k') { event.preventDefault(); event.stopPropagation(); this.navigate(key === 'j' ? 1 : -1); }
-    if (event.key === '[' || event.key === 'f') { event.preventDefault(); this.toggleFocus(); }
+    if (event.key === '[') { event.preventDefault(); this.toggleFocus(); }
+    if (key === 'f' && this.bundle) { event.preventDefault(); event.stopPropagation(); this.toggleFavorite(); }
+    if (key === 'u' && this.bundle) { event.preventDefault(); event.stopPropagation(); this.toggleUnread(); }
+    if (key === 'o' && this.bundle) { event.preventDefault(); event.stopPropagation(); this.openOriginal(); }
+    if (key === 'e' && this.bundle) { event.preventDefault(); event.stopPropagation(); this.noteCurrent(); }
     if (event.key === '/') { event.preventDefault(); this.toggleSearch(true); }
     if (event.key === 'Escape') { this.focused = false; this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article'); }
   }
@@ -370,13 +408,20 @@ export class ReaderView extends ItemView {
       if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; return; }
       if (this.personalScope()) {
         const feeds = this.selectedFeeds();
-        await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, () => {
-          if (!this.closed && version === this.listVersion) { this.entries = this.localEntries(); this.renderList(); }
+        if (feeds.length) this.status.setText(`正在同步 0/${feeds.length}…`);
+        const summary = await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, (done, total) => {
+          if (!this.closed && version === this.listVersion) {
+            this.status.setText(`正在同步 ${done}/${total}…`);
+            this.entries = this.localEntries(); this.scheduleRenderList();
+          }
         });
         if (this.closed || version !== this.listVersion) return;
         this.entries = this.localEntries(); this.hasMore = false;
-        const failed = feeds.filter(feed => feed.error).length;
-        this.status.setText(failed ? `${failed} 个订阅刷新失败，保留已有文章。可在订阅管理中查看详情。` : '');
+        const parts: string[] = [];
+        if (summary.changed) parts.push(`${summary.changed} 个源有更新`);
+        if (summary.failed) parts.push(`${summary.failed} 个订阅刷新失败，保留已有文章`);
+        if (summary.skipped) parts.push(`${summary.skipped} 个跳过（未到期/已暂停/退避中）`);
+        this.status.setText(parts.length ? `${parts.join('，')}。${summary.failed ? '可在订阅管理中查看详情。' : ''}` : '');
         return;
       }
       const api = this.plugin.api();
@@ -415,6 +460,10 @@ export class ReaderView extends ItemView {
   private visibleEntries(): Entry[] {
     const state = this.plugin.state;
     const entries = this.filter === 'favorites' ? Object.values(state.favorites).map(b => b.entry) : this.entries;
+    if (this.filter === 'later') {
+      const order = new Map(state.readLater.map((id, i) => [id, i] as const));
+      return entries.filter(e => order.has(e.id)).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    }
     const query = this.query.trim().toLocaleLowerCase();
     return uniqueRemoteEntries(entries, this.bundle?.entry.id).filter(entry => (this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source : this.personalScope()
       ? entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))
@@ -439,13 +488,29 @@ export class ReaderView extends ItemView {
     for (const url of this.thumbnailUrls.values()) URL.revokeObjectURL(url);
     this.thumbnailUrls.clear(); this.thumbnailPending.clear();
   }
+  private cacheThumbnail(url: string, local: string) {
+    // LRU cap: evict oldest so 2000+ rows can never pin 2000+ blobs in memory.
+    if (!this.thumbnailUrls.has(url) && this.thumbnailUrls.size >= ReaderView.THUMB_CAP) {
+      const first = this.thumbnailUrls.keys().next();
+      if (!first.done) { const u = this.thumbnailUrls.get(first.value); if (u) URL.revokeObjectURL(u); this.thumbnailUrls.delete(first.value); }
+    }
+    // Re-insert to refresh LRU order.
+    if (this.thumbnailUrls.has(url)) this.thumbnailUrls.delete(url);
+    this.thumbnailUrls.set(url, local);
+  }
+  private scheduleRenderList() {
+    if (this.renderScheduled || this.closed) return;
+    this.renderScheduled = true;
+    window.requestAnimationFrame(() => { this.renderScheduled = false; if (!this.closed) this.renderList(); });
+  }
+  private resetWindow() { this.renderedCount = ReaderView.PAGE_SIZE; this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined; }
   private thumbnailUrl(url: string): Promise<string | null> {
     const cached = this.thumbnailUrls.get(url); if (cached) return Promise.resolve(cached);
     const pending = this.thumbnailPending.get(url); if (pending) return pending;
     const version = this.thumbnailVersion;
     const promise = this.plugin.images.load(url).then(blob => {
       if (this.closed || version !== this.thumbnailVersion) return null;
-      const local = URL.createObjectURL(blob); this.thumbnailUrls.set(url, local); return local;
+      const local = URL.createObjectURL(blob); this.cacheThumbnail(url, local); return local;
     }).catch(() => null);
     this.thumbnailPending.set(url, promise);
     void promise.finally(() => { if (this.thumbnailPending.get(url) === promise) this.thumbnailPending.delete(url); });
@@ -463,9 +528,12 @@ export class ReaderView extends ItemView {
   }
   private renderList() {
     const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
-    const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
+    const scroll = this.list.scrollTop; this.list.empty(); this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined;
+    const entries = this.visibleEntries();
     if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
-    for (const entry of entries) {
+    // Windowed rendering: only the first `renderedCount` rows enter the DOM.
+    const shown = entries.slice(0, this.renderedCount);
+    for (const entry of shown) {
       const relatedIds = this.relatedContentIds(entry);
       const read = relatedIds.some(id => this.plugin.state.readIds.includes(id));
       const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
@@ -498,16 +566,37 @@ export class ReaderView extends ItemView {
       const button = this.list.createEl('button', { text: this.loading ? '加载中…' : '加载更早文章', cls: 'qrs-more' });
       button.disabled = this.loading; button.addEventListener('click', () => { void this.loadEntries(true); });
     }
+    if (shown.length < entries.length) {
+      const remaining = entries.length - shown.length;
+      const sentinel = this.list.createDiv({ cls: 'qrs-more', text: this.loading ? '加载中…' : `显示更多（剩余 ${remaining} 篇）` });
+      sentinel.setAttribute('role', 'button'); sentinel.setAttribute('tabindex', '0');
+      const more = () => { this.renderedCount += ReaderView.PAGE_SIZE; this.renderList(); };
+      sentinel.addEventListener('click', more);
+      sentinel.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); more(); } });
+      // Auto-extend when the sentinel scrolls into view (infinite scroll with a cap per step).
+      this.listSentinelObserver = new IntersectionObserver(items => {
+        for (const item of items) if (item.isIntersecting) { this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined; more(); break; }
+      }, { root: this.list, rootMargin: '800px' });
+      this.listSentinelObserver.observe(sentinel);
+    }
     this.list.scrollTop = scroll;
     if (restoreFocus) this.reader.focus({ preventScroll: true });
   }
   private async openArticle(entry: Entry, resume?: ChannelState) {
     this.stopRestoring();
+    // Reading from the queue consumes the item.
+    if (this.filter === 'later') this.plugin.state.readLater = this.plugin.state.readLater.filter(id => id !== entry.id);
+    // Ensure the opened row exists in the windowed list.
+    { const idx = this.visibleEntries().findIndex(e => e.id === entry.id);
+      if (idx >= this.renderedCount) this.renderedCount = Math.min(this.visibleEntries().length, idx + ReaderView.PAGE_SIZE); }
     // Keep this unread reading session navigable after opening marks entries read.
     if (this.filter === 'unread') this.unreadSession.add(entry.id);
     const version = ++this.articleVersion; const state = this.plugin.state;
     this.bundle = state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
-    state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000); this.run(() => this.plugin.persist());
+    state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000);
+    state.readAt[entry.id] = Date.now();
+    if (Object.keys(state.readAt).length > 6000) { const keep = new Set(state.readIds); for (const k of Object.keys(state.readAt)) if (!keep.has(k)) delete state.readAt[k]; }
+    this.run(() => this.plugin.persist());
     this.mode = entry.origin === 'local' || entry.origin === 'vault' ? 'original'
       : podcastDefaultMode(entry, state.sources, state.settings.followedPodcasts)
         ?? (entry.audio || youtubeEmbedUrl(entry.videoUrl || entry.link) ? 'original' : state.settings.defaultMode);
@@ -540,6 +629,32 @@ export class ReaderView extends ItemView {
     this.bundle = bundle; this.mode = mode; this.message = '';
     this.reader.setAttribute('aria-busy', 'false'); this.contentEl.addClass('qrs-has-article');
     this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
+  }
+  private toggleFavorite() {
+    const bundle = this.bundle; if (!bundle) return;
+    this.run(async () => {
+      const ids = this.relatedContentIds(bundle.entry);
+      const favoriteId = ids.find(id => this.plugin.state.favorites[id]);
+      if (favoriteId) for (const id of ids) delete this.plugin.state.favorites[id];
+      else this.plugin.state.favorites[bundle.entry.id] = bundle;
+      await this.plugin.persist(); this.renderReader(true); this.renderList();
+    });
+  }
+  private toggleUnread() {
+    const bundle = this.bundle; if (!bundle) return;
+    this.run(async () => {
+      const relatedIds = this.relatedContentIds(bundle.entry);
+      const read = relatedIds.some(id => this.plugin.state.readIds.includes(id));
+      const ids = this.plugin.state.readIds.filter(id => !relatedIds.includes(id));
+      this.plugin.state.readIds = read ? ids : [...ids, bundle.entry.id].slice(-5000);
+      await this.plugin.persist(); this.renderReader(true); this.renderList();
+    });
+  }
+  private openOriginal() {
+    const bundle = this.bundle; if (!bundle) return;
+    const link = safeUrl(bundle.entry.link || '');
+    if (link) this.contentEl.win.open(link, '_blank', 'noopener,noreferrer');
+    else new Notice('这篇文章没有原文链接。');
   }
   private noteCurrent() {
     const bundle = this.bundle; if (!bundle) return;
@@ -617,7 +732,7 @@ export class ReaderView extends ItemView {
       empty.createEl('button', { cls: 'qrs-welcome-next', text: '下一则 →' }).onclick = () => { this.welcomeTip = (this.welcomeTip + 1) % tips.length; showTip(); };
       if (!Platform.isMobileApp) {
         const keys = empty.createDiv('qrs-welcome-keys');
-        for (const [key, label] of [['J / K', '下篇 / 上篇'], ['[', '收起列表'], ['/', '搜索文章']]) { const item = keys.createSpan(); item.createEl('kbd', { text: key }); item.createSpan({ text: label }); }
+        for (const [key, label] of [['J / K', '下篇 / 上篇'], ['[', '收起列表'], ['/', '搜索文章'], ['M', '稍后读'], ['F', '收藏'], ['E', '记日记'], ['O', '原文'], ['U', '已读']]) { const item = keys.createSpan(); item.createEl('kbd', { text: key }); item.createSpan({ text: label }); }
       }
       return;
     }
@@ -638,19 +753,16 @@ export class ReaderView extends ItemView {
     appearance.setAttribute('aria-expanded', String(this.appearanceOpen)); appearance.setAttribute('aria-controls', this.appearanceId);
     const favoriteId = this.relatedContentIds(bundle.entry).find(id => this.plugin.state.favorites[id]);
     const favorite = !!favoriteId;
-    const bookmark = this.addIconButton(actions, 'bookmark', favorite ? '取消收藏' : '收藏文章', () => this.run(async () => {
-      if (favoriteId) for (const id of this.relatedContentIds(bundle.entry)) delete this.plugin.state.favorites[id];
-      else this.plugin.state.favorites[bundle.entry.id] = bundle;
-      await this.plugin.persist(); this.renderReader(true); this.renderList();
-    }));
+    const bookmark = this.addIconButton(actions, 'bookmark', favorite ? '取消收藏' : '收藏文章 F', () => this.toggleFavorite());
     bookmark.setAttribute('aria-pressed', String(favorite)); bookmark.toggleClass('is-bookmarked', favorite);
+    const later = this.plugin.isLater(bundle.entry.id);
+    const laterButton = this.addIconButton(actions, 'clock', later ? '移出稍后读' : '稍后读 M', () => this.run(async () => {
+      await this.plugin.toggleLater(bundle.entry); this.renderFilters(); this.renderReader(true); this.renderList();
+    }));
+    laterButton.setAttribute('aria-pressed', String(later)); laterButton.toggleClass('is-bookmarked', later);
     const relatedIds = this.relatedContentIds(bundle.entry);
     const read = relatedIds.some(id => this.plugin.state.readIds.includes(id));
-    const readButton = this.addIconButton(actions, read ? 'circle-check' : 'circle', read ? '标为未读' : '标为已读', () => this.run(async () => {
-      const ids = this.plugin.state.readIds.filter(id => !relatedIds.includes(id));
-      this.plugin.state.readIds = read ? ids : [...ids, bundle.entry.id].slice(-5000);
-      await this.plugin.persist(); this.renderReader(true); this.renderList();
-    }));
+    const readButton = this.addIconButton(actions, read ? 'circle-check' : 'circle', read ? '标为未读 U' : '标为已读 U', () => this.toggleUnread());
     readButton.setAttribute('aria-pressed', String(read));
     this.addIconButton(actions, 'notebook-pen', '记到今日日记', () => this.noteCurrent());
     const more = this.addIconButton(actions, 'ellipsis', '更多文章操作', () => {
