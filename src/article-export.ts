@@ -7,6 +7,12 @@ function escapeMarkdown(value: string): string {
   return value.replace(/[\r\n]+/g, ' ').replace(/([\\`*_{}[\]()#+.!|>])/g, '\\$1').trim();
 }
 
+/** A file-system-safe base name shared by every export format: "<title> - <mode>". */
+export function exportBaseName(bundle: Bundle, mode: Mode): string {
+  const title = [...titleOf(bundle.entry).replace(/[\\/:*?"<>|#^[\]]/g, ' ')].filter(char => char.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 90) || '文章';
+  return `${title} - ${modeLabels[mode]}`;
+}
+
 export function articleExportBody(bundle: Bundle, mode: Mode, doc: Document, images: boolean): HTMLElement | null {
   const fragment = articleFragment(bundle, mode, doc, images);
   if (!fragment) return null;

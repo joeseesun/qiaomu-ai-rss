@@ -1,7 +1,7 @@
 import { Platform } from 'obsidian';
-import { articleExportBody, articleExportMarkdown } from './article-export';
+import { exportBaseName } from './article-export';
 import { fontFamily, readingFonts } from './fonts';
-import { safeUrl, titleOf, modeLabels, type Bundle, type Mode } from './model';
+import { safeUrl, titleOf, type Bundle, type Mode } from './model';
 import type { State } from './model';
 import type { LocalImages } from './images';
 
@@ -19,17 +19,14 @@ function desktop() {
   };
 }
 
-function filename(bundle: Bundle, mode: Mode, extension: string): string {
-  const title = [...titleOf(bundle.entry).replace(/[\\/:*?"<>|]/g, ' ')].filter(char => char.charCodeAt(0) >= 32).join('').replace(/\s+/g, ' ').trim().slice(0, 90) || '文章';
-  return `${title} - ${modeLabels[mode]}.${extension}`;
-}
-
-async function chooseFile(bundle: Bundle, mode: Mode, extension: 'md' | 'pdf'): Promise<string | null> {
-  const { remote } = desktop();
+// PDFs usually leave the vault, so the system dialog stays; it opens where the last PDF went.
+async function choosePdfFile(bundle: Bundle, mode: Mode, directory: string): Promise<string | null> {
+  const { remote, path } = desktop();
+  const name = `${exportBaseName(bundle, mode)}.pdf`;
   const result = await remote.dialog.showSaveDialog(remote.getCurrentWindow(), {
-    title: extension === 'pdf' ? '导出为 PDF' : '保存为 Markdown',
-    defaultPath: filename(bundle, mode, extension),
-    filters: [{ name: extension === 'pdf' ? 'PDF' : 'Markdown', extensions: [extension] }],
+    title: '导出为 PDF',
+    defaultPath: directory ? path.join(directory, name) : name,
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
   });
   return result.canceled ? null : result.filePath || null;
 }
@@ -38,53 +35,6 @@ async function assertNewFile(file: string): Promise<void> {
   const { fs } = desktop();
   try { await fs.access(file); throw new Error('文件已存在，请选择其他文件名。'); }
   catch (error) { if ((error as { code?: string }).code !== 'ENOENT') throw error; }
-}
-
-function imageExtension(type: string): string | null {
-  return ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif' } as Record<string, string>)[type] || null;
-}
-
-export async function saveArticleMarkdown(bundle: Bundle, mode: Mode, doc: Document, images: LocalImages, includeImages: boolean): Promise<{ path: string; missingImages: number } | null> {
-  const body = bundle.entry.origin === 'vault' ? null : articleExportBody(bundle, mode, doc, includeImages);
-  if (!articleExportMarkdown(bundle, mode, body)) throw new Error('当前阅读版本没有可导出的正文。');
-  const file = await chooseFile(bundle, mode, 'md');
-  if (!file) return null;
-  await assertNewFile(file);
-  const { fs, path } = desktop();
-  const assetName = `${path.basename(file, '.md')}.assets`;
-  const assetPath = path.join(path.dirname(file), assetName);
-  let assetCreated = false;
-  let missingImages = 0;
-  let saved = false;
-  try {
-    if (body) {
-      const imageNodes = [...body.querySelectorAll<HTMLImageElement>('img[src]')];
-      if (imageNodes.length) {
-        try { await fs.access(assetPath); throw new Error('同名图片资源文件夹已存在，请选择其他文件名。'); }
-        catch (error) { if ((error as { code?: string }).code !== 'ENOENT') throw error; }
-      }
-      for (const [index, img] of imageNodes.entries()) {
-        const url = img.getAttribute('src');
-        if (!url) continue;
-        try {
-          const blob = await images.load(url);
-          const extension = imageExtension(blob.type);
-          if (!extension) throw new Error('图片格式不支持。');
-          if (!assetCreated) { await fs.mkdir(assetPath); assetCreated = true; }
-          const name = `image-${index + 1}.${extension}`;
-          await fs.writeFile(path.join(assetPath, name), new Uint8Array(await blob.arrayBuffer()), { flag: 'wx' });
-          img.setAttribute('src', `./${encodeURIComponent(assetName)}/${name}`);
-        } catch { missingImages++; }
-      }
-    }
-    const markdown = articleExportMarkdown(bundle, mode, body);
-    if (!markdown) throw new Error('当前阅读版本没有可导出的正文。');
-    await fs.writeFile(file, markdown, { encoding: 'utf8', flag: 'wx' });
-    saved = true;
-    return { path: file, missingImages };
-  } finally {
-    if (!saved && assetCreated) await fs.rm(assetPath, { recursive: true, force: true });
-  }
 }
 
 async function embedImages(article: HTMLElement, original: HTMLElement, images: LocalImages): Promise<number> {
@@ -140,7 +90,7 @@ export async function saveArticlePdf(bundle: Bundle, mode: Mode, currentArticle:
   const prose = article.querySelector('.qrs-prose');
   if (!prose || (!prose.textContent?.trim() && !prose.querySelector('img'))) throw new Error('当前阅读版本没有可导出的正文。');
   article.querySelectorAll('.qrs-media,.qrs-feedback,.qrs-empty,audio,video,iframe,button,script,style,object,embed').forEach(element => element.remove());
-  const file = await chooseFile(bundle, mode, 'pdf');
+  const file = await choosePdfFile(bundle, mode, settings.pdfDirectory);
   if (!file) return null;
   await assertNewFile(file);
   const missingImages = await embedImages(article, currentArticle, images);
@@ -170,6 +120,7 @@ export async function saveArticlePdf(bundle: Bundle, mode: Mode, currentArticle:
     const pdf = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true });
     if (new TextDecoder().decode(pdf.subarray(0, 5)) !== '%PDF-') throw new Error('PDF 生成失败。');
     await fs.writeFile(file, pdf, { flag: 'wx' });
+    settings.pdfDirectory = path.dirname(file);
     return { path: file, missingImages };
   } finally { win.destroy(); await fs.rm(temporary, { recursive: true, force: true }); }
 }

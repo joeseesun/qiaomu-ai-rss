@@ -23,7 +23,8 @@ const featuredWechatIds = [
 const featuredWechatRank = new Map(featuredWechatIds.map((id, index) => [`wechat-${id}`, index]));
 
 async function catalogJson(url: string): Promise<unknown> {
-  const response = await requestUrl({ url, method: 'GET', throw: false });
+  let timer: number | undefined;
+  const response = await Promise.race([requestUrl({ url, method: 'GET', throw: false }), new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error('目录请求超时。')), 20000); })]).finally(() => window.clearTimeout(timer));
   if (response.status < 200 || response.status >= 300) throw new Error(`目录暂不可用（HTTP ${response.status}）。`);
   if (response.text.length > 2_000_000) throw new Error('目录数据过大。');
   return JSON.parse(response.text) as unknown;

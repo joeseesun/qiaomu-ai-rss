@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.20.0 — local development candidate
+
+- Add Discover subscriptions with six editorial recommendations and WeChat, podcast and independent-blog catalogs.
+- Search the bundled 718-source Tidings catalog and existing catalogs; preview feeds and recent episodes before following. Preserve discovery context after subscribing.
+- Unify RSS, OPML imports, podcasts and vault paths in My subscriptions with stable groups, rename/reorder/delete, multi-select moves and safe unsubscribe.
+- Import OPML from files, text or URLs with selectable searchable previews and duplicate protection. Support up to 2000 RSS subscriptions with bounded refresh batches.
+- Restructure the channel picker into 乔木精选 (全部精选 plus built-in group filters such as 微信公众号 and 小宇宙 that merge their channels' latest articles) and 我的订阅 (全部订阅, reading a whole group in one click, expandable groups, ungrouped sources).
+- Add a 管理订阅 button beside the picker search that opens the 订阅中心 dialog with 订阅管理 and 发现订阅 tabs: search, type/error filters, collapsible groups with select-all, sticky bulk actions (move, refresh, unsubscribe), per-feed refresh/copy URL, update status, OPML import/export and catalog discovery in one place. Retire the standalone Discover/My subscriptions tabs and close them when a saved workspace restores them.
+- Merge the blog and "more" catalogs into 独立博客和其他 with URL and site/title deduplication. Merge alias groups such as Podcasts and 播客, and merge groups renamed onto an existing name.
+- Simplify Discover: drop language/topic filters and the manual catalog update; the bundled catalog ships with plugin updates and provenance moves to a small footnote. Redesign 订阅管理 around one toolbar row (search, type filter, a single 添加 menu holding discovery, local content, new group and OPML import/export); quiet group labels with inline empty-group hints; framed source icons; per-source update time, unread count and read errors on the right, swapped for refresh and manage actions on hover; checkboxes revealed on hover or while selecting, with a bottom bulk-action bar. New local sources stay ungrouped instead of creating a 本地文件 group. Indent picker groups and sources below 全部精选/全部订阅.
+- 全部精选 mixes each featured Xiaoyuzhou show's latest episode into the timeline by publish date instead of pinning them above newer articles; an episode older than the loaded page waits until older pages load.
+- Fix the discovery panel staying on top after switching back to 订阅管理.
+- The reader toolbar trades the font button for 存为笔记 (file-plus); once an article is saved in the current version the button becomes 打开已存笔记 (file-check) and the ⋯ menu offers 另存一份笔记. Saved-note links follow renames and folder moves. 阅读设置 moves to the top of the ⋯ menu.
+- Save as Markdown writes straight into a vault folder (设置 → 保存与导出 → 文章保存文件夹, default `Qiaomu RSS/文章`) through Obsidian's vault API, so it also works on mobile; images follow Obsidian's attachment location and link style, repeat saves become `(2)`, and the notice links to the new note. PDF export keeps the system dialog but reopens where the last PDF was saved.
+- Tighten the article list: hide the repeated source name inside a single channel, prefer cached Chinese rewrites for excerpts, drop WeChat bylines, hide untranslated excerpts under Chinese titles (titles get up to three lines), larger 12/13/15px meta, excerpt and title text, a gutter unread dot, and 56px thumbnails.
+- Adopt a black, white and gray palette across the reader, dialogs, discovery, library and settings instead of Obsidian's purple accent; redesign the source preview dialog.
+- Add cached source favicons with text fallback, source links on article headings, and compact mobile-compatible discovery and management.
+- Preserve legacy data with a migration backup; keep personal subscriptions separate from editorial Qiaomu Picks.
+
 ## 0.18.2 — 2026-09-07
 
 - Use a calm sage article selection palette with separate dark-mode and hover states; preserve row density and remove the tinted inset frame.

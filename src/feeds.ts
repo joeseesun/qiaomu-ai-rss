@@ -1,7 +1,7 @@
 import createDOMPurify from 'dompurify';
 import { safeUrl, type Entry, type Subscription } from './model';
 
-export const MAX_SUBSCRIPTIONS = 100;
+export const MAX_SUBSCRIPTIONS = 2000;
 const MAX_XML = 5 * 1024 * 1024;
 const MAX_STORED_FEED = 1024 * 1024;
 export interface FeedInput { url: string; name: string; group: string }
@@ -87,7 +87,7 @@ function entryAudio(item: Element, base: string): Entry['audio'] {
   }
   return null;
 }
-export async function parseFeed(xml: string, url: string, doc: Document): Promise<{ name: string; entries: Entry[] }> {
+export async function parseFeed(xml: string, url: string, doc: Document): Promise<{ name: string; entries: Entry[]; site?: string; image?: string }> {
   const root = xmlDocument(xml, doc).documentElement;
   const atom = root.localName === 'feed' && root.namespaceURI === 'http://www.w3.org/2005/Atom';
   const channel = child(root, 'channel');
@@ -122,7 +122,11 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     if (entries.length === 50) break;
   }
   entries.sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
-  return { name, entries };
+  const rootSite = root.localName === 'feed' ? Array.from(root.children).find(el => el.localName === 'link' && (!el.getAttribute('rel') || el.getAttribute('rel') === 'alternate'))?.getAttribute('href') : text(child(root, 'channel') || root, 'link');
+  const site = rootSite ? safeUrl(rootSite, url) || undefined : undefined;
+  const rawImage = text(child(parent, 'image') || parent, 'url') || text(root, 'icon') || text(root, 'logo');
+  const image = rawImage ? safeUrl(rawImage, site || url) || undefined : undefined;
+  return { name, entries, site, image };
 }
 export function parseOpml(xml: string, doc: Document): { feeds: FeedInput[]; skipped: number } {
   const root = xmlDocument(xml, doc).documentElement;

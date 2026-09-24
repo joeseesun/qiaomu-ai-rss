@@ -1,8 +1,9 @@
+import { migrateLibrary, moveSources, registerSource } from './personal-library';
 import { EditorView } from '@codemirror/view';
-import { MarkdownView, Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem } from 'obsidian';
+import { MarkdownView, Notice, Plugin, PluginSettingTab, TFile, type App, type SettingDefinitionItem, type SettingGroupItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
+import { folderPath, initialState, renameArticleNotes, modeLabels, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
@@ -10,8 +11,7 @@ import { readingFonts, selectableFonts, ReadingFonts } from './fonts';
 import { registerImageDrops } from './image-drag';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
-import { SubscriptionManager, type SubscriptionTab } from './subscription-ui';
-import { DiscoveryView, DISCOVERY_VIEW_TYPE } from './discovery-view';
+import { RETIRED_VIEW_TYPES, RetiredView, SubscriptionCenter, type CenterTab } from './subscription-center';
 
 export default class QiaomuRssPlugin extends Plugin {
   fonts = new ReadingFonts();
@@ -19,8 +19,8 @@ export default class QiaomuRssPlugin extends Plugin {
   state: State = initialState(null);
   images!: LocalImages;
   subscriptions!: Subscriptions;
-  private subscriptionManager?: SubscriptionManager;
   private lastNote: TFile | null = null;
+  private libraryEdits: Promise<void> = Promise.resolve();
   private saving: Promise<void> = Promise.resolve();
   private dailyNoteWrite: Promise<unknown> = Promise.resolve();
   async onload() {
@@ -32,17 +32,37 @@ export default class QiaomuRssPlugin extends Plugin {
     }));
     const data: unknown = await this.loadData();
     try { this.state = initialState(data); }
-    catch { new Notice('RSS 配置不兼容，已使用默认设置。'); }
+    catch { new Notice('RSS 配置无法读取，已保留原数据。请检查备份后重启插件。'); throw new Error('Incompatible RSS data'); }
+    if (data && typeof data === 'object' && !('libraryVersion' in data)) {
+      const backup = `${this.app.vault.configDir}/plugins/${this.manifest.id}/data-before-library-v1.json`;
+      if (!await this.app.vault.adapter.exists(backup)) await this.app.vault.adapter.write(backup, JSON.stringify(data));
+      await this.persist();
+    }
     this.images = new LocalImages(this.app.vault, `${this.app.vault.configDir}/plugins/${this.manifest.id}/image-cache`);
     registerImageDrops(this);
-    this.subscriptions = new Subscriptions(() => this.state, () => this.persist());
+    this.subscriptions = new Subscriptions(() => this.state, () => this.persist().then(() => { this.refreshDiscovery(); this.refreshPersonalViews(); }));
     this.addCommand({ id: 'manage-subscriptions', name: '管理我的订阅', callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
-    this.registerView(DISCOVERY_VIEW_TYPE, leaf => new DiscoveryView(leaf, this));
+    for (const type of RETIRED_VIEW_TYPES) this.registerView(type, leaf => new RetiredView(leaf, type));
+    const retire = () => { for (const type of RETIRED_VIEW_TYPES) for (const leaf of this.app.workspace.getLeavesOfType(type)) leaf.detach(); };
+    this.app.workspace.onLayoutReady(() => { retire(); window.setTimeout(retire, 500); });
     this.addCommand({ id: 'explore-subscriptions', name: '探索订阅', callback: () => { void this.openDiscovery(); } });
     this.addRibbonIcon('rss', '打开乔木 RSS 阅读器', () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: '打开乔木 RSS 阅读器', callback: () => { void this.openReader(); } });
     this.addSettingTab(new RssSettings(this.app, this));
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      if (renameArticleNotes(this.state.articleNotes, oldPath, file.path)) void this.persist();
+      if (!this.state.settings.markdownFolders.some(path => path === oldPath || path.startsWith(oldPath + '/'))) return;
+      void this.editLibrary(() => {
+        this.state.settings.markdownFolders = this.state.settings.markdownFolders.map(path => {
+          if (path !== oldPath && !path.startsWith(oldPath + '/')) return path;
+          const next = file.path + path.slice(oldPath.length), oldId = vaultSourceId(path), nextId = vaultSourceId(next);
+          if (this.state.sourceMeta[oldId]) { this.state.sourceMeta[nextId] = this.state.sourceMeta[oldId]; delete this.state.sourceMeta[oldId]; }
+          if (this.state.settings.lastSource === oldId) this.state.settings.lastSource = nextId;
+          return next;
+        });
+      }).catch(() => new Notice('文件已移动，订阅路径保存失败，请重新添加。'));
+    }));
     this.registerEvent(this.app.workspace.on('file-open', file => { if (file?.extension === 'md') this.cleanNoteMarkers(file); }));
     this.app.workspace.onLayoutReady(() => {
       for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
@@ -83,7 +103,7 @@ export default class QiaomuRssPlugin extends Plugin {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice('这篇文章的本地副本不存在。'));
     });
   }
-  onunload() { this.fonts.dispose(); }
+  onunload() { this.center?.close(); this.fonts.dispose(); }
   api(): RssApi {
     return new RssApi(this.state.settings.baseUrl, async url => {
       const response = await requestUrl({ url, method: 'GET', headers: { Accept: 'application/json' }, throw: false });
@@ -221,23 +241,48 @@ export default class QiaomuRssPlugin extends Plugin {
     const app = this.app as App & { setting: { open(): void; openTabById(id: string): void } };
     app.setting.open(); app.setting.openTabById(tabId);
   }
-  manageSubscriptions(tab: SubscriptionTab = 'mine') {
-    this.subscriptionManager?.close();
-    this.subscriptionManager = new SubscriptionManager(this, () => {
-      this.refreshDiscovery();
-      for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-        if (leaf.view instanceof ReaderView) leaf.view.showSubscriptions();
-      }
-    }, tab);
-    this.subscriptionManager.open();
+  editLibrary(edit: () => void): Promise<void> {
+    const operation = this.libraryEdits.catch(() => undefined).then(() => this.applyLibraryEdit(edit));
+    this.libraryEdits = operation; return operation;
   }
-  openDiscovery(): Promise<void> { this.manageSubscriptions('explore'); return Promise.resolve(); }
-  refreshDiscovery() {
-    this.subscriptionManager?.refresh();
-    for (const leaf of this.app.workspace.getLeavesOfType(DISCOVERY_VIEW_TYPE)) {
-      if (leaf.view instanceof DiscoveryView) leaf.view.refresh();
-    }
+  private async applyLibraryEdit(edit: () => void) {
+    const snapshot = structuredClone({ subscriptionGroups: this.state.subscriptionGroups, sourceMeta: this.state.sourceMeta, collapsedGroups: this.state.collapsedGroups, subscriptions: this.state.subscriptions, settings: this.state.settings });
+    try { edit(); migrateLibrary(this.state); await this.persist(); }
+    catch (e) { Object.assign(this.state, snapshot); throw e; }
+    this.refreshPersonalViews(); this.refreshDiscovery();
   }
+  refreshPersonalViews() {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) if (leaf.view instanceof ReaderView) leaf.view.refreshPersonalSources();
+  }
+  async addLocalSource(path: string, groupId?: string) {
+    await this.editLibrary(() => { if (!this.state.settings.markdownFolders.includes(path)) this.state.settings.markdownFolders.push(path); registerSource(this.state, `@vault:${path}`, ''); if (groupId !== undefined) moveSources(this.state, [`@vault:${path}`], groupId); });
+  }
+  async removePersonalSources(ids: string[]) {
+    await this.editLibrary(() => {
+      this.state.subscriptions = this.state.subscriptions.filter(s => !ids.includes(s.id));
+      this.state.settings.followedPodcasts = this.state.settings.followedPodcasts.filter(id => !ids.includes(id));
+      this.state.settings.markdownFolders = this.state.settings.markdownFolders.filter(path => !ids.includes(`@vault:${path}`));
+      for (const id of ids) { delete this.state.sourceMeta[id]; delete this.state.settings.podcastNames[id]; }
+      if (ids.includes(this.state.settings.lastSource)) this.state.settings.lastSource = '@local';
+    });
+  }
+  async openPersonalSource(id: string) {
+    this.center?.close();
+    await this.openReader();
+    const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+    if (view instanceof ReaderView) view.showPersonalSource(id);
+  }
+  manageSubscriptions() { this.openCenter('library'); }
+  openLibrary() { this.openCenter('library'); return Promise.resolve(); }
+  openDiscovery() { this.openCenter('discover'); return Promise.resolve(); }
+  center?: SubscriptionCenter;
+  openCenter(tab: CenterTab) {
+    if (this.center) { this.center.show(tab); return; }
+    const center = this.center = new SubscriptionCenter(this.app, this, tab);
+    const close = center.onClose.bind(center); center.onClose = () => { close(); if (this.center === center) this.center = undefined; };
+    center.open();
+  }
+  refreshDiscovery() { this.center?.refresh(); }
   async activateSubscription(id: string) {
     if (!this.state.subscriptions.some(feed => feed.id === id)) return;
     this.state.settings.lastSource = id; await this.persist();
@@ -245,7 +290,7 @@ export default class QiaomuRssPlugin extends Plugin {
       if (leaf.view instanceof ReaderView) leaf.view.showSubscription(id);
     }
   }
-  async followPodcast(id: string, name?: string) {
+  async followPodcast(id: string, name?: string, activate = true) {
     const source = this.state.sources.find(item => item.id === id && item.category === 'podcast' && item.enabled !== false);
     if (!source) {
       if (!/^podscribe-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) throw new Error('播客标识无效。');
@@ -254,8 +299,10 @@ export default class QiaomuRssPlugin extends Plugin {
     }
     if (!this.state.settings.followedPodcasts.includes(id)) this.state.settings.followedPodcasts.push(id);
     if (name) this.state.settings.podcastNames[id] = name.slice(0, 200);
-    this.state.settings.lastSource = id;
-    await this.persist();
+    registerSource(this.state, id, '播客');
+    if (activate) this.state.settings.lastSource = id;
+    await this.persist(); this.refreshPersonalViews(); this.refreshDiscovery();
+    if (!activate) return;
     await this.openReader();
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
     if (view instanceof ReaderView) view.showRemoteSource(id);
@@ -263,6 +310,7 @@ export default class QiaomuRssPlugin extends Plugin {
   }
   async unfollowPodcast(id: string) {
     this.state.settings.followedPodcasts = this.state.settings.followedPodcasts.filter(source => source !== id);
+    delete this.state.sourceMeta[id];
     delete this.state.settings.podcastNames[id];
     if (this.state.settings.lastSource === id) this.state.settings.lastSource = '';
     await this.persist();
@@ -298,10 +346,19 @@ export default class QiaomuRssPlugin extends Plugin {
 }
 class RssSettings extends PluginSettingTab {
   private section = '阅读';
-  constructor(app: App, private plugin: QiaomuRssPlugin) { super(app, plugin); }
+  constructor(app: App, private plugin: QiaomuRssPlugin) { super(app, plugin); this.containerEl.addClass('qrs-settings'); }
   getSettingDefinitions(): SettingDefinitionItem[] {
     const settings = this.plugin.state.settings;
     const saveReading = async () => { this.plugin.refreshPreferences(); await this.plugin.persist(); };
+    // A vault folder: type a path (saved when the field loses focus) or pick an existing folder.
+    const folderSetting = (name: string, desc: string, key: 'articleFolder' | 'folder'): SettingGroupItem => ({ name, desc, render: setting => {
+      const save = async (value: string) => {
+        try { settings[key] = folderPath(value); await this.plugin.persist(); }
+        catch (error) { new Notice(error instanceof Error ? error.message : '无法保存设置。'); }
+      };
+      setting.addText(text => { text.setValue(settings[key]); text.inputEl.addEventListener('change', () => { void save(text.getValue()).then(() => text.setValue(settings[key])); }); });
+      setting.addButton(button => button.setButtonText('选择').onClick(() => new VaultFolderPicker(this.app, folder => { if (folder.path !== '/') void save(folder.path).then(() => this.update()); else new Notice('请选择库内的一个文件夹。'); }).open()));
+    } });
     const definitions: SettingDefinitionItem[] = [
       { type: 'group', heading: '阅读与摘录', items: [
         { name: '选中文字时显示摘录浮层', desc: '默认开启。选中文字后可追加到今日日记或当前笔记。', render: setting => {
@@ -329,29 +386,23 @@ class RssSettings extends PluginSettingTab {
         { name: '阅读文件夹', desc: '包含子文件夹。可选择剪藏目录或其他 Markdown 文件夹；通过频道菜单进入。', render: setting => {
           setting.addButton(button => button.setButtonText('添加文件夹').onClick(() => {
             new VaultFolderPicker(this.app, folder => {
-              if (!settings.markdownFolders.includes(folder.path)) settings.markdownFolders.push(folder.path);
-              settings.lastSource = vaultSourceId(folder.path);
-              void this.plugin.persist().then(() => { this.plugin.resetViews(); this.update(); });
+              void this.plugin.addLocalSource(folder.path).then(() => this.update());
             }).open();
           }));
         } },
         ...settings.markdownFolders.map(folder => ({ name: folder === '/' ? '整个库' : folder, render: (setting: import('obsidian').Setting) => {
           setting.addButton(button => button.setButtonText('移除').onClick(async () => {
-            settings.markdownFolders = settings.markdownFolders.filter(path => path !== folder);
-            await this.plugin.persist(); this.plugin.resetViews(); this.update();
+            await this.plugin.removePersonalSources([vaultSourceId(folder)]); this.update();
           }));
         } })),
       ] },
-      { name: '我的订阅', desc: '添加 RSS / Atom、分组与 OPML 导入导出。', render: setting => {
-        setting.addButton(button => button.setButtonText('管理订阅').onClick(() => this.plugin.manageSubscriptions()));
+      { name: '我的订阅', desc: '在独立页面中整理订阅、分组，以及 OPML 导入导出。', render: setting => {
+        setting.addButton(button => button.setButtonText('管理订阅').onClick(() => { (this.app as App & { setting: { close(): void } }).setting.close(); this.plugin.manageSubscriptions(); }));
       } },
-      { name: 'OPML 导出文件夹', desc: '导出的 OPML 文件保存在这个库内文件夹。文章链接会写入 Obsidian 的今日日记。', render: setting => {
-        setting.addText(text => text.setValue(settings.folder).onChange(value => { this.pendingFolder = value; }))
-          .addButton(button => button.setButtonText('保存').onClick(async () => {
-            try { settings.folder = folderPath(this.pendingFolder ?? settings.folder); await this.plugin.persist(); new Notice('文件夹已保存。'); }
-            catch (error) { new Notice(error instanceof Error ? error.message : '无法保存设置。'); }
-          }));
-      } },
+      { type: 'group', heading: '保存与导出', items: [
+        folderSetting('文章保存文件夹', '“保存为 Markdown”会把文章存进这个库内文件夹；图片按 Obsidian 的附件设置存放。', 'articleFolder'),
+        folderSetting('OPML 导出文件夹', '导出的 OPML 文件保存在这个库内文件夹。', 'folder'),
+      ] },
       { name: '默认阅读版本', render: setting => {
         setting.addDropdown(drop => {
           for (const [value, label] of Object.entries(modeLabels)) drop.addOption(value, label);
@@ -423,5 +474,4 @@ class RssSettings extends PluginSettingTab {
       }
     } }, ...buckets[this.section]];
   }
-  private pendingFolder?: string;
 }

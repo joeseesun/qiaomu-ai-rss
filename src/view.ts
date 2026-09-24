@@ -1,20 +1,23 @@
+import { groupsInOrder, personalSources } from './personal-library';
+import { SourceIcons } from './source-icons';
 import { addSearchClear } from './search-clear';
 import { ChannelPicker, channelMark, type ChannelChoice } from './channel-picker';
-import { Component, MarkdownRenderer, ItemView, Menu, Notice, Platform, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { Component, MarkdownRenderer, ItemView, Menu, Notice, Platform, setIcon, TFile, type WorkspaceLeaf } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import { vaultSourceId } from './vault-source';
 import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { SelectionCapture } from './selection';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
-import { saveArticleMarkdown, saveArticlePdf } from './desktop-export';
+import { saveArticlePdf } from './desktop-export';
+import { saveArticleToVault } from './vault-export';
+import { cleanExcerpt } from './excerpt';
 import { renderMedia, stopMedia, youtubeEmbedUrl } from './media';
 import { sameRemoteContent, uniqueRemoteEntries, wechatArticleKey, xiaoyuzhouEpisodeKey } from './wechat-articles';
-import { featuredXiaoyuzhouPodcasts, prependFeaturedPodcasts, qiaomuChannelDivider, qiaomuFeaturedEntries, readerChannelSources } from './discovery';
-import { modeLabels, modeSchema, podcastDefaultMode, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
+import { featuredXiaoyuzhouPodcasts, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuDividerIcons, qiaomuDividers, qiaomuFeaturedEntries, readerChannelSources } from './discovery';
+import { articleNoteKey, modeLabels, modeSchema, podcastDefaultMode, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
-function feedHost(url: string) { try { return new URL(url).hostname; } catch { return 'RSS'; } }
 function podcastRelativeDateLabel(value: string | null | undefined): string {
   const raw = (value || '').trim();
   if (/^today$/i.test(raw)) return '今天';
@@ -78,12 +81,14 @@ export class ReaderView extends ItemView {
   private refreshButton!: HTMLButtonElement;
   private filters!: HTMLElement;
   private entries: Entry[] = [];
+  private personalLimit = 100;
   private source = '';
   private filter: Filter = 'all';
   private unreadSession = new Set<string>();
   private query = '';
   private cursor = '';
   private hasMore = false;
+  private featuredEpisodes: Entry[] = [];
   private loading = false;
   private articleLoading = false;
   private focused = false;
@@ -111,7 +116,7 @@ export class ReaderView extends ItemView {
     this.reset();
     this.registerDomEvent(this.contentEl.ownerDocument, 'pointerdown', event => {
       const target = event.target as HTMLElement;
-      if (!this.appearanceOpen || target.closest?.('.qrs-reading-settings') || target.closest?.('[data-qrs-label="阅读设置"]')) return;
+      if (!this.appearanceOpen || target.closest?.('.qrs-reading-settings')) return;
       this.appearanceOpen = false; this.reader.querySelector('.qrs-reading-settings')?.remove();
       this.reader.querySelector('[aria-controls="' + this.appearanceId + '"]')?.setAttribute('aria-expanded', 'false');
       this.run(() => this.plugin.persist());
@@ -175,7 +180,7 @@ export class ReaderView extends ItemView {
     const remembered = this.plugin.state.settings.lastSource;
     const localExists = this.plugin.state.subscriptions.some(feed => feed.id === remembered);
     const groupExists = remembered.startsWith('@group:') && this.plugin.state.subscriptions.some(feed => feed.group === remembered.slice(7));
-    this.focused = false; this.source = remembered !== 'levelingup' && (remembered === '@local' || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists || this.plugin.state.settings.followedPodcasts.includes(remembered) || readerChannelSources(this.plugin.state.sources).some(source => source.id === remembered)) ? remembered : '';
+    this.focused = false; this.source = remembered !== 'levelingup' && (remembered === '@local' || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists || this.plugin.state.settings.followedPodcasts.includes(remembered) || (qiaomuDividers as readonly string[]).includes(remembered.replace(/^@qiaomu:/, '')) && remembered.startsWith('@qiaomu:') || readerChannelSources(this.plugin.state.sources).some(source => source.id === remembered)) ? remembered : '';
     this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
     this.mode = this.plugin.state.settings.defaultMode;
     this.entries = this.personalScope() ? this.localEntries() : this.source ? [] : qiaomuFeaturedEntries(this.plugin.state.entries);
@@ -186,6 +191,25 @@ export class ReaderView extends ItemView {
   }
   private run(action: () => Promise<void>) {
     void action().catch(error => { if (!this.closed) new Notice(error instanceof Error ? error.message : '操作失败，请重试。'); });
+  }
+  private savedNote(bundle: Bundle, mode: Mode): TFile | null {
+    const path = this.plugin.state.articleNotes[articleNoteKey(bundle.entry.id, mode)];
+    const file = path ? this.app.vault.getAbstractFileByPath(path) : null;
+    return file instanceof TFile ? file : null;
+  }
+  private saveNote(bundle: Bundle, mode: Mode) {
+    this.run(async () => {
+      const state = this.plugin.state, progress = new Notice('正在保存文章和图片…', 0);
+      const { file, missingImages } = await saveArticleToVault(this.app, bundle, mode, this.contentEl.ownerDocument, this.plugin.images, state.settings.remoteImages, state.settings.articleFolder).finally(() => progress.hide());
+      state.articleNotes[articleNoteKey(bundle.entry.id, mode)] = file.path;
+      await this.plugin.persist();
+      if (this.bundle?.entry.id === bundle.entry.id) this.renderReader(true);
+      new Notice(createFragment(f => {
+        f.appendText(missingImages ? `已存为笔记，${missingImages} 张图片保留为网络链接。` : '已存为笔记。');
+        const open = f.createEl('a', { text: '打开', href: '#' });
+        open.onclick = e => { e.preventDefault(); void this.app.workspace.getLeaf('tab').openFile(file); };
+      }), 8000);
+    });
   }
   private addIconButton(parent: HTMLElement, icon: string, label: string, action: () => void): HTMLButtonElement {
     const button = parent.createEl('button', { cls: 'qrs-icon', attr: { 'data-qrs-label': label } });
@@ -214,7 +238,7 @@ export class ReaderView extends ItemView {
     const bar = sidebar.createDiv('qrs-sidebar-toolbar');
     this.channelButton = bar.createEl('button', { cls: 'qrs-channel', attr: { 'aria-haspopup': 'dialog' } });
     this.renderChannel(); this.channelButton.addEventListener('click', () => this.pickChannel());
-    this.addIconButton(bar, 'plus', '添加或管理订阅', () => this.plugin.manageSubscriptions());
+    this.addIconButton(bar, 'plus', '发现订阅', () => { void this.plugin.openDiscovery(); });
     this.addIconButton(bar, 'search', '搜索文章 /', () => this.toggleSearch());
     this.refreshButton = this.addIconButton(bar, 'refresh-cw', '刷新文章', () => { void this.loadEntries(false, true); });
     this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group' } });
@@ -257,30 +281,32 @@ export class ReaderView extends ItemView {
     this.addIconButton(this.filters, 'settings', '插件设置', () => this.plugin.openSettings()).addClass('qrs-settings-button');
   }
   private channelChoices(): ChannelChoice[] {
-    const feeds = this.plugin.state.subscriptions;
-    const groups = [...new Set(feeds.map(feed => feed.group).filter(Boolean))].sort();
+    const sources = personalSources(this.plugin.state), groups = groupsInOrder(this.plugin.state);
     return [
-      { id: '', name: '乔木精选', section: '聚合', subtitle: '乔木筛选的高质量内容', icon: 'tree-deciduous' },
-      { id: '@local', name: '我的订阅', section: '聚合', subtitle: `${feeds.length} 个个人订阅源`, icon: 'rss' },
-      ...this.plugin.state.settings.markdownFolders.map(folder => ({ id: vaultSourceId(folder), name: folder === '/' ? '整个库' : folder.split('/').at(-1)!, section: '库内文件夹' as const, subtitle: folder, icon: folder.endsWith('.md') ? 'file-text' : 'folder-open' })),
-      ...groups.map(group => ({ id: `@group:${group}`, name: group, section: '订阅分组' as const,
-        subtitle: `${feeds.filter(feed => feed.group === group).length} 个订阅源`, icon: 'folder' })),
-      ...readerChannelSources(this.plugin.state.sources).map(source => ({ id: source.id, name: source.name, section: '乔木频道' as const,
-        subtitle: ({ article: '文章', news: '新闻', podcast: '播客' } as Record<string, string>)[source.category || ''] || source.category || '乔木内容频道', monogram: source.name.trim().slice(0, 1), divider: qiaomuChannelDivider(source) })),
-      ...this.plugin.state.settings.followedPodcasts.filter(id => !featuredXiaoyuzhouPodcasts(this.plugin.state.sources).some(source => source.id === id)).map(id => {
-        const source = this.plugin.state.sources.find(item => item.id === id && item.enabled !== false);
-        return { id, name: this.plugin.state.settings.podcastNames[id] || source?.name || id.replace(/^podscribe-/, ''), section: '已订阅播客' as const,
-          subtitle: id.startsWith('podscribe-') ? '海外播客 · 源文稿' : '播客', icon: 'mic' };
-      }),
-      ...feeds.map(feed => ({ id: feed.id, name: feed.name, section: '我的订阅源' as const,
-        subtitle: `${feed.group ? `${feed.group} · ` : ''}${feedHost(feed.url)} · ${feed.entries.length} 篇`, monogram: feed.name.trim().slice(0, 1), group: feed.group })),
+      { id: '', name: '乔木精选', short: '全部精选', section: '聚合', subtitle: '乔木筛选的高质量内容', icon: 'tree-deciduous' },
+      ...qiaomuDividers.map(divider => ({ id: `@qiaomu:${divider}`, name: divider, section: '乔木分组' as const, subtitle: '乔木精选', icon: qiaomuDividerIcons[divider] })),
+      { id: '@local', name: '我的订阅', short: '全部订阅', section: '聚合', subtitle: `${sources.length} 个来源`, icon: 'rss' },
+      ...groups.map(group => ({ id: `@group:${group.id}`, name: group.name, section: '订阅分组' as const, subtitle: `${sources.filter(s => s.groupId === group.id).length} 个来源`, icon: 'folder' })),
+      ...readerChannelSources(this.plugin.state.sources).map(source => ({ id: source.id, name: source.name, section: '乔木频道' as const, subtitle: source.category || '', monogram: source.name.trim().slice(0, 1), divider: qiaomuChannelDivider(source) })),
+      ...sources.map(source => ({ id: source.id, name: source.name, section: '我的订阅源' as const, subtitle: source.detail, group: source.groupId, site: source.site, url: source.url, image: source.image, kind: source.kind })),
     ];
   }
+  refreshPersonalSources() {
+    if (this.closed || !this.channelButton) return;
+    if (this.source.startsWith('@group:') && !this.plugin.state.subscriptionGroups.some(g => g.id === this.source.slice(7)) || (this.source.startsWith('local:') || this.vaultScope()) && !personalSources(this.plugin.state).some(s => s.id === this.source)) { this.selectSource('@local', false); return; }
+    this.renderChannel(); this.renderFilters();
+    if (this.personalScope()) { this.entries = this.localEntries(); this.renderList(); }
+  }
+  showPersonalSource(id: string) { this.selectSource(id); }
   private vaultScope() { return this.source.startsWith('@vault:'); }
+  private qiaomuGroupIds(source = this.source) {
+    const divider = source.startsWith('@qiaomu:') ? source.slice(8) : '';
+    return new Set(divider ? readerChannelSources(this.plugin.state.sources).filter(item => qiaomuChannelDivider(item) === divider).map(item => item.id) : []);
+  }
   private personalScope() { return this.source === '@local' || this.source.startsWith('@group:') || this.source.startsWith('local:'); }
   private selectedFeeds() {
     return this.plugin.state.subscriptions.filter(feed => this.source === '@local' || feed.id === this.source ||
-      (this.source.startsWith('@group:') && feed.group === this.source.slice(7)));
+      (this.source.startsWith('@group:') && this.plugin.state.sourceMeta[feed.id]?.groupId === this.source.slice(7)));
   }
   private localEntries() { return this.selectedFeeds().flatMap(feed => feed.entries).sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0)); }
   showSubscriptions() { this.selectSource('@local', false); }
@@ -290,7 +316,7 @@ export class ReaderView extends ItemView {
   showRemoteSource(id: string) { if (id !== 'levelingup') this.selectSource(id); }
   private pickChannel() {
     if (this.channelPicker) { this.channelPicker.close(); return; }
-    this.channelPicker = new ChannelPicker(this.channelButton, this.channelChoices(), this.source, source => this.selectSource(source.id), () => { this.channelPicker = undefined; });
+    this.channelPicker = new ChannelPicker(this.channelButton, this.channelChoices(), this.source, source => this.selectSource(source.id), () => { this.channelPicker = undefined; }, new SourceIcons(this.plugin), { collapsed: this.plugin.state.collapsedGroups, save: (id, collapsed) => { void this.plugin.editLibrary(() => { const state = this.plugin.state; state.collapsedGroups = collapsed ? [...new Set([...state.collapsedGroups, id])] : state.collapsedGroups.filter(g => g !== id); }).catch(() => new Notice('无法保存分组状态。')); } }, () => this.plugin.manageSubscriptions());
     this.channelPicker.load();
   }
   private selectSource(source: string, refresh = true) {
@@ -299,11 +325,11 @@ export class ReaderView extends ItemView {
     this.unreadSession.clear();
     this.listVersion++; this.loading = false; this.refreshButton.removeClass('is-loading');
     this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
-    this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
+    this.personalLimit = 100; this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
     this.plugin.state.settings.lastSource = source; this.run(() => this.plugin.persist());
     this.bundle = null; this.articleVersion++; this.focused = false; this.contentEl.removeClass('qrs-focus');
     this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
-    this.entries = this.personalScope() ? this.localEntries() : source ? [] : qiaomuFeaturedEntries(this.plugin.state.entries);
+    this.entries = this.personalScope() ? this.localEntries() : source.startsWith('@qiaomu:') ? this.plugin.state.entries.filter(entry => this.qiaomuGroupIds().has(entry.sourceId)) : source ? [] : qiaomuFeaturedEntries(this.plugin.state.entries);
     this.status.setText(''); this.renderChannel();
     const saved = this.plugin.state.channelStates[this.channelKey()];
     if (saved) { this.restoreChannel(saved); if (!this.entries.length && refresh) void this.loadEntries(); return; }
@@ -369,14 +395,14 @@ export class ReaderView extends ItemView {
     try {
       if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; return; }
       if (this.personalScope()) {
-        const feeds = this.selectedFeeds();
+        const feeds = [...this.selectedFeeds()].sort((a, b) => (a.lastAttemptAt || a.updatedAt) - (b.lastAttemptAt || b.updatedAt)).slice(0, 20);
         await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, () => {
           if (!this.closed && version === this.listVersion) { this.entries = this.localEntries(); this.renderList(); }
         });
         if (this.closed || version !== this.listVersion) return;
         this.entries = this.localEntries(); this.hasMore = false;
         const failed = feeds.filter(feed => feed.error).length;
-        this.status.setText(failed ? `${failed} 个订阅刷新失败，保留已有文章。可在订阅管理中查看详情。` : '');
+        this.status.setText(failed ? `${failed} 个订阅刷新失败，保留已有文章。` : this.selectedFeeds().length > 20 ? '每次刷新读取 20 个较旧来源，可继续刷新。' : '');
         return;
       }
       const api = this.plugin.api();
@@ -385,6 +411,19 @@ export class ReaderView extends ItemView {
         if (this.closed || version !== this.listVersion) return;
         this.entries = more ? [...new Map([...this.entries, ...page.entries].map(entry => [entry.id, entry])).values()] : page.entries;
         this.cursor = page.nextCursor || ''; this.hasMore = page.hasMore && !!this.cursor;
+        return;
+      }
+      if (this.source.startsWith('@qiaomu:')) {
+        const ids = [...this.qiaomuGroupIds()], results: PromiseSettledResult<Entry[]>[] = [];
+        for (let i = 0; i < ids.length; i += 8) results.push(...await Promise.allSettled(ids.slice(i, i + 8).map(id => api.entries(id, '', 12).then(page => page.entries))));
+        if (this.closed || version !== this.listVersion) return;
+        const entries = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+        const failed = results.filter(result => result.status === 'rejected');
+        if (!entries.length && failed.length) throw (failed[0] as PromiseRejectedResult).reason;
+        this.entries = [...new Map(entries.map(entry => [entry.id, entry])).values()].sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
+        this.cursor = ''; this.hasMore = false;
+        await this.plugin.persist();
+        if (!this.closed && version === this.listVersion) this.status.setText(failed.length ? `${failed.length} 个频道暂时无法加载。` : '');
         return;
       }
       const [page, sources] = await Promise.allSettled([api.entries(this.source, more ? this.cursor : ''), api.sources()]);
@@ -399,8 +438,9 @@ export class ReaderView extends ItemView {
         const featured = featuredXiaoyuzhouPodcasts(state.sources);
         const latest = await Promise.allSettled(featured.map(source => api.entries(source.id, '', 1)));
         if (this.closed || version !== this.listVersion) return;
-        this.entries = prependFeaturedPodcasts(this.entries, latest.flatMap(result => result.status === 'fulfilled' ? result.value.entries : []));
+        this.featuredEpisodes = latest.flatMap(result => result.status === 'fulfilled' ? result.value.entries : []);
       }
+      if (!this.source) this.entries = mergeFeaturedPodcasts(this.entries, this.featuredEpisodes, !this.hasMore);
       if (!this.source) { state.entries = this.entries; state.updatedAt = Date.now(); }
       await this.plugin.persist();
       if (this.closed || version !== this.listVersion) return;
@@ -415,10 +455,10 @@ export class ReaderView extends ItemView {
   private visibleEntries(): Entry[] {
     const state = this.plugin.state;
     const entries = this.filter === 'favorites' ? Object.values(state.favorites).map(b => b.entry) : this.entries;
-    const query = this.query.trim().toLocaleLowerCase();
+    const query = this.query.trim().toLocaleLowerCase(), group = this.qiaomuGroupIds();
     return uniqueRemoteEntries(entries, this.bundle?.entry.id).filter(entry => (this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source : this.personalScope()
       ? entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))
-      : entry.origin !== 'local' && entry.origin !== 'vault' && (!this.source || entry.sourceId === this.source)) &&
+      : entry.origin !== 'local' && entry.origin !== 'vault' && (!this.source || (this.source.startsWith('@qiaomu:') ? group.has(entry.sourceId) : entry.sourceId === this.source))) &&
       entry.sourceId !== 'levelingup' &&
       (this.filter !== 'unread' || !this.relatedContentIds(entry).some(id => state.readIds.includes(id)) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
       (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
@@ -431,8 +471,12 @@ export class ReaderView extends ItemView {
   private sourceName(entry: Entry) { return this.plugin.state.subscriptions.find(feed => feed.id === entry.sourceId)?.name || entry.sourceName || this.plugin.state.settings.podcastNames[entry.sourceId] || this.plugin.state.sources.find(source => source.id === entry.sourceId)?.name || entry.sourceId; }
   private excerpt(entry: Entry): string {
     if (entry.summaryZh) return entry.summaryZh;
-    const text = entry.rewrite?.body.split('\n\n').find(line => /[\u3400-\u9fff]/.test(line) && !line.startsWith('#') && !line.startsWith('!['));
-    return (text || entry.summary || '').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`#]/g, '').slice(0, 160);
+    const cjk = /[\u3400-\u9fff]/;
+    const rewrite = entry.rewrite?.body || this.plugin.state.cache[entry.id]?.rewrite?.body;
+    const text = rewrite?.split('\n\n').find(line => cjk.test(line) && !line.startsWith('#') && !line.startsWith('!['));
+    // A Chinese title over an untranslated opening ("Hi folks, …") says nothing; the title gets the room instead.
+    if (!text && cjk.test(titleOf(entry)) && !cjk.test(entry.summary || '')) return '';
+    return cleanExcerpt(text || entry.summary || '');
   }
   private clearThumbnails() {
     this.thumbnailVersion++;
@@ -464,8 +508,18 @@ export class ReaderView extends ItemView {
   private renderList() {
     const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
     const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
+    if (this.source === '@local' || this.source.startsWith('@group:')) {
+      const items = personalSources(this.plugin.state).filter(item => item.kind !== 'rss' && (this.source === '@local' || item.groupId === this.source.slice(7)) && (!this.query || item.name.toLocaleLowerCase().includes(this.query.toLocaleLowerCase())));
+      if (items.length) {
+        const sources = this.list.createEl('details', { cls: 'qrs-personal-sources' }); sources.open = true;
+        sources.createEl('summary', { text: `播客与本地内容 · ${items.length}` });
+        for (const item of items) sources.createEl('button', { text: item.name }).onclick = () => this.selectSource(item.id);
+      }
+    }
     if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? '正在获取文章…' : this.filter === 'favorites' ? '收藏喜欢的文章，在这里慢慢读。' : this.personalScope() && !this.entries.length ? '还没有文章。点击 + 添加订阅，或点击刷新获取文章。' : '暂无匹配文章，试试其他频道或筛选。' });
-    for (const entry of entries) {
+    // Inside one channel every row would repeat the same source name, so it only appears when sources mix.
+    const mixed = new Set(entries.map(entry => entry.sourceId)).size > 1;
+    for (const entry of (this.personalScope() ? entries.slice(0, this.personalLimit) : entries)) {
       const relatedIds = this.relatedContentIds(entry);
       const read = relatedIds.some(id => this.plugin.state.readIds.includes(id));
       const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
@@ -473,7 +527,7 @@ export class ReaderView extends ItemView {
       row.setAttribute('aria-pressed', String(this.bundle?.entry.id === entry.id)); row.toggleClass('qrs-read', read);
       const copy = row.createSpan('qrs-entry-copy');
       const meta = copy.createSpan('qrs-entry-meta');
-      meta.createSpan({ text: this.sourceName(entry), cls: 'qrs-source-name' });
+      if (mixed) meta.createSpan({ text: this.sourceName(entry), cls: 'qrs-source-name' });
       const date = entry.publishedTs ? new Date(entry.publishedTs) : entry.published ? new Date(entry.published) : null;
       meta.createSpan({ cls: 'qrs-date', text: date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : podcastRelativeDateLabel(entry.publishedRelative) });
       if (entry.sourceId.startsWith('podscribe-')) {
@@ -490,10 +544,11 @@ export class ReaderView extends ItemView {
       heading.createEl('h3', { text: titleOf(entry) });
       if (bilingual) heading.createDiv({ cls: 'qrs-original-title', text: entry.title });
       if (relatedIds.some(id => this.plugin.state.favorites[id])) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
-      const summary = this.excerpt(entry); if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' });
+      const summary = this.excerpt(entry); if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' }); else row.addClass('qrs-no-summary');
       this.renderThumbnail(row, entry);
       row.addEventListener('click', () => { void this.openArticle(entry); });
     }
+    if (this.personalScope() && entries.length > this.personalLimit) this.list.createEl('button', { text: '显示更多文章', cls: 'qrs-more' }).onclick = () => { this.personalLimit += 100; this.renderList(); };
     if (this.hasMore && this.filter !== 'favorites') {
       const button = this.list.createEl('button', { text: this.loading ? '加载中…' : '加载更早文章', cls: 'qrs-more' });
       button.disabled = this.loading; button.addEventListener('click', () => { void this.loadEntries(true); });
@@ -634,8 +689,6 @@ export class ReaderView extends ItemView {
     this.addIconButton(nav, 'chevron-up', '上一篇 K', () => this.navigate(-1));
     this.addIconButton(nav, 'chevron-down', '下一篇 J', () => this.navigate(1));
     const actions = toolbar.createDiv('qrs-actions');
-    const appearance = this.addIconButton(actions, 'type', '阅读设置', () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
-    appearance.setAttribute('aria-expanded', String(this.appearanceOpen)); appearance.setAttribute('aria-controls', this.appearanceId);
     const favoriteId = this.relatedContentIds(bundle.entry).find(id => this.plugin.state.favorites[id]);
     const favorite = !!favoriteId;
     const bookmark = this.addIconButton(actions, 'bookmark', favorite ? '取消收藏' : '收藏文章', () => this.run(async () => {
@@ -652,9 +705,17 @@ export class ReaderView extends ItemView {
       await this.plugin.persist(); this.renderReader(true); this.renderList();
     }));
     readButton.setAttribute('aria-pressed', String(read));
+    // Saving the article as a note is the frequent write action, so it gets a toolbar slot; once saved, the same slot opens that note.
+    const mode = this.mode, savedNote = this.savedNote(bundle, mode);
+    const noteButton = this.addIconButton(actions, savedNote ? 'file-check' : 'file-plus', savedNote ? '打开已存笔记' : '存为笔记', () => {
+      if (savedNote) void this.app.workspace.getLeaf('tab').openFile(savedNote); else this.saveNote(bundle, mode);
+    });
+    noteButton.setAttribute('aria-pressed', String(!!savedNote));
     this.addIconButton(actions, 'notebook-pen', '记到今日日记', () => this.noteCurrent());
     const more = this.addIconButton(actions, 'ellipsis', '更多文章操作', () => {
-      const menu = new Menu(); const link = safeUrl(bundle.entry.link || '');
+      const menu = new Menu().setUseNativeMenu(false); const link = safeUrl(bundle.entry.link || '');
+      menu.addItem(item => item.setTitle('阅读设置…').setIcon('type').onClick(() => { this.appearanceOpen = true; this.renderReader(true); }));
+      menu.addSeparator();
       if (bundle.entry.origin === 'vault' && bundle.entry.markdownPath) menu.addItem(item => item.setTitle('打开源文件').setIcon('file-text').onClick(() => {
         void this.app.workspace.openLinkText(bundle.entry.markdownPath!, '', true);
       }));
@@ -662,18 +723,16 @@ export class ReaderView extends ItemView {
       const video = safeUrl(bundle.entry.videoUrl || '');
       if (video && youtubeEmbedUrl(video)) menu.addItem(item => item.setTitle('打开本期视频').setIcon('video').onClick(() => { this.contentEl.win.open(video, '_blank', 'noopener,noreferrer'); }));
       menu.addItem(item => item.setTitle('重新加载文章').setIcon('refresh-cw').onClick(() => { void this.openArticle(bundle.entry); }));
+      menu.addSeparator();
+      if (savedNote) menu.addItem(item => item.setTitle('另存一份笔记').setIcon('file-plus').onClick(() => this.saveNote(bundle, mode)));
       if (Platform.isDesktopApp) {
-        menu.addSeparator();
-        const mode = this.mode;
-        menu.addItem(item => item.setTitle('保存为 Markdown').setIcon('file-text').onClick(() => this.run(async () => {
-          const result = await saveArticleMarkdown(bundle, mode, this.contentEl.ownerDocument, this.plugin.images, this.plugin.state.settings.remoteImages);
-          if (result) new Notice(result.missingImages ? `Markdown 已保存，${result.missingImages} 张图片未能离线保存。` : 'Markdown 已保存。');
-        })));
         menu.addItem(item => item.setTitle('导出为 PDF').setIcon('file-down').onClick(() => this.run(async () => {
           const article = this.reader.querySelector<HTMLElement>('.qrs-article');
           if (!article || this.bundle?.entry.id !== bundle.entry.id || this.mode !== mode) throw new Error('文章已切换，请重新打开导出菜单。');
           const result = await saveArticlePdf(bundle, mode, article, this.plugin.images, this.plugin.state.settings);
-          if (result) new Notice(result.missingImages ? `PDF 已保存，${result.missingImages} 张图片未能导出。` : 'PDF 已保存。');
+          if (!result) return;
+          await this.plugin.persist();
+          new Notice(result.missingImages ? `PDF 已保存，${result.missingImages} 张图片未能导出。` : 'PDF 已保存。');
         })));
       }
       menu.addItem(item => item.setTitle('选择频道').setIcon('rss').onClick(() => this.pickChannel()));
@@ -682,7 +741,13 @@ export class ReaderView extends ItemView {
     if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
     if (previous) { this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); return; }
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
-    const title = article.createEl('h1', { text: titleOf(bundle.entry) });
+    const title = article.createEl('h1');
+    const originalUrl = safeUrl(bundle.entry.link || '');
+    if (bundle.entry.origin === 'vault' && bundle.entry.markdownPath) {
+      const link = title.createEl('a', { text: titleOf(bundle.entry), href: '#', cls: 'qrs-title-link' });
+      link.onclick = event => { event.preventDefault(); void this.app.workspace.openLinkText(bundle.entry.markdownPath!, '', true); };
+    } else if (originalUrl) title.createEl('a', { text: titleOf(bundle.entry), href: originalUrl, cls: 'qrs-title-link', attr: { target: '_blank', rel: 'noopener noreferrer' } });
+    else title.setText(titleOf(bundle.entry));
     if ((bundle.entry.sourceId === 'podscribe-all-in-with-chamath-jason-sacks-friedberg' || bundle.entry.sourceId === 'podscribe-the-joe-rogan-experience') &&
       bundle.entry.titleZh?.trim() && bundle.entry.titleZh.trim() !== bundle.entry.title.trim()) {
       title.addClass('qrs-bilingual-title');

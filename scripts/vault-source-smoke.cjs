@@ -47,7 +47,7 @@ const select=()=>{const r=document.createRange(),s=document.getSelection();r.sel
 select();check('Disabled selection creates no popup',!document.querySelector('.qrs-selection-popup'));
 p.state.settings.selectionPopup=true;select();check('Opt-in shows popup',!!document.querySelector('.qrs-selection-popup'));
 p.state.settings.selectionPopup=false;p.refreshPreferences();check('Turning off dismisses existing popup',!document.querySelector('.qrs-selection-popup'));
-v.reader.querySelector('[data-qrs-label="阅读设置"]').click();
+v.reader.querySelector('[data-qrs-label="更多文章操作"]').click();[...document.querySelectorAll('.menu-item')].find(e=>e.textContent.includes('阅读设置')).click();
 v.reader.scrollTop=900;await new Promise(r=>setTimeout(r,100));
 const panel=v.reader.querySelector('.qrs-reading-settings').getBoundingClientRect(),toolbar=v.reader.querySelector('.qrs-reader-toolbar').getBoundingClientRect();
 check('Appearance panel stays anchored while article scrolls',Math.abs(panel.top-toolbar.bottom)<2&&panel.top>=0);

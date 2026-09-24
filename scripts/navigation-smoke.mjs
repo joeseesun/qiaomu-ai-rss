@@ -24,9 +24,9 @@ try{
  v.source='';v.filter='all';v.query='';v.entries=list;
  const first=v.openArticle(list[0]);
  check('Selection is immediate while request is pending',v.bundle.entry.id===list[0].id&&v.articleLoading);
- const font=document.querySelector('[data-qrs-label="阅读设置"]');
- check('Font control belongs to right actions',!!font.closest('.qrs-actions'));
- font.focus();font.click();
+ const note=document.querySelector('.qrs-actions [data-qrs-label="存为笔记"],.qrs-actions [data-qrs-label="打开已存笔记"]');
+ check('Save-as-note control belongs to right actions',!!note&&!document.querySelector('[data-qrs-label="阅读设置"]'));
+ const more=document.querySelector('[data-qrs-label="更多文章操作"]');more.focus();more.click();[...document.querySelectorAll('.menu-item')].find(e=>e.textContent.includes('阅读设置')).click();
  check('Toolbar redraw preserves reader keyboard focus',document.activeElement===v.reader);
  key('j');key('J');
  check('Repeated keys select third article before responses',v.bundle.entry.id===list[2].id);

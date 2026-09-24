@@ -5,6 +5,7 @@ const MAX_CACHE = 64 * 1024 * 1024;
 export function imageMime(data: ArrayBuffer): string | null {
   const bytes = new Uint8Array(data);
   const ascii = (start: number, length: number) => String.fromCharCode(...bytes.slice(start, start + length));
+  if (bytes[0] === 0 && bytes[1] === 0 && bytes[2] === 1 && bytes[3] === 0) return 'image/x-icon';
   if (bytes[0] === 0x89 && ascii(1, 3) === 'PNG') return 'image/png';
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
   if (ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a') return 'image/gif';
