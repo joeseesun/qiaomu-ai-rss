@@ -302,6 +302,9 @@ class RssSettings extends PluginSettingTab {
   getSettingDefinitions(): SettingDefinitionItem[] {
     const settings = this.plugin.state.settings;
     const saveReading = async () => { this.plugin.refreshPreferences(); await this.plugin.persist(); };
+    const chooseExportFolder = (save: (path: string) => void) => new VaultFolderPicker(this.app, folder => {
+      save(folder.path); void this.plugin.persist().then(() => this.update());
+    }).open();
     const definitions: SettingDefinitionItem[] = [
       { type: 'group', heading: '阅读与摘录', items: [
         { name: '选中文字时显示摘录浮层', desc: '默认开启。选中文字后可追加到今日日记或当前笔记。', render: setting => {
@@ -365,6 +368,32 @@ class RssSettings extends PluginSettingTab {
           settings.remoteImages = value; await this.plugin.persist(); this.plugin.resetViews();
         }));
       } },
+      { type: 'group', heading: '导出', items: [
+        { name: '保存文件夹', desc: '相对库根目录；支持 {title} {source} {date} {datetime} {mode} {id}。', render: setting => {
+          setting.addText(text => text.setPlaceholder('Reading/{source}/{date}').setValue(settings.exportFolder).onChange(async value => {
+            settings.exportFolder = value.trim().slice(0, 500); await this.plugin.persist();
+          })).addButton(button => button.setButtonText('选择').onClick(() => chooseExportFolder(path => {
+            settings.exportFolder = path === '/' ? '' : path;
+          })));
+        } },
+        { name: '文件名', desc: '默认 {title} - {mode}.md。', render: setting => {
+          setting.addText(text => text.setPlaceholder('{title} - {mode}.md').setValue(settings.exportFilename).onChange(async value => {
+            settings.exportFilename = (value.trim() || '{title} - {mode}.md').slice(0, 200); await this.plugin.persist();
+          }));
+        } },
+        { name: '图片文件夹', desc: '相对库根目录；支持 {filename}。', render: setting => {
+          setting.addText(text => text.setPlaceholder('{filename}.assets').setValue(settings.exportAssetFolder).onChange(async value => {
+            settings.exportAssetFolder = (value.trim() || '{filename}.assets').slice(0, 500); await this.plugin.persist();
+          })).addButton(button => button.setButtonText('选择').onClick(() => chooseExportFolder(path => {
+            settings.exportAssetFolder = path === '/' ? '{filename}.assets' : `${path}/{filename}`;
+          })));
+        } },
+        { name: '保存前确认', desc: '每次保存前确认 Markdown 和图片路径。', render: setting => {
+          setting.addToggle(toggle => toggle.setValue(settings.askBeforeSave).onChange(async value => {
+            settings.askBeforeSave = value; await this.plugin.persist();
+          }));
+        } },
+      ] },
       { type: 'group', heading: '版本与更新', items: [
         { name: `当前版本 ${this.plugin.manifest.version}`, desc: '在 Obsidian 第三方插件中检查并安装更新。更新记录可随时在这里查看。', render: setting => {
           setting.addButton(button => button.setButtonText('管理插件更新').onClick(() => this.plugin.openSettings('community-plugins')));
@@ -385,8 +414,9 @@ class RssSettings extends PluginSettingTab {
     const buckets: Record<string, SettingDefinitionItem[]> = {
       '阅读': [reading, definitions[4], definitions[5]],
       '来源': [definitions[2], definitions[1], definitions[3]],
-      '摘录': [excerpt, definitions[7]],
-      '关于': [definitions[6], ...[
+      '摘录': [excerpt, definitions[8]],
+      '导出': [definitions[6]],
+      '关于': [definitions[7], ...[
         ['反馈 Bug', '在 GitHub 提交问题', 'https://github.com/joeseesun/qiaomu-ai-rss/issues/new'],
         ['联系邮箱', 'vista8@gmail.com', 'mailto:vista8@gmail.com'],
         ['使用说明', '打开说明', 'https://github.com/joeseesun/qiaomu-ai-rss#readme'],

@@ -1,5 +1,6 @@
 import { Platform } from 'obsidian';
 import { articleExportBody, articleExportMarkdown } from './article-export';
+import { markdownAssetPath, vaultExportPath } from './export-paths';
 import { fontFamily, readingFonts } from './fonts';
 import { safeUrl, titleOf, modeLabels, type Bundle, type Mode } from './model';
 import type { State } from './model';
@@ -24,14 +25,27 @@ function filename(bundle: Bundle, mode: Mode, extension: string): string {
   return `${title} - ${modeLabels[mode]}.${extension}`;
 }
 
-async function chooseFile(bundle: Bundle, mode: Mode, extension: 'md' | 'pdf'): Promise<string | null> {
+async function chooseFile(bundle: Bundle, mode: Mode, extension: 'md' | 'pdf', defaultPath?: string): Promise<string | null> {
   const { remote } = desktop();
   const result = await remote.dialog.showSaveDialog(remote.getCurrentWindow(), {
     title: extension === 'pdf' ? '导出为 PDF' : '保存为 Markdown',
-    defaultPath: filename(bundle, mode, extension),
+    defaultPath: defaultPath || filename(bundle, mode, extension),
     filters: [{ name: extension === 'pdf' ? 'PDF' : 'Markdown', extensions: [extension] }],
   });
   return result.canceled ? null : result.filePath || null;
+}
+
+async function confirmMarkdownPaths(file: string, assetPath: string): Promise<boolean> {
+  const { remote } = desktop();
+  const result = await remote.dialog.showMessageBox(remote.getCurrentWindow(), {
+    type: 'question',
+    buttons: ['保存', '取消'],
+    defaultId: 0,
+    cancelId: 1,
+    title: '确认保存路径',
+    message: `文章：${file}\n图片：${assetPath}`,
+  });
+  return result.response === 0;
 }
 
 async function assertNewFile(file: string): Promise<void> {
@@ -44,15 +58,16 @@ function imageExtension(type: string): string | null {
   return ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif' } as Record<string, string>)[type] || null;
 }
 
-export async function saveArticleMarkdown(bundle: Bundle, mode: Mode, doc: Document, images: LocalImages, includeImages: boolean): Promise<{ path: string; missingImages: number } | null> {
-  const body = bundle.entry.origin === 'vault' ? null : articleExportBody(bundle, mode, doc, includeImages);
+export async function saveArticleMarkdown(bundle: Bundle, mode: Mode, doc: Document, images: LocalImages, settings: State['settings'], vaultBase: string): Promise<{ path: string; missingImages: number } | null> {
+  const body = bundle.entry.origin === 'vault' ? null : articleExportBody(bundle, mode, doc, settings.remoteImages);
   if (!articleExportMarkdown(bundle, mode, body)) throw new Error('当前阅读版本没有可导出的正文。');
-  const file = await chooseFile(bundle, mode, 'md');
+  const defaults = vaultExportPath(vaultBase, bundle, mode, settings);
+  const file = settings.askBeforeSave ? await chooseFile(bundle, mode, 'md', defaults.markdownFile) : defaults.markdownFile;
   if (!file) return null;
   await assertNewFile(file);
   const { fs, path } = desktop();
-  const assetName = `${path.basename(file, '.md')}.assets`;
-  const assetPath = path.join(path.dirname(file), assetName);
+  const assetPath = vaultExportPath(vaultBase, bundle, mode, { ...settings, exportFilename: path.basename(file) }).assetFolder;
+  if (settings.askBeforeSave && !await confirmMarkdownPaths(file, assetPath)) return null;
   let assetCreated = false;
   let missingImages = 0;
   let saved = false;
@@ -70,15 +85,17 @@ export async function saveArticleMarkdown(bundle: Bundle, mode: Mode, doc: Docum
           const blob = await images.load(url);
           const extension = imageExtension(blob.type);
           if (!extension) throw new Error('图片格式不支持。');
-          if (!assetCreated) { await fs.mkdir(assetPath); assetCreated = true; }
+          if (!assetCreated) { await fs.mkdir(assetPath, { recursive: true }); assetCreated = true; }
           const name = `image-${index + 1}.${extension}`;
-          await fs.writeFile(path.join(assetPath, name), new Uint8Array(await blob.arrayBuffer()), { flag: 'wx' });
-          img.setAttribute('src', `./${encodeURIComponent(assetName)}/${name}`);
+          const imageFile = path.join(assetPath, name);
+          await fs.writeFile(imageFile, new Uint8Array(await blob.arrayBuffer()), { flag: 'wx' });
+          img.setAttribute('src', markdownAssetPath(file, imageFile));
         } catch { missingImages++; }
       }
     }
     const markdown = articleExportMarkdown(bundle, mode, body);
     if (!markdown) throw new Error('当前阅读版本没有可导出的正文。');
+    await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, markdown, { encoding: 'utf8', flag: 'wx' });
     saved = true;
     return { path: file, missingImages };

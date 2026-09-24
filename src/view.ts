@@ -666,7 +666,10 @@ export class ReaderView extends ItemView {
         menu.addSeparator();
         const mode = this.mode;
         menu.addItem(item => item.setTitle('保存为 Markdown').setIcon('file-text').onClick(() => this.run(async () => {
-          const result = await saveArticleMarkdown(bundle, mode, this.contentEl.ownerDocument, this.plugin.images, this.plugin.state.settings.remoteImages);
+          const adapter = this.app.vault.adapter as { getBasePath?: () => string };
+          const base = adapter.getBasePath?.();
+          if (!base) throw new Error('无法读取当前库的本地路径。');
+          const result = await saveArticleMarkdown(bundle, mode, this.contentEl.ownerDocument, this.plugin.images, this.plugin.state.settings, base);
           if (result) new Notice(result.missingImages ? `Markdown 已保存，${result.missingImages} 张图片未能离线保存。` : 'Markdown 已保存。');
         })));
         menu.addItem(item => item.setTitle('导出为 PDF').setIcon('file-down').onClick(() => this.run(async () => {

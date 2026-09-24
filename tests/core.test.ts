@@ -135,6 +135,26 @@ describe('paths and persistence', () => {
     const state = initialState({ settings: { selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] } });
     expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] });
   });
+  it('defaults and persists Markdown export templates', () => {
+    expect(initialState({ settings: {} }).settings).toMatchObject({
+      exportFolder: '',
+      exportFilename: '{title} - {mode}.md',
+      exportAssetFolder: '{filename}.assets',
+      askBeforeSave: true,
+    });
+    const state = initialState({ settings: {
+      exportFolder: 'Exports/{source}/{date}',
+      exportFilename: '{title}-{id}.md',
+      exportAssetFolder: 'assets/{filename}',
+      askBeforeSave: false,
+    } });
+    expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({
+      exportFolder: 'Exports/{source}/{date}',
+      exportFilename: '{title}-{id}.md',
+      exportAssetFolder: 'assets/{filename}',
+      askBeforeSave: false,
+    });
+  });
   it('migrates and persists compact reading appearance settings', () => {
     expect(initialState({ settings: {} }).settings).toMatchObject({ fontSize: 19, fontFamily: 'fangsong', lineHeight: 1.9, lineWidth: 36 });
     const state = initialState({ settings: { fontSize: 24, fontFamily: 'sans', lineHeight: 2.2, lineWidth: 44 } });

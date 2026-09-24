@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { marked } from 'marked';
 import { articleExportBody, articleExportMarkdown } from '../src/article-export';
+import { markdownAssetPath, relativeAssetPath, renderExportTemplate, safeFilenamePart, vaultExportPath } from '../src/export-paths';
 import type { Bundle } from '../src/model';
 
 const bundle: Bundle = {
@@ -35,5 +36,33 @@ describe('article Markdown export', () => {
     const local = { ...bundle, entry: { ...bundle.entry, origin: 'vault' as const, markdown: '---\ntags: [a]\n---\n\n# 原有标题\n' } };
     expect(articleExportMarkdown(local, 'original', null)).toBe(local.entry.markdown);
     expect(articleExportMarkdown({ ...bundle, rewrite: null }, 'rewrite', articleExportBody({ ...bundle, rewrite: null }, 'rewrite', document, true))).toBeNull();
+  });
+
+  it('renders safe export templates with article metadata', () => {
+    expect(safeFilenamePart(' A/B:*?"<>|#\n ')).toBe('A B');
+    expect(renderExportTemplate('{date}/{source}/{title}-{mode}-{id}', bundle, 'original', new Date('2026-09-23T08:09:10Z'))).toContain('article');
+  });
+
+  it('resolves Markdown and image folders from the vault root independently', () => {
+    const localBundle = { ...bundle, entry: { ...bundle.entry, title: '一篇文章', sourceName: '示例频道', publishedTs: Date.UTC(2026, 8, 23) } };
+    const paths = vaultExportPath('D:/Vault', localBundle, 'original', {
+      exportFolder: 'Articles/{source}',
+      exportFilename: '{date}-{title}.md',
+      exportAssetFolder: 'Attachments/{source}/{filename}',
+    }, new Date('2026-09-23T08:09:10Z'));
+    expect(paths.markdownFile).toBe('D:/Vault/Articles/示例频道/2026-09-23-一篇文章.md');
+    expect(paths.assetFolder).toBe('D:/Vault/Attachments/示例频道/2026-09-23-一篇文章');
+    expect(relativeAssetPath(paths.markdownFile, `${paths.assetFolder}/image-1.png`)).toBe('../../Attachments/示例频道/2026-09-23-一篇文章/image-1.png');
+  });
+
+  it('keeps local image paths readable after filename placeholders are sanitized', () => {
+    expect(markdownAssetPath('D:/Vault/Inbox/a.md', 'D:/Vault/70-Assets/图片/文章图床/Weekly 003｜Next Token/image-1.jpg'))
+      .toBe('../70-Assets/图片/文章图床/Weekly 003｜Next Token/image-1.jpg');
+    const body = document.createElement('div');
+    const img = document.createElement('img');
+    img.setAttribute('alt', 'cover');
+    img.setAttribute('src', markdownAssetPath('D:/Vault/Inbox/a.md', 'D:/Vault/70-Assets/图片/文章图床/Weekly 003｜Next Token/image-1.jpg'));
+    body.append(img);
+    expect(articleExportMarkdown(bundle, 'original', body)).toContain('](<../70-Assets/图片/文章图床/Weekly 003｜Next Token/image-1.jpg>)');
   });
 });
