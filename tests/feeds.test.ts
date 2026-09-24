@@ -2,7 +2,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 import { articleFragment } from '../src/content';
-import { exportOpml, feedUrl, parseFeed, parseOpml } from '../src/feeds';
+import { exportOpml, feedUrl, parseFeed, parseOpml, MAX_SUBSCRIPTIONS } from '../src/feeds';
 import { initialState, withServiceOrigin, type Bundle } from '../src/model';
 import { Subscriptions } from '../src/subscriptions';
 beforeAll(() => { Object.defineProperty(window.crypto, 'subtle', { value: webcrypto.subtle, configurable: true }); });
@@ -119,7 +119,7 @@ describe('local subscription lifecycle', () => {
     expect(await service.import([{ url: 'https://example.com/feed', name: 'A', group: 'Tech' }])).toBe(1);
     expect(await service.import([{ url: 'https://example.com/feed', name: 'Overwrite', group: '' }])).toBe(0);
     expect(state.subscriptions[0].name).toBe('A'); expect(transport).not.toHaveBeenCalled();
-    await expect(service.import(Array.from({ length: 101 }, (_, i) => ({ url: `https://example.com/feed/${i}`, name: String(i), group: '' })))).rejects.toThrow('超过');
+    await expect(service.import(Array.from({ length: MAX_SUBSCRIPTIONS + 1 }, (_, i) => ({ url: `https://example.com/feed/${i}`, name: String(i), group: '' })))).rejects.toThrow('超过');
     expect(state.subscriptions).toHaveLength(1);
   });
   it('does not resurrect a feed deleted while its refresh is pending; keeps favorites', async () => {

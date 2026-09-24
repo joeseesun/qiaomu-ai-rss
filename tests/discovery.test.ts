@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { discoveryFeeds, featuredXiaoyuzhouPodcasts, filterDiscovery, independentBlogs, podcastRecommendations, prependFeaturedPodcasts, qiaomuChannelDivider, qiaomuFeaturedEntries, readerChannelSources, wechatFeeds, xiaoyuzhouPodcasts } from '../src/discovery';
+import { discoveryFeeds, featuredXiaoyuzhouPodcasts, filterDiscovery, independentBlogs, podcastRecommendations, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuFeaturedEntries, readerChannelSources, wechatFeeds, xiaoyuzhouPodcasts } from '../src/discovery';
 import { initialState, safeUrl, withServiceOrigin } from '../src/model';
 import { compareChannelNames } from '../src/channel-order';
 
@@ -48,7 +48,7 @@ describe('local discovery catalog', () => {
     ] }).sources;
     expect(xiaoyuzhouPodcasts(sources).map(source => source.id)).toEqual(['latetalk']);
   });
-  it('pins one latest episode from each selected Xiaoyuzhou show in the default feed', () => {
+  it('mixes each selected Xiaoyuzhou show\'s latest episode into the default feed by date', () => {
     const sources = initialState({ sources: [
       { id: '42zhangjing', name: '42章经', category: 'podcast', siteUrl: 'https://www.xiaoyuzhoufm.com/podcast/42', enabled: true },
       { id: 'nexttoken', name: 'Next Token', category: 'podcast', siteUrl: 'https://www.xiaoyuzhoufm.com/podcast/next', enabled: true },
@@ -56,9 +56,12 @@ describe('local discovery catalog', () => {
       { id: 'latetalk', name: '晚点聊', category: 'podcast', siteUrl: 'https://www.xiaoyuzhoufm.com/podcast/late', enabled: false },
     ] }).sources;
     expect(featuredXiaoyuzhouPodcasts(sources).map(source => source.id)).toEqual(['zhangxiaojun', 'nexttoken', '42zhangjing']);
-    const entry = (id: string, sourceId: string) => ({ id, sourceId, title: id });
-    expect(prependFeaturedPodcasts([entry('news', 'news'), entry('zhang-1', 'zhangxiaojun')], [entry('zhang-1', 'zhangxiaojun'), entry('next-1', 'nexttoken')]).map(item => item.id))
-      .toEqual(['zhang-1', 'next-1', 'news']);
+    const entry = (id: string, sourceId: string, day: number) => ({ id, sourceId, title: id, publishedTs: Date.UTC(2026, 8, day) });
+    const page = [entry('news-24', 'news', 24), entry('news-22', 'news', 22), entry('news-21', 'news', 21)];
+    const episodes = [entry('zhang-3', 'zhangxiaojun', 3), entry('late-23', 'latetalk', 23), entry('news-22', 'news', 22)];
+    expect(mergeFeaturedPodcasts(page, episodes, false).map(item => item.id)).toEqual(['news-24', 'late-23', 'news-22', 'news-21']);
+    expect(mergeFeaturedPodcasts(page, episodes, true).map(item => item.id)).toEqual(['news-24', 'late-23', 'news-22', 'news-21', 'zhang-3']);
+    expect(qiaomuFeaturedEntries([entry('zhang-3', 'zhangxiaojun', 3), entry('news-24', 'news', 24)]).map(item => item.id)).toEqual(['news-24', 'zhang-3']);
   });
   it('shows selected Xiaoyuzhou shows as Qiaomu channels before subscription', () => {
     const source = (id: string, category: string, siteUrl?: string, enabled = true) => ({ id, name: id, category, siteUrl, enabled });

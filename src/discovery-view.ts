@@ -1,230 +1,184 @@
-import { addSearchClear } from './search-clear';
-import { Component, ItemView, Notice, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { Component, Modal, Notice } from 'obsidian';
 import type QiaomuRssPlugin from './main';
-import { searchPodcasts, searchWechat, type CatalogFeed, type PodcastSearchResult } from './source-catalog';
-import { blogCatalogSource, blogTags, categories, discoveryFeeds, filterDiscovery, independentBlogs, podcastRecommendations, wechatFeeds, xiaoyuzhouPodcasts, type DiscoveryCollection } from './discovery';
+import { addSearchClear } from './search-clear';
+import { searchPodcasts, searchWechat } from './source-catalog';
+import { xiaoyuzhouPodcasts } from './discovery';
+import { baseDiscovery, dedupeDiscovery, searchDiscovery, tidingsSnapshot, tidingsSchema, tidingsSource, typeLabels, collectionLabels, inCollection, type DiscoverCollection, type DiscoverSource, type TidingsData } from './discovery-library';
+import { SourceIcons } from './source-icons';
+import { groupSelect, OpmlImport } from './subscription-ui';
+import { readImportUrl } from './import-source';
+import { parseFeed } from './feeds';
+import { safeUrl, type Entry } from './model';
+import { moveSources } from './personal-library';
 
-export const DISCOVERY_VIEW_TYPE = 'qiaomu-ai-rss-discovery';
-export class DiscoveryPanel extends Component {
-  private cards!: HTMLElement;
-  private count!: HTMLElement;
-  private wechatTab!: HTMLButtonElement;
-  private query = '';
-  private category = '全部';
-  private collection: DiscoveryCollection = 'featured';
-  private tag = '';
-  private limit = 60;
-  private more!: HTMLButtonElement;
-  private pending = new Set<string>();
-  private errors = new Map<string, string>();
-  private closed = false;
-  private onlineFeeds: CatalogFeed[] = [];
-  private wechatCatalogTotal: number | null = null;
-  private wechatLoaded = false;
-  private onlinePodcasts: PodcastSearchResult[] = [];
-  private onlineMessage = '';
-  private searchSerial = 0;
-  private podcastSourceSerial = 0;
-  private searchTimer?: number;
-  constructor(private contentEl: HTMLElement, private plugin: QiaomuRssPlugin, private embedded = false) { super(); }
-  onload() {
-    this.closed = false; this.contentEl.empty(); this.contentEl.addClass('qrs-discovery');
-    const page = this.contentEl.createDiv('qrs-discovery-page');
-    const header = page.createDiv('qrs-discovery-header'); header.toggleClass('qrs-hidden', this.embedded);
-    const intro = header.createDiv();
-    intro.createEl('h1', { text: '发现值得读的内容' });
-    intro.createEl('p', { text: '从一个好订阅开始，把阅读留给自己。' });
-    const actions = header.createDiv('qrs-discovery-actions');
-    actions.createEl('button', { text: '管理订阅' }).onclick = () => this.plugin.manageSubscriptions();
-    actions.createEl('button', { text: '开始阅读', cls: 'mod-cta' }).onclick = () => { void this.plugin.readSubscriptions(); };
-    const collections = page.createDiv({ cls: 'qrs-discovery-collections' });
-    const featured = collections.createEl('button', { text: `精选订阅 · ${discoveryFeeds.length}`, attr: { 'aria-pressed': String(this.collection === 'featured') } });
-    const blogs = collections.createEl('button', { text: `独立博客 · ${independentBlogs.length}`, attr: { 'aria-pressed': String(this.collection === 'blogs') } });
-    const wechat = collections.createEl('button', { text: '微信公众号', attr: { 'aria-pressed': String(this.collection === 'wechat') } });
-    this.wechatTab = wechat;
-    const podcast = collections.createEl('button', { text: '播客', attr: { 'aria-pressed': String(this.collection === 'podcast') } });
-    const standard = page.createEl('p', { cls: 'qrs-discovery-standard', text: '精选标准：长期原创、持续更新、RSS 全文、个人辨识度。目前 9 个，宁缺毋滥。' });
-    const attribution = page.createDiv('qrs-discovery-attribution');
-    attribution.createSpan({ text: '目录来自 ' });
-    attribution.createEl('a', { text: '中文独立博客列表', href: blogCatalogSource, attr: { target: '_blank', rel: 'noopener noreferrer' } });
-    attribution.createSpan({ text: '，由 Tim Qian 与社区维护（MIT）。收录不代表持续可用，添加时会验证。' });
-    const fieldId = crypto.randomUUID(); page.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索订阅目录', attr: { for: `qrs-discovery-search-${fieldId}` } });
-    const search = page.createEl('input', { type: 'search', cls: 'qrs-discovery-search', placeholder: '搜索名称、主题或语言…', attr: { id: `qrs-discovery-search-${fieldId}` } });
-    addSearchClear(search);
-    search.value = this.query; search.oninput = () => { this.query = search.value; this.limit = 60; this.refresh(); this.scheduleSearch(); };
-    const filters = page.createDiv({ cls: 'qrs-discovery-filters' });
-    for (const category of categories) {
-      const button = filters.createEl('button', { text: category, attr: { 'aria-pressed': String(this.category === category) } });
-      button.onclick = () => {
-        this.category = category; this.limit = 60;
-        for (const item of filters.querySelectorAll('button')) item.setAttribute('aria-pressed', String(item === button));
-        this.refresh();
-      };
-    }
-    page.createEl('label', { cls: 'qrs-visually-hidden', text: '博客主题', attr: { for: `qrs-discovery-tags-${fieldId}` } });
-    const tags = page.createEl('select', { cls: 'qrs-discovery-tags dropdown', attr: { id: `qrs-discovery-tags-${fieldId}` } });
-    tags.createEl('option', { value: '', text: '全部主题' });
-    for (const tag of blogTags) tags.createEl('option', { value: tag, text: tag });
-    tags.value = this.tag; tags.onchange = () => { this.tag = tags.value; this.limit = 60; this.refresh(); };
-    const provider = page.createDiv('qrs-discovery-provider');
-    this.count = provider.createSpan({ cls: 'qrs-discovery-count', attr: { role: 'status' } });
-    this.cards = page.createDiv('qrs-discovery-grid');
-    this.more = page.createEl('button', { text: '显示更多博客', cls: 'qrs-discovery-more' });
-    this.more.onclick = () => { this.limit += 60; this.refresh(); };
-    const switchCollection = (collection: DiscoveryCollection) => {
-      if (this.collection !== collection) { this.query = ''; search.value = ''; }
-      if (collection !== 'podcast') this.podcastSourceSerial++;
-      this.collection = collection; this.limit = 60;
-      featured.setAttribute('aria-pressed', String(collection === 'featured')); blogs.setAttribute('aria-pressed', String(collection === 'blogs')); wechat.setAttribute('aria-pressed', String(collection === 'wechat')); podcast.setAttribute('aria-pressed', String(collection === 'podcast'));
-      filters.toggleClass('qrs-hidden', collection !== 'featured'); standard.toggleClass('qrs-hidden', collection !== 'featured');
-      for (const el of [tags, attribution]) el.toggleClass('qrs-hidden', collection !== 'blogs');
-      search.placeholder = collection === 'blogs' ? '搜索博客、作者、网址或主题…' : collection === 'wechat' ? '搜索公众号目录…' : collection === 'podcast' ? '搜索已收录小宇宙或更多海外播客…' : '搜索精选作者或主题…';
-      this.refresh(); this.scheduleSearch();
-      if (collection === 'podcast') void this.loadPodcastSources();
+class SourcePreview extends Modal {
+  private generation = 0;
+  constructor(private plugin: QiaomuRssPlugin, private source: DiscoverSource, private done: () => void, private xml?: string) { super(plugin.app); }
+  onClose() { this.generation++; this.contentEl.empty(); }
+  onOpen() {
+    const source = this.source, version = ++this.generation; this.modalEl.addClass('qrs-modal', 'qrs-preview-modal');
+    const head = this.contentEl.createDiv('qrs-preview-head'), icons = new SourceIcons(this.plugin); this.plugin.addChild(icons);
+    const renderHead = () => { icons.clear(); head.empty(); icons.render(head, source); const copy = head.createDiv('qrs-preview-copy'); copy.createEl('h2', { text: source.name || '预览订阅' }); copy.createDiv({ cls: 'qrs-preview-meta', text: [typeLabels[source.kind], source.recommended ? '编辑推荐' : source.provenance].filter(Boolean).join(' · ') }); };
+    renderHead(); this.onClose = () => { this.generation++; this.plugin.removeChild(icons); this.contentEl.empty(); };
+    if (source.description) this.contentEl.createEl('p', { cls: 'qrs-preview-description', text: source.description });
+    const section = this.contentEl.createDiv('qrs-preview-section'); section.createDiv({ cls: 'qrs-preview-label', text: '最近内容' });
+    const status = section.createDiv({ cls: 'qrs-preview-status', attr: { role: 'status' } }); status.setText('正在读取…');
+    const recent = section.createDiv('qrs-source-preview');
+    for (let i = 0; i < 3; i++) recent.createDiv('qrs-preview-entry is-loading').createDiv('qrs-skeleton');
+    const footer = this.contentEl.createDiv('qrs-preview-footer');
+    let groupId = this.plugin.state.subscriptionGroups.find(g => g.name === source.group)?.id || '';
+    let groupChanged = false;
+    const picker = groupSelect(footer, this.plugin, groupId, id => { groupId = id === '@default' ? '' : id; groupChanged = id !== '@default'; });
+    if (!groupId && source.group) { picker.createEl('option', { value: '@default', text: source.group }); picker.value = '@default'; }
+    const existing = source.podcastId ? this.plugin.state.settings.followedPodcasts.includes(source.podcastId) ? source.podcastId : '' : this.plugin.state.subscriptions.find(f => f.url === source.url)?.id;
+    if (existing) picker.parentElement?.addClass('qrs-hidden');
+    const actions = footer.createDiv('qrs-preview-actions');
+    actions.createEl('button', { text: '取消' }).onclick = () => this.close();
+    const subscribe = actions.createEl('button', { text: existing ? '阅读' : '加入我的订阅', cls: 'mod-cta' }); subscribe.disabled = true;
+    const load = async () => {
+      try {
+        let entries: Entry[];
+        if (source.podcastId) {
+          const api = this.plugin.api(); const page = source.podcastId.startsWith('podscribe-') ? await api.podcastEpisodes(source.podcastId) : await api.entries(source.podcastId, '', 3); entries = page.entries;
+        } else {
+          const result = this.xml ? await parseFeed(this.xml, source.url!, this.contentEl.ownerDocument) : await this.plugin.subscriptions.fetch(source.url!, this.contentEl.ownerDocument);
+          entries = result.entries; source.name = result.name; source.site = result.site; source.image = result.image;
+        }
+        if (version !== this.generation) return;
+        renderHead(); status.setText(entries.length ? '' : '暂时没有文章，可先订阅。'); recent.empty();
+        for (const entry of entries.slice(0, 3)) {
+          const url = safeUrl(entry.link || ''), item = url ? recent.createEl('a', { cls: 'qrs-preview-entry', href: url, attr: { target: '_blank', rel: 'noopener noreferrer' } }) : recent.createDiv('qrs-preview-entry');
+          item.createDiv({ cls: 'qrs-preview-entry-title', text: entry.titleZh || entry.title });
+          const date = entry.publishedTs ? new Date(entry.publishedTs).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' }) : '';
+          const note = source.podcastId ? entry.podcastWordCount && entry.podcastWordCount > 0 ? '有文稿' : '' : '';
+          if (date || note) item.createDiv({ cls: 'qrs-preview-entry-meta', text: [date, note].filter(Boolean).join(' · ') });
+        }
+        subscribe.disabled = false;
+      } catch (e) { if (version === this.generation) { status.setText(e instanceof Error ? e.message : '暂时无法预览。'); recent.empty(); recent.createEl('button', { text: '重试' }).onclick = () => { recent.empty(); status.setText('正在读取…'); void load(); }; subscribe.disabled = !existing; } }
     };
-    featured.onclick = () => switchCollection('featured'); blogs.onclick = () => switchCollection('blogs'); wechat.onclick = () => switchCollection('wechat'); podcast.onclick = () => switchCollection('podcast'); switchCollection(this.collection);
-    this.registerEvent(this.plugin.app.workspace.on('active-leaf-change', () => this.refresh()));
+    void load();
+    subscribe.onclick = () => { if (existing) { this.close(); void this.plugin.openPersonalSource(existing); return; } subscribe.disabled = true; void (async () => {
+      if (source.podcastId) { await this.plugin.followPodcast(source.podcastId, source.name, false); if (groupChanged || groupId) await this.plugin.editLibrary(() => moveSources(this.plugin.state, [source.podcastId!], groupId)); }
+      else { const group = this.plugin.state.subscriptionGroups.find(g => g.id === groupId)?.name || (groupChanged ? '' : source.group); await this.plugin.subscriptions.add(source.url!, group, this.contentEl.ownerDocument); }
+      new Notice('已加入我的订阅。'); this.done(); this.close();
+    })().catch(e => { if (version === this.generation) { status.setText(e instanceof Error ? e.message : '订阅失败，请重试。'); subscribe.disabled = false; } }); };
   }
-  onunload() { this.closed = true; this.searchSerial++; this.podcastSourceSerial++; window.clearTimeout(this.searchTimer); }
+}
+const catalogDate = (data: TidingsData) => data.generated_at || data.generatedAt || '';
+
+export class DiscoveryPanel extends Component {
+  private icons: SourceIcons;
+  private search!: HTMLInputElement;
+  private cards!: HTMLElement;
+  private status!: HTMLElement;
+  private count!: HTMLElement;
+  private heading!: HTMLElement;
+  private more!: HTMLButtonElement;
+  private back!: HTMLButtonElement;
+  private note!: HTMLElement;
+  private collection: DiscoverCollection | 'home' = 'home';
+  private limit = 24;
+  private query = '';
+  private data: TidingsData = tidingsSnapshot;
+  private local = baseDiscovery();
+  private online: DiscoverSource[] = [];
+  private serial = 0;
+  private timer?: number;
+  private closed = false;
+  private sourceLoaded = false;
+  constructor(private contentEl: HTMLElement, private plugin: QiaomuRssPlugin, _embedded = false) { super(); this.icons = new SourceIcons(plugin); }
+  focusSearch() { this.search?.focus({ preventScroll: true }); }
+  private get cachePath() { return `${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}/tidings-catalog.json`; }
+  onload() {
+    this.closed = false; this.addChild(this.icons); this.contentEl.empty(); this.contentEl.addClass('qrs-discovery');
+    const page = this.contentEl.createDiv('qrs-discovery-page');
+    const form = page.createEl('form', { cls: 'qrs-discover-form' }), id = crypto.randomUUID();
+    form.createEl('label', { cls: 'qrs-visually-hidden', text: '搜索来源或粘贴链接', attr: { for: id } });
+    this.search = form.createEl('input', { type: 'search', cls: 'qrs-discovery-search', placeholder: '搜索公众号、播客、博客，或粘贴 RSS / OPML 链接…', attr: { id } }); addSearchClear(this.search);
+    form.createEl('button', { text: '搜索', type: 'submit' });
+    this.search.oninput = () => { this.query = this.search.value; this.limit = 24; this.refresh(); this.scheduleSearch(); };
+    form.onsubmit = event => { event.preventDefault(); this.query = this.search.value.trim(); if (/^https?:\/\//i.test(this.query)) void this.previewLink(this.query); else { this.refresh(); this.scheduleSearch(); } };
+    const categories = page.createDiv('qrs-discovery-collections');
+    categories.setAttribute('role', 'group'); categories.setAttribute('aria-label', '目录分类');
+    for (const [kind, label] of [['home', '推荐'], ...Object.entries(collectionLabels)] as ['home' | DiscoverCollection, string][]) {
+      const button = categories.createEl('button', { text: label, attr: { 'data-collection': kind, 'aria-pressed': 'false' } });
+      button.onclick = () => { this.collection = kind; this.limit = 24; this.refresh(); this.scheduleSearch(); };
+    }
+    this.status = page.createDiv({ cls: 'qrs-discovery-status', attr: { role: 'status' } });
+    const section = page.createDiv('qrs-discovery-section'), titles = section.createDiv('qrs-discovery-titles');
+    this.heading = titles.createEl('h2'); this.count = titles.createSpan('qrs-discovery-count');
+    this.back = section.createEl('button', { text: '返回推荐' }); this.back.onclick = () => { this.collection = 'home'; this.query = ''; this.search.value = ''; this.limit = 24; this.online = []; this.scheduleSearch(); this.refresh(); };
+    this.cards = page.createDiv('qrs-discovery-grid');
+    this.more = page.createEl('button', { cls: 'qrs-discovery-more', text: '查看更多' }); this.more.onclick = () => { this.limit += 24; this.refresh(); };
+    const footer = page.createDiv('qrs-discovery-actions'); footer.createSpan({ text: '已有订阅列表？' });
+    footer.createEl('button', { text: '导入 OPML', cls: 'qrs-link-button' }).onclick = () => new OpmlImport(this.plugin).open();
+    this.note = page.createDiv('qrs-discovery-note');
+    this.refresh();
+    // Catalogs fetched by the former "更新目录" button stay in use only while newer than the bundled snapshot.
+    void this.plugin.app.vault.adapter.read(this.cachePath).then(text => { const parsed = tidingsSchema.safeParse(JSON.parse(text) as unknown); if (!this.closed && parsed.success && parsed.data.feeds.length && catalogDate(parsed.data) > catalogDate(this.data)) { this.data = parsed.data; this.local = baseDiscovery(this.data); this.refresh(); } }).catch(() => undefined);
+  }
+  private async previewLink(url: string) {
+    const serial = ++this.serial; this.status.setText('正在识别链接…');
+    try { const result = await readImportUrl(url); if (this.closed || serial !== this.serial) return;
+      if (/<opml[\s>]/i.test(result.text)) { new OpmlImport(this.plugin, () => this.refresh(), result.text).open(); this.status.setText('已识别 OPML，请选择要导入的来源。'); return; }
+      const parsed = await parseFeed(result.text, result.url, this.contentEl.ownerDocument); if (this.closed || serial !== this.serial) return;
+      new SourcePreview(this.plugin, { id: result.url, name: parsed.name, url: result.url, site: parsed.site, image: parsed.image, kind: 'more', description: '', group: '', language: '', provenance: '手动添加' }, () => this.refresh(), result.text).open(); this.status.setText('已识别 RSS / Atom。');
+    } catch (e) { if (!this.closed && serial === this.serial) this.status.setText(e instanceof Error ? e.message : '读取失败，请重试。'); }
+  }
   private scheduleSearch() {
-    window.clearTimeout(this.searchTimer);
-    const serial = ++this.searchSerial;
-    const collection = this.collection, query = this.query.trim();
-    this.onlineFeeds = [];
-    this.onlinePodcasts = [];
-    if (collection === 'wechat') this.wechatLoaded = false;
-    if (collection !== 'wechat' && collection !== 'podcast') { this.onlineMessage = ''; this.refresh(); return; }
-    if (collection === 'podcast' && !query) { this.onlineMessage = ''; this.refresh(); return; }
-    this.onlineMessage = '搜索中…'; this.refresh();
-    this.searchTimer = window.setTimeout(() => {
-      void (collection === 'wechat' ? searchWechat(this.plugin.state.settings.baseUrl, query) : searchPodcasts(this.plugin.state.settings.baseUrl, query))
-        .then(result => {
-          if (serial !== this.searchSerial || this.closed) return;
-          if (collection === 'wechat') {
-            const catalog = result as Awaited<ReturnType<typeof searchWechat>>;
-            this.onlineFeeds = catalog.feeds;
-            this.wechatCatalogTotal = catalog.total;
-            this.wechatLoaded = true;
-            this.wechatTab.setText(`微信公众号 · ${catalog.total}`);
-          } else this.onlinePodcasts = result as PodcastSearchResult[];
-          this.onlineMessage = ''; this.refresh();
-        })
-        .catch(() => { if (serial !== this.searchSerial || this.closed) return; this.onlineMessage = collection === 'wechat' ? '在线目录暂不可用，仍可使用精选公众号。' : '在线搜索暂不可用，仍可订阅下方推荐播客。'; this.refresh(); });
-    }, query ? 350 : 0);
-  }
-  private async loadPodcastSources() {
-    const serial = ++this.podcastSourceSerial;
-    this.onlineMessage = '正在检查可用播客…'; this.refresh();
-    try {
-      const result = await this.plugin.api().sources();
-      if (this.closed || serial !== this.podcastSourceSerial) return;
-      this.plugin.state.sources = result.sources;
-      this.onlineMessage = '';
-      this.refresh();
-    } catch { if (!this.closed && serial === this.podcastSourceSerial) { this.onlineMessage = '暂时无法确认播客频道状态，请稍后重试。'; this.refresh(); } }
+    window.clearTimeout(this.timer); const serial = ++this.serial; this.online = [];
+    const query = this.query.trim(), collection = this.collection;
+    if (/^https?:\/\//i.test(query)) { this.status.setText('按回车预览 RSS 或 OPML 链接。'); return; }
+    if (!query && collection !== 'wechat' && collection !== 'podcast') { this.status.setText(''); return; }
+    this.status.setText('正在搜索…');
+    this.timer = window.setTimeout(() => { void (async () => {
+      const tasks: Promise<DiscoverSource[]>[] = [];
+      if (collection === 'home' || collection === 'wechat') tasks.push(searchWechat(this.plugin.state.settings.baseUrl, query).then(result => result.feeds.map(f => ({ ...f, kind: 'wechat' as const, description: '', language: '中文', provenance: '公众号目录' }))));
+      if (collection === 'home' || collection === 'podcast') {
+        if (query) tasks.push(searchPodcasts(this.plugin.state.settings.baseUrl, query).then(shows => shows.map(f => ({ id: `podscribe-${f.slug}`, podcastId: `podscribe-${f.slug}`, name: f.name, kind: 'podcast' as const, description: '打开预览查看近期单集与文稿状态。', group: '播客', language: '', provenance: '播客搜索' }))));
+        if (!this.sourceLoaded) tasks.push(this.plugin.api().sources().then(result => { if (serial === this.serial && !this.closed) { this.plugin.state.sources = result.sources; this.sourceLoaded = true; } return xiaoyuzhouPodcasts(result.sources).map(s => ({ id: s.id, podcastId: s.id, name: s.name, kind: 'podcast' as const, site: s.siteUrl || undefined, description: '小宇宙节目；文稿状态请查看具体单集。', group: '播客', language: '中文', provenance: '播客目录' })); }));
+        else tasks.push(Promise.resolve(xiaoyuzhouPodcasts(this.plugin.state.sources).map(s => ({ id: s.id, podcastId: s.id, name: s.name, kind: 'podcast' as const, site: s.siteUrl || undefined, description: '小宇宙节目；文稿状态请查看具体单集。', group: '播客', language: '中文', provenance: '播客目录' }))));
+      }
+      const results = await Promise.allSettled(tasks); if (this.closed || serial !== this.serial) return;
+      this.online = results.flatMap(r => r.status === 'fulfilled' ? r.value : []);
+      this.status.setText(results.some(r => r.status === 'rejected') ? '部分在线目录暂不可用，仍可浏览本地目录，重新搜索可重试。' : ''); this.refresh();
+    })(); }, query ? 350 : 0);
   }
   refresh() {
     if (this.closed || !this.cards) return;
-    // Preserve keyboard focus when a pending card finishes or another view updates.
-    const active = this.contentEl.ownerDocument.activeElement;
-    const focusedId = active instanceof HTMLElement && this.cards.contains(active) ? active.closest<HTMLElement>('[data-feed]')?.dataset.feed : undefined;
-    this.cards.empty();
-    if (this.collection === 'podcast') { this.renderPodcasts(); return; }
-    const local = filterDiscovery(this.query, this.collection === 'featured' ? this.category : '全部', this.collection, this.tag);
-    const feeds = this.collection === 'wechat' && this.wechatLoaded ? this.onlineFeeds : local;
-    const total = this.collection === 'blogs' ? independentBlogs.length : this.collection === 'wechat' ? this.wechatLoaded ? this.wechatCatalogTotal ?? feeds.length : wechatFeeds.length : discoveryFeeds.length;
-    this.count.setText(this.onlineMessage || `${feeds.length} / ${total} 个${this.collection === 'wechat' ? '公众号' : this.collection === 'blogs' ? '博客' : '订阅源'}`);
-    this.more.toggleClass('qrs-hidden', feeds.length <= this.limit);
-    this.more.setText(`显示更多（还剩 ${Math.max(0, feeds.length - this.limit)} 个）`);
-    if (!feeds.length) this.cards.createDiv({ cls: 'qrs-empty', text: '没有找到匹配内容，试试其他关键词或分类。' });
-    for (const feed of feeds.slice(0, this.limit)) {
-      const url = feed.url;
-      const subscribed = this.plugin.state.subscriptions.some(item => item.url === url ||
-        (this.collection === 'wechat' && wechatFeeds.some(legacy => legacy.name === feed.name && legacy.url === item.url)));
-      const card = this.cards.createEl('article', { cls: 'qrs-discovery-card', attr: { 'data-feed': feed.id, tabindex: '-1' } });
-      const heading = card.createDiv('qrs-discovery-card-heading');
-      setIcon(heading.createSpan('qrs-discovery-icon'), 'icon' in feed ? feed.icon : 'rss');
-      heading.createEl('h2', { text: feed.name });
-      if ('category' in feed && this.collection !== 'wechat') card.createDiv({ cls: 'qrs-discovery-meta', text: `${feed.category} · ${feed.language}` });
-      const description = 'description' in feed ? feed.description : wechatFeeds.find(item => item.name === feed.name)?.description;
-      if (description) card.createEl('p', { cls: 'qrs-discovery-description', text: description });
-      const footer = card.createDiv('qrs-discovery-card-footer');
-      if (this.collection !== 'wechat') {
-        footer.addClass('qrs-discovery-card-footer-with-link');
-        const site = 'site' in feed && feed.site ? feed.site : url;
-        footer.createEl('a', { text: new URL(site).hostname, href: site, attr: { target: '_blank', rel: 'noopener noreferrer' } });
-      }
-      const button = footer.createEl('button', { text: subscribed ? '已订阅' : this.pending.has(feed.id) ? '添加中…' : this.errors.has(feed.id) ? '重试' : '订阅' });
-      button.disabled = subscribed || this.pending.has(feed.id);
-      button.onclick = () => {
-        if (this.pending.has(feed.id)) return;
-        this.pending.add(feed.id); this.errors.delete(feed.id); this.refresh();
-        void this.plugin.subscriptions.add(url, 'group' in feed ? feed.group : feed.category, this.contentEl.ownerDocument).then(async subscription => {
-          await this.plugin.activateSubscription(subscription.id);
-          new Notice(`已订阅 ${feed.name}`);
-        }).catch((error: unknown) => {
-          this.errors.set(feed.id, error instanceof Error ? error.message : '添加失败，请重试。');
-        }).finally(() => { this.pending.delete(feed.id); this.refresh(); this.plugin.refreshDiscovery(); });
-      };
-      const error = this.errors.get(feed.id);
-      if (error && !subscribed) card.createDiv({ cls: 'qrs-subscription-error', text: error, attr: { role: 'status' } });
+    const doc = this.contentEl.ownerDocument, focused = this.cards.contains(doc.activeElement) ? (doc.activeElement as HTMLElement)?.closest<HTMLElement>('[data-feed]')?.dataset.feed : undefined;
+    this.icons.clear(); this.cards.empty(); const query = this.query.trim(), home = !query && this.collection === 'home';
+    for (const button of this.contentEl.querySelectorAll<HTMLButtonElement>('[data-collection]')) button.setAttribute('aria-pressed', String(button.dataset.collection === this.collection));
+    this.back.toggleClass('qrs-hidden', home);
+    this.heading.setText(home ? '值得订阅' : query ? '搜索结果' : collectionLabels[this.collection as DiscoverCollection]);
+    let items = dedupeDiscovery([...this.local, ...this.online]);
+    if (this.collection !== 'home') { const collection = this.collection; items = items.filter(f => inCollection(f, collection)); }
+    if (query) items = searchDiscovery(items, query);
+    if (home) {
+      const blogs = items.filter(f => f.kind === 'blogs' && f.recommended), wechat = items.filter(f => f.kind === 'wechat' && f.recommended), podcasts = items.filter(f => f.podcastId && f.recommended);
+      items = [blogs[0], wechat[0], podcasts[0], blogs[1], wechat[2], podcasts[1]].filter((f): f is DiscoverSource => !!f);
     }
-    if (focusedId) {
-      const card = this.cards.querySelector<HTMLElement>(`[data-feed="${focusedId}"]`);
-      (card?.querySelector<HTMLElement>('button:not(:disabled)') ?? card)?.focus({ preventScroll: true });
-    }
+    this.count.setText(home ? '' : query ? `${items.length} 个匹配` : `${items.length} 个来源`);
+    this.note.empty(); this.note.toggleClass('qrs-hidden', this.collection !== 'blogs' || !!query);
+    if (this.collection === 'blogs' && !query) { this.note.appendText('已去重 · 收录不等于推荐 · 来源：中文独立博客列表、'); this.note.createEl('a', { text: 'Tidings', href: tidingsSource, attr: { target: '_blank', rel: 'noopener noreferrer' } }); this.note.appendText(` · ${catalogDate(this.data) || '日期未知'}`); }
+    for (const source of items.slice(0, this.limit)) this.renderCard(source);
+    if (!items.length) this.cards.createDiv({ cls: 'qrs-empty', text: /^https?:/i.test(query) ? '按回车预览这个链接。' : '没有找到匹配来源，试试其他关键词或分类。' });
+    this.more.toggleClass('qrs-hidden', items.length <= this.limit); this.more.setText(`查看更多（${Math.max(0, items.length - this.limit)}）`);
+    if (focused) this.cards.querySelector<HTMLElement>(`[data-feed="${CSS.escape(focused)}"] button`)?.focus({ preventScroll: true });
   }
-  private renderPodcasts() {
-    const query = this.query.trim().toLocaleLowerCase();
-    const recommended = podcastRecommendations.filter(show => `${show.name} ${show.nameZh}`.toLocaleLowerCase().includes(query));
-    const local = xiaoyuzhouPodcasts(this.plugin.state.sources).filter(show => show.name.toLocaleLowerCase().includes(query));
-    const shows: { name: string; nameZh: string; sourceId: string; description?: string; origin?: string }[] = [
-      ...local.map(show => ({ name: show.name, nameZh: '', sourceId: show.id, origin: '小宇宙' })),
-      ...recommended,
-      ...this.onlinePodcasts.filter(show => !podcastRecommendations.some(item => item.slug === show.slug)).map(show => ({ name: show.name, nameZh: '', sourceId: `podscribe-${show.slug}`, origin: '海外播客' })),
-    ];
-    this.count.setText(this.onlineMessage || (query ? `${shows.length} 个搜索结果` : `小宇宙 ${local.length} 个 · 海外精选 ${recommended.length} 个`));
-    this.more.addClass('qrs-hidden');
-    if (!shows.length) this.cards.createDiv({ cls: 'qrs-empty', text: '没有找到匹配的播客，试试更短的关键词。' });
-    for (const show of shows) {
-      const available = show.sourceId.startsWith('podscribe-') || this.plugin.state.sources.some(source => source.id === show.sourceId && source.enabled !== false);
-      const followed = this.plugin.state.settings.followedPodcasts.includes(show.sourceId);
-      const card = this.cards.createEl('article', { cls: 'qrs-discovery-card', attr: { 'data-feed': show.sourceId } });
-      const heading = card.createDiv('qrs-discovery-card-heading');
-      setIcon(heading.createSpan('qrs-discovery-icon'), 'mic'); heading.createEl('h2', { text: show.name });
-      if (show.nameZh || show.origin) card.createDiv({ cls: 'qrs-discovery-meta', text: show.nameZh || show.origin });
-      if (show.description) card.createEl('p', { cls: 'qrs-discovery-description', text: show.description });
-      const footer = card.createDiv('qrs-discovery-card-footer');
-      const button = footer.createEl('button', { text: followed ? '阅读' : available ? '订阅' : '尚未开放' });
-      button.disabled = !available || this.pending.has(show.sourceId);
-      button.onclick = () => {
-        if (!available || this.pending.has(show.sourceId)) return;
-        this.pending.add(show.sourceId); this.refresh();
-        void this.plugin.followPodcast(show.sourceId, show.name).catch(error => {
-          this.errors.set(show.sourceId, error instanceof Error ? error.message : '订阅失败，请重试。');
-        }).finally(() => { this.pending.delete(show.sourceId); this.refresh(); });
-      };
-      if (followed) {
-        const remove = footer.createEl('button');
-        setIcon(remove, 'x');
-        remove.createSpan({ cls: 'qrs-visually-hidden', text: `取消订阅 ${show.name}` });
-        remove.onclick = () => { void this.plugin.unfollowPodcast(show.sourceId).catch(error => {
-          this.errors.set(show.sourceId, error instanceof Error ? error.message : '取消订阅失败，请重试。'); this.refresh();
-        }); };
-      }
-      const error = this.errors.get(show.sourceId);
-      if (error) card.createDiv({ cls: 'qrs-subscription-error', text: error, attr: { role: 'status' } });
-    }
+  private subscribed(source: DiscoverSource) {
+    if (source.podcastId) return this.plugin.state.settings.followedPodcasts.includes(source.podcastId) ? source.podcastId : '';
+    return this.plugin.state.subscriptions.find(f => f.url === source.url)?.id || '';
   }
-}
-
-/** Restores existing workspace tabs; new exploration opens inside subscription management. */
-export class DiscoveryView extends ItemView {
-  private panel?: DiscoveryPanel;
-  constructor(leaf: WorkspaceLeaf, private plugin: QiaomuRssPlugin) { super(leaf); }
-  getViewType() { return DISCOVERY_VIEW_TYPE; }
-  getDisplayText() { return '探索订阅'; }
-  getIcon() { return 'compass'; }
-  onOpen(): Promise<void> { this.panel = new DiscoveryPanel(this.contentEl, this.plugin); this.addChild(this.panel); return Promise.resolve(); }
-  refresh() { this.panel?.refresh(); }
+  private renderCard(source: DiscoverSource) {
+    const card = this.cards.createEl('article', { cls: 'qrs-discovery-card', attr: { 'data-feed': source.id } });
+    const header = card.createDiv('qrs-discovery-card-heading'); this.icons.render(header, source);
+    const title = header.createEl('h2'); title.createEl('button', { text: source.name, cls: 'qrs-source-name' }).onclick = () => new SourcePreview(this.plugin, source, () => this.refresh()).open();
+    card.createDiv({ cls: 'qrs-discovery-meta', text: `${typeLabels[source.kind]} · ${source.recommended ? '编辑推荐' : source.provenance}` });
+    if (source.description) card.createEl('p', { cls: 'qrs-discovery-description', text: source.description });
+    const footer = card.createDiv('qrs-discovery-card-footer'); const subscribed = this.subscribed(source);
+    if (subscribed) { footer.createSpan({ text: '已订阅' }); footer.createEl('button', { text: '阅读' }).onclick = () => { void this.plugin.openPersonalSource(subscribed); }; }
+    else footer.createEl('button', { text: '订阅' }).onclick = () => new SourcePreview(this.plugin, source, () => this.refresh()).open();
+  }
+  onunload() { this.closed = true; this.serial++; window.clearTimeout(this.timer); }
 }

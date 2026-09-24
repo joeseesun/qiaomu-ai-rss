@@ -35,3 +35,16 @@ Only explicitly selected vault folders (including their descendants) are listed 
 The selection popup is disabled by default. Turning it on and typography preferences are stored in the vault plugin settings.
 
 Dragging an image transfers its local raster bytes to Obsidian. Dropping into a note uses native attachment handling and the configured attachment location; it creates a normal vault attachment, which is independent of the RSS image cache. Native Markdown attachment bytes may be read locally to prepare a drag. Canceling a drag does not create an attachment.
+
+## Personal library and discovery (0.20.0)
+
+RSS, followed podcasts and chosen vault paths share local grouping metadata. Group changes never publish subscriptions to Qiaomu Picks or change public source catalogs. Upgrading a pre-library data file creates `data-before-library-v1.json` beside `data.json`; it contains the same private URLs as the original file and is kept for manual rollback. Removing a local source only removes its reading subscription; it does not delete vault files.
+
+The Tidings metadata snapshot is bundled for offline discovery (CC0-1.0) and ships with plugin updates; discovery makes no catalog download of its own. A `tidings-catalog.json` cached by an earlier version is read only while it is newer than the bundled snapshot. Online OPML import requests the user-provided URL. Imports are previewed and selected before being stored; feed bodies are not downloaded by import itself. Searching online WeChat/podcast catalogs sends search terms to the configured Qiaomu service. Selecting Preview requests that feed or podcast's recent entries.
+
+When remote images are enabled, visible source avatars and publisher favicons are fetched and cached by the existing local image service. No third-party favicon lookup service receives the subscription list. Missing icons fall back to text. Automatic batches refresh at most 20 RSS sources with 3 concurrent requests; local folders and remote podcasts are opened explicitly.
+
+## Saving articles (0.20.0)
+
+存为笔记 writes the current article version into the vault folder chosen in settings (default `Qiaomu RSS/文章`) using Obsidian's vault API. Images already shown by the reader are copied from the local image cache into the vault attachment location configured in Obsidian; images that cannot be saved keep their original web link. The plugin stores a local map from article ID and version to the saved note path so the toolbar can open that note; it follows renames and is never sent anywhere. PDF export on desktop uses the system save dialog and remembers the last chosen directory in plugin settings.
+

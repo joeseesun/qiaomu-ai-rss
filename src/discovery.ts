@@ -92,6 +92,8 @@ const newsletterSourceIds = new Set([
   'superhuman_ai', 'aibreakfast', 'garymarcus', 'dwarkesh', 'experimental-history',
   'construction-physics', 'ds-ai-section',
 ]);
+export const qiaomuDividers = ['微信公众号', '小宇宙', 'YouTube', 'Newsletter', '资讯', '博客与网站'] as const;
+export const qiaomuDividerIcons: Record<string, string> = { 微信公众号: 'message-circle', 小宇宙: 'podcast', YouTube: 'tv', Newsletter: 'mail', 资讯: 'newspaper', 博客与网站: 'globe' };
 export function qiaomuChannelDivider(source: Source): string {
   let host = '';
   try { host = new URL(source.siteUrl || '').hostname.toLowerCase(); } catch { /* Some feeds have no site URL. */ }
@@ -102,11 +104,20 @@ export function qiaomuChannelDivider(source: Source): string {
   if (source.category === 'news') return '资讯';
   return '博客与网站';
 }
-export function prependFeaturedPodcasts(entries: Entry[], latest: Entry[]): Entry[] {
-  return [...new Map([...latest, ...entries].map(entry => [entry.id, entry])).values()];
+const entryTime = (entry: Entry) => entry.publishedTs || Date.parse(entry.published || '') || 0;
+/** Newest first; the sort is stable, so undated entries keep their server order among themselves. */
+const byNewest = (entries: Entry[]) => [...entries].sort((a, b) => entryTime(b) - entryTime(a));
+/**
+ * Mixes each featured show's latest episode into the 全部精选 timeline by date. An episode older than the oldest loaded
+ * article waits until “加载更早文章” reaches its date (or the feed is complete), so it never lands out of order at the bottom.
+ */
+export function mergeFeaturedPodcasts(entries: Entry[], episodes: Entry[], complete: boolean): Entry[] {
+  const times = entries.map(entryTime).filter(Boolean), oldest = times.length ? Math.min(...times) : 0;
+  const due = episodes.filter(episode => complete || !times.length || entryTime(episode) >= oldest);
+  return byNewest([...new Map([...due, ...entries].map(entry => [entry.id, entry])).values()]);
 }
 export function qiaomuFeaturedEntries(entries: Entry[]): Entry[] {
-  return entries.filter(entry => entry.sourceId !== 'allin' && entry.sourceId !== 'podscribe-all-in-with-chamath-jason-sacks-friedberg');
+  return byNewest(entries.filter(entry => entry.sourceId !== 'allin' && entry.sourceId !== 'podscribe-all-in-with-chamath-jason-sacks-friedberg'));
 }
 export const independentBlogs: DiscoveryFeed[] = blogCatalog.items
   .filter(blog => !BUILT_IN_FEED_URLS.has(blog.url))
