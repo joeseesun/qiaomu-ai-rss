@@ -395,10 +395,18 @@ class RssSettings extends PluginSettingTab {
           for (let value = 15; value <= 24; value++) drop.addOption((value / 10).toFixed(1), (value / 10).toFixed(1) + ' 倍');
           drop.setValue(settings.lineHeight.toFixed(1)).onChange(async value => { settings.lineHeight = Number(value); await saveReading(); });
         }); } },
-        { name: '正文宽度', render: setting => { setting.addDropdown(drop => {
-          for (const width of [28, 36, 44]) drop.addOption(String(width), width + ' 字');
-          drop.setValue(String(settings.lineWidth)).onChange(async value => { settings.lineWidth = Number(value) as 28 | 36 | 44; await saveReading(); });
-        }); } },
+        { name: '正文宽度', desc: '设置每行大约容纳的字数，范围 24-96。', render: setting => {
+          const saveWidth = async (value: number) => { settings.lineWidth = Math.max(24, Math.min(96, Math.round(value))); await saveReading(); this.update(); };
+          setting.addText(text => text.inputEl.type = 'number')
+            .addExtraButton(button => button.setIcon('align-left').setTooltip('紧凑 28 字').onClick(() => { void saveWidth(28); }))
+            .addExtraButton(button => button.setIcon('align-center').setTooltip('适中 36 字').onClick(() => { void saveWidth(36); }))
+            .addExtraButton(button => button.setIcon('align-justify').setTooltip('宽松 44 字').onClick(() => { void saveWidth(44); }));
+          const input = setting.controlEl.querySelector<HTMLInputElement>('input');
+          if (input) {
+            input.min = '24'; input.max = '96'; input.step = '1'; input.value = String(settings.lineWidth);
+            input.onchange = () => { void saveWidth(Number(input.value)); };
+          }
+        } },
       ] },
       { type: 'group', heading: '库内 Markdown 来源', items: [
         { name: '阅读文件夹', desc: '包含子文件夹。可选择剪藏目录或其他 Markdown 文件夹；通过频道菜单进入。', render: setting => {

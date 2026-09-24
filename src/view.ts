@@ -856,14 +856,13 @@ export class ReaderView extends ItemView {
     const heightRow = row('行距'); const heightValue = heightRow.createEl('output', { text: `${settings.lineHeight.toFixed(1)} 倍` });
     const height = heightRow.createEl('input', { type: 'range', value: String(settings.lineHeight), attr: { min: '1.5', max: '2.4', step: '0.1', 'data-qrs-field': '正文行距' } });
     const widthRow = row('版心宽度');
-    const width = widthRow.createEl('select', { attr: { 'data-qrs-field': '正文宽度' } });
-    for (const [value, label] of [['28', '紧凑 · 28 字'], ['36', '适中 · 36 字'], ['44', '宽松 · 44 字']] as const) width.createEl('option', { value, text: label });
-    width.value = String(settings.lineWidth);
+    const widthValue = widthRow.createEl('output', { text: `${settings.lineWidth} 字` });
+    const width = widthRow.createEl('input', { type: 'number', value: String(settings.lineWidth), attr: { min: '24', max: '96', step: '1', 'data-qrs-field': '正文宽度' } });
     const update = () => { sizeValue.setText(`${settings.fontSize} px`); heightValue.setText(`${settings.lineHeight.toFixed(1)} 倍`); this.applyAppearance(); };
     font.onchange = () => { settings.fontFamily = readingFontSchema.parse(font.value); customRow.hidden = settings.fontFamily !== 'custom'; update(); this.run(() => this.plugin.persist()); };
     size.oninput = () => { settings.fontSize = Number(size.value); update(); this.run(() => this.plugin.persist()); }; size.onchange = () => this.run(() => this.plugin.persist());
     height.oninput = () => { settings.lineHeight = Number(height.value); update(); this.run(() => this.plugin.persist()); }; height.onchange = () => this.run(() => this.plugin.persist());
-    width.onchange = () => { settings.lineWidth = Number(width.value) as 28 | 36 | 44; update(); this.run(() => this.plugin.persist()); };
+    width.onchange = () => { settings.lineWidth = Math.max(24, Math.min(96, Math.round(Number(width.value) || 36))); width.value = String(settings.lineWidth); widthValue.setText(`${settings.lineWidth} 字`); update(); this.run(() => this.plugin.persist()); };
     panel.onkeydown = event => { if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.appearanceOpen = false; this.renderReader(true); } };
   }
 }

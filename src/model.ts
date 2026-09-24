@@ -51,7 +51,7 @@ export const stateSchema = z.object({
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
     defaultMode: modeSchema.default('rewrite'), remoteImages: z.boolean().default(true), listWidth: z.number().min(220).max(520).default(300),
     fontSize: z.number().int().min(14).max(32).default(19), customFont: z.string().max(200).catch('').default(''), fontFamily: readingFontSchema.default('fangsong'),
-    lineHeight: z.number().min(1.5).max(2.4).default(1.9), lineWidth: z.union([z.literal(28), z.literal(36), z.literal(44)]).default(36),
+    lineHeight: z.number().min(1.5).max(2.4).default(1.9), lineWidth: z.number().int().min(24).max(96).catch(36).default(36),
     selectionPopup: z.boolean().default(true), markdownFolders: z.array(z.string()).default([]), followedPodcasts: z.array(z.string()).default([]), podcastNames: z.record(z.string(), z.string()).default({}),
     exportFolder: z.string().max(500).catch('').default(''), exportFilename: z.string().max(200).catch('{title} - {mode}.md').default('{title} - {mode}.md'),
     exportAssetFolder: z.string().max(500).catch('{filename}.assets').default('{filename}.assets'), askBeforeSave: z.boolean().default(true),
