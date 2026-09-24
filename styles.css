@@ -100,7 +100,6 @@
 .qrs-wechat-source a { color:var(--text-muted); text-decoration:underline; text-underline-offset:2px; }
 .qrs-media { margin:0 0 26px; padding:16px; border:1px solid var(--background-modifier-border); border-radius:12px; background:var(--background-secondary); }
 .qrs-media strong { display:block; margin-bottom:10px; font-size:14px; }
-.qrs-audio audio { display:block; width:100%; min-height:48px; }
 .qrs-media p { margin:10px 0 0; color:var(--text-muted); font-size:13px; line-height:1.5; }
 .qrs-video-frame { display:block; width:100%; aspect-ratio:16/9; min-height:200px; margin:0 0 26px; border:0; border-radius:8px; background:#000; }
 .qrs-feedback { border-radius:6px; background:var(--background-secondary); padding:8px 12px; margin:16px 0; font-size:12px; color:var(--text-muted); }
@@ -568,4 +567,15 @@
   .qrs-library-tools > .qrs-clearable-search { flex-basis:100%; }
   .qrs-library-kinds { flex:1; overflow-x:auto; }
   .qrs-library .qrs-library-status > span:not(.qrs-library-unread,.qrs-library-error) { display:none; }
+}
+.qrs-audio-dock { flex:none; display:flex; align-items:center; gap:10px; padding:8px 12px; padding-bottom:max(8px,var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); border-top:1px solid var(--background-modifier-border); background:var(--background-secondary); }
+.qrs-audio-dock.is-hidden,.qrs-audio-dock .qrs-media-error.is-hidden { display:none; }
+.qrs-root .qrs-audio-title { flex:0 1 240px; min-width:0; height:auto; padding:4px 6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; font-size:13px; font-weight:600; border:0; box-shadow:none; background:transparent; color:var(--text-normal); cursor:pointer; }
+.qrs-root .qrs-audio-title:hover { background:var(--background-modifier-hover); }
+.qrs-audio-dock audio { flex:1; min-width:0; height:40px; }
+.qrs-audio-dock .qrs-media-error { flex:0 1 auto; margin:0; color:var(--text-muted); font-size:12px; }
+@container (max-width:650px) {
+ .qrs-audio-dock { flex-wrap:wrap; gap:4px 8px; }
+ .qrs-root .qrs-audio-title { flex:1 1 0; }
+ .qrs-audio-dock audio { order:3; flex:1 0 100%; }
 }
