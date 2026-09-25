@@ -6,6 +6,7 @@ import { RssApi } from './api';
 import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, type Bundle, type Entry, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
+import { contextProvider } from './agent-bridge';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
 import { fontName, readingFonts, selectableFonts, ReadingFonts } from './fonts';
 import { registerImageDrops } from './image-drag';
@@ -20,6 +21,8 @@ export default class QiaomuRssPlugin extends Plugin {
   state: State = initialState(null);
   images!: LocalImages;
   subscriptions!: Subscriptions;
+  /** Shares the open article with Qiaomu Agent; see qiaomu-context.ts. */
+  qiaomuContext = contextProvider(leaf => leaf.view instanceof ReaderView ? leaf.view.agentSnapshot() : null);
   private lastNote: TFile | null = null;
   private libraryEdits: Promise<void> = Promise.resolve();
   private saving: Promise<void> = Promise.resolve();

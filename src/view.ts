@@ -17,6 +17,8 @@ import { sameRemoteContent, uniqueRemoteEntries, wechatArticleKey, xiaoyuzhouEpi
 import { featuredXiaoyuzhouPodcasts, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuDividerIcons, qiaomuDividers, qiaomuFeaturedEntries, readerChannelSources } from './discovery';
 import { articleNoteKey, modeLabel, modeSchema, podcastDefaultMode, readingFontSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
 import { dividerLabel, relativeTime, t } from './i18n';
+import { agentAvailable, articleSnapshot, askAgent } from './agent-bridge';
+import { notifyContextChanged, type ContextSnapshot } from './qiaomu-context';
 import { fontName } from './fonts';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites';
@@ -131,10 +133,12 @@ export class ReaderView extends ItemView {
           new Notice(result.added ? t('notice.appendedToNote', { name: result.file.basename }) : t('notice.alreadyInNote'));
         } catch (error) { new Notice(error instanceof Error ? error.message : t('notice.cannotAppend')); }
       };
-      new Menu().setUseNativeMenu(false)
+      const menu = new Menu().setUseNativeMenu(false)
         .addItem(item => item.setTitle(note ? t('capture.appendCurrent', { name: note.basename }) : t('capture.appendCurrentEmpty')).setIcon('file-pen-line').setDisabled(!note).onClick(() => append(true)))
-        .addItem(item => item.setTitle(t('capture.appendDaily')).setIcon('calendar-days').onClick(() => append(false)))
-        .showAtMouseEvent(event);
+        .addItem(item => item.setTitle(t('capture.appendDaily')).setIcon('calendar-days').onClick(() => append(false)));
+      const snapshot = this.agentSnapshot();
+      if (snapshot && agentAvailable(this.app)) menu.addSeparator().addItem(item => item.setTitle(t('capture.askAi')).setIcon('sparkles').onClick(() => { void askAgent(this.app, snapshot, excerpt); }));
+      menu.showAtMouseEvent(event);
     });
     this.selectionCapture = new SelectionCapture(this.contentEl.ownerDocument, () => this.reader, () => {
       const bundle = this.bundle, mode = this.mode;
@@ -149,10 +153,14 @@ export class ReaderView extends ItemView {
           new Notice(result.added ? t('notice.excerptAddedTo', { name: result.file.basename }) : t('notice.excerptAlready'));
         } catch (error) { new Notice(error instanceof Error ? error.message : t('notice.excerptFailed')); }
       };
-      return [
-        { label: t('capture.appendDaily'), icon: 'calendar-plus', save: text => capture(text, false) },
-        { label: note ? t('capture.appendCurrent', { name: note.basename }) : t('capture.appendCurrentEmpty'), icon: 'file-pen-line', disabled: !note, save: text => capture(text, true) },
+      const actions = [
+        { label: t('capture.appendDaily'), icon: 'calendar-plus', save: (text: string) => capture(text, false) },
+        { label: note ? t('capture.appendCurrent', { name: note.basename }) : t('capture.appendCurrentEmpty'), icon: 'file-pen-line', disabled: !note, save: (text: string) => capture(text, true) },
       ];
+      // Only when Qiaomu Agent is installed and enabled; checked each time the popup opens.
+      const snapshot = agentAvailable(this.app) ? this.agentSnapshot() : null;
+      if (snapshot) actions.push({ label: t('capture.askAi'), icon: 'sparkles', save: text => askAgent(this.app, snapshot, text) });
+      return actions;
     });
     return Promise.resolve();
   }
@@ -790,6 +798,12 @@ export class ReaderView extends ItemView {
       }
     } catch { article.createDiv({ cls: 'qrs-empty', text: t('reader.renderFailed') }); }
     this.reader.scrollTop = scroll; this.restoreOffsets();
+    notifyContextChanged(this.app, this.plugin.manifest.id);
+  }
+  /** The article as Qiaomu Agent should see it, or null when nothing is open. */
+  agentSnapshot(): ContextSnapshot | null {
+    if (!this.bundle || this.closed) return null;
+    return articleSnapshot(this.plugin.manifest.id, { bundle: this.bundle, mode: this.mode, prose: this.reader?.querySelector<HTMLElement>('.qrs-prose') ?? null });
   }
   private renderAppearanceSettings(anchor: HTMLElement) {
     const settings = this.plugin.state.settings;
