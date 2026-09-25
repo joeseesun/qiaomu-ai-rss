@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.22.0
+
+- Share the open article with Qiaomu Agent through the Qiaomu Context Protocol (read-only, version 1). The agent sees the article in the version being read (original, rewrite or translation) and can use it without saving Markdown first.
+- When Qiaomu Agent is installed and enabled, the selection popup and the article context menu gain Ask AI (sparkles icon), which hands the article and the selected passage to the agent. Without the agent nothing changes: no extra button, no prompt to install.
+
 ## 0.21.0
 
 - Localize the interface into eight languages that follow Obsidian's language setting: 简体中文, English, 繁體中文, 日本語, 한국어, Español, Français and Deutsch. Menus, dialogs, settings, notices, reading versions, font names and relative dates all translate; feed content, group names and note text stay as written.
