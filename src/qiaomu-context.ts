@@ -9,6 +9,9 @@
  * - Qiaomu Agent sets `plugin.api` to an {@link AgentApi}.
  * - A source calls {@link notifyContextChanged} when its article, page or selection changes.
  *
+ * Versioning: version 1 may gain optional fields and optional methods; check for them before use and
+ * ignore unknown ones. Only a breaking change raises the version, and a mismatch reads as "absent".
+ *
  * Spec: docs/integrations/qiaomu-context-protocol.md in the qiaomu-agent repository.
  */
 import type { App, Plugin, WorkspaceLeaf } from "obsidian";
