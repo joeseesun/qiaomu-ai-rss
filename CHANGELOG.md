@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.0
+
+- Appear on Qiaomu Home (乔木Home), the Obsidian start page, through the Qiaomu Home Protocol (version 1): the newest unread articles with the unread count, an "Add feed" quick action, and article search over local and saved articles. Opening an item from Home opens that article in the reader.
+- Home reads only articles already on this device; it never triggers a feed refresh. Without Qiaomu Home nothing changes.
+
 ## 0.22.0
 
 - Share the open article with Qiaomu Agent through the Qiaomu Context Protocol (read-only, version 1). The agent sees the article in the version being read (original, rewrite or translation) and can use it without saving Markdown first.

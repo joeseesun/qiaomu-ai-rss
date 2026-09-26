@@ -32,6 +32,7 @@ Read Qiaomu feeds and your own RSS / Atom subscriptions in a native Obsidian vie
 - 点击“记到今日日记”，以普通段落追加文章标题、内部回跳链接及“原文”链接，并在桌面端分屏打开今日日记；日记不存在时自动创建，重复点击不重复写入。
 - 摘录浮层默认开启，可在插件设置的“阅读与摘录”中关闭；选中正文可摘录到今日日记或当前笔记，也可将选中文字拖入处于编辑模式的笔记。日记中同篇文章只保留一个标题链接，后续摘录归入该文章段落。内部链接会在 RSS 阅读器中打开保存的文章版本；本地副本独立于最近文章缓存保留，依赖插件及其数据。
 - 已加载的图片可拖入处于编辑模式的笔记，由 Obsidian 保存到配置的附件位置并插入本地图片引用。支持 RSS 图片和库内 Markdown 图片，支持 PNG、JPEG、GIF、WebP、AVIF（最多 8 MB）。
+- 装了[乔木Home](https://github.com/joeseesun/qiaomu-home)时，主页显示最新未读文章与未读数，主页搜索框也能搜到文章；主页只读本机已有文章，不触发刷新。
 - 外部正文经过 HTML 清理，脚本、嵌入页面与可执行代码块不会运行。文章图片默认显示，下载到本地缓存后再渲染。
 
 本插件参考自有 [QMReader iOS](https://github.com/joeseesun/qmreader-ios) 的产品交互，根据 [QMReader 服务](https://github.com/joeseesun/qmreader) 的公共 API 独立开发。它不是其他 Obsidian RSS 插件的 fork。
