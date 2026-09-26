@@ -574,6 +574,17 @@
 .qrs-root .qrs-audio-title:hover { background:var(--background-modifier-hover); }
 .qrs-audio-dock audio { flex:1; min-width:0; height:40px; }
 .qrs-audio-dock .qrs-media-error { flex:0 1 auto; margin:0; color:var(--text-muted); font-size:12px; }
+/* Floating host navigation overlays plugin views; the hardware safe area alone
+   does not cover its height. Reserve space in the dock's normal flow so both
+   the native controls and the last article lines remain reachable. */
+.is-phone:is(.is-floating-nav,.auto-full-screen):not(.is-hidden-nav) .qrs-root .qrs-audio-dock {
+  padding-bottom:calc(8px + max(0px, var(--navbar-height,48px) + var(--navbar-bottom-offset,max(var(--safe-area-inset-bottom,0px),env(safe-area-inset-bottom,0px),12px)) - var(--keyboard-height,0px)));
+}
+.is-phone .qrs-audio-dock .qrs-audio-close { width:44px; height:44px; flex-shrink:0; }
+.is-phone .qrs-audio-dock audio { height:44px; }
+.qrs-note-location .setting-item-control { flex-wrap:wrap; }
+.qrs-note-location input[type=text] { max-width:100%; }
+.qrs-note-location .qrs-note-path { overflow-wrap:anywhere; color:var(--text-muted); font-size:var(--font-ui-small); }
 @container (max-width:650px) {
  .qrs-audio-dock { flex-wrap:wrap; gap:4px 8px; }
  .qrs-root .qrs-audio-title { flex:1 1 0; }

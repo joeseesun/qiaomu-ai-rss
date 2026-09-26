@@ -17,6 +17,12 @@ export function locale(): Locale {
 // Columns: key, 简体中文, English, 繁體中文, 日本語, 한국어, Español, Français, Deutsch
 // Exported so tests can assert that every message has all eight translations.
 export const M = [
+  ["note.settingsSaveFailed", "关联与设置未保存，请检查仓库写入权限后重试。", "Links and settings were not saved. Check vault write permissions, then retry.", "關聯與設定未儲存，請檢查倉庫寫入權限後重試。", "リンクと設定は保存されませんでした。書き込み権限を確認して再試行してください。", "연결과 설정이 저장되지 않았습니다. 보관함 쓰기 권한을 확인한 후 다시 시도하세요.", "No se guardaron los enlaces ni los ajustes. Comprueba los permisos de escritura y reintenta.", "Liens et réglages non enregistrés. Vérifiez les droits d’écriture du coffre, puis réessayez.", "Verknüpfungen und Einstellungen wurden nicht gespeichert. Prüfe die Schreibrechte und versuche es erneut."],
+  ["reader.saveNoteTo", "存为笔记到…", "Save note to…", "另存筆記至…", "保存先を指定…", "저장 위치 선택…", "Guardar nota en…", "Enregistrer la note dans…", "Notiz speichern unter…"],
+  ["note.folderHint", "输入库内路径，可新建多级文件夹；留空保存到仓库根目录。", "Enter a vault path, including new nested folders. Leave empty for the vault root.", "輸入庫內路徑，可建立多層資料夾；留空儲存至倉庫根目錄。", "保管庫内のパスを入力。新しい階層フォルダーも作成できます。空欄は保管庫のルートです。", "보관함 내 경로를 입력하세요. 새 하위 폴더도 만들 수 있습니다. 비우면 루트에 저장합니다.", "Introduce una ruta de la bóveda; se pueden crear subcarpetas. Vacío guarda en la raíz.", "Saisissez un chemin du coffre, y compris de nouveaux sous-dossiers. Vide : racine du coffre.", "Vault-Pfad eingeben; neue Unterordner werden erstellt. Leer: Vault-Stammverzeichnis."],
+  ["note.rememberFolder", "设为默认保存位置", "Use as default save location", "設為預設儲存位置", "既定の保存先にする", "기본 저장 위치로 설정", "Usar como ubicación predeterminada", "Utiliser comme emplacement par défaut", "Als Standardspeicherort verwenden"],
+  ["error.noteFolderOccupied", "该路径已被文件占用，请选择其他文件夹。", "This path is occupied by a file. Choose another folder.", "此路徑已被檔案佔用，請選擇其他資料夾。", "このパスはファイルに使用されています。別のフォルダーを選んでください。", "이 경로는 파일이 사용 중입니다. 다른 폴더를 선택하세요.", "Un archivo ocupa esta ruta. Elige otra carpeta.", "Ce chemin est occupé par un fichier. Choisissez un autre dossier.", "Dieser Pfad ist durch eine Datei belegt. Wähle einen anderen Ordner."],
+
   ["common.cancel", "取消", "Cancel", "取消", "キャンセル", "취소", "Cancelar", "Annuler", "Abbrechen"],
   ["common.confirm", "确定", "OK", "確定", "OK", "확인", "Aceptar", "OK", "OK"],
   ["common.save", "保存", "Save", "儲存", "保存", "저장", "Guardar", "Enregistrer", "Speichern"],

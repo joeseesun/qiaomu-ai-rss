@@ -16,6 +16,7 @@ import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
 import { RETIRED_VIEW_TYPES, RetiredView, SubscriptionCenter, type CenterTab } from './subscription-center';
 import { t } from './i18n';
+import { articleFolderPath } from './vault-export';
 
 export default class QiaomuRssPlugin extends Plugin {
   fonts = new ReadingFonts();
@@ -363,11 +364,11 @@ class RssSettings extends PluginSettingTab {
     // A vault folder: type a path (saved when the field loses focus) or pick an existing folder.
     const folderSetting = (name: string, desc: string, key: 'articleFolder' | 'folder'): SettingGroupItem => ({ name, desc, render: setting => {
       const save = async (value: string) => {
-        try { settings[key] = folderPath(value); await this.plugin.persist(); }
+        try { settings[key] = key === 'articleFolder' ? articleFolderPath(value) : folderPath(value); await this.plugin.persist(); }
         catch (error) { new Notice(error instanceof Error ? error.message : t('notice.cannotSaveSettings')); }
       };
       setting.addText(text => { text.setValue(settings[key]); text.inputEl.addEventListener('change', () => { void save(text.getValue()).then(() => text.setValue(settings[key])); }); });
-      setting.addButton(button => button.setButtonText(t('settings.choose')).onClick(() => new VaultFolderPicker(this.app, folder => { if (folder.path !== '/') void save(folder.path).then(() => this.update()); else new Notice(t('notice.pickVaultFolder')); }).open()));
+      setting.addButton(button => button.setButtonText(t('settings.choose')).onClick(() => new VaultFolderPicker(this.app, folder => { if (key === 'articleFolder' || folder.path !== '/') void save(folder.path).then(() => this.update()); else new Notice(t('notice.pickVaultFolder')); }).open()));
     } });
     const definitions: SettingDefinitionItem[] = [
       { type: 'group', heading: t('settings.groupReading'), items: [
@@ -410,7 +411,7 @@ class RssSettings extends PluginSettingTab {
         setting.addButton(button => button.setButtonText(t('settings.manageSubscriptions')).onClick(() => { (this.app as App & { setting: { close(): void } }).setting.close(); this.plugin.manageSubscriptions(); }));
       } },
       { type: 'group', heading: t('settings.groupSaveExport'), items: [
-        folderSetting(t('settings.articleFolder.name'), t('settings.articleFolder.desc'), 'articleFolder'),
+        folderSetting(t('settings.articleFolder.name'), t('note.folderHint'), 'articleFolder'),
         folderSetting(t('settings.opmlFolder.name'), t('settings.opmlFolder.desc'), 'folder'),
       ] },
       { name: t('settings.defaultMode'), render: setting => {
@@ -445,8 +446,8 @@ class RssSettings extends PluginSettingTab {
     reading.heading = t('settings.tab.reading');
     const buckets: Record<string, SettingDefinitionItem[]> = {
       reading: [reading, definitions[4], definitions[5]],
-      sources: [definitions[2], definitions[1], definitions[3]],
-      excerpt: [excerpt, definitions[7]],
+      sources: [definitions[2], definitions[1]],
+      excerpt: [definitions[3], excerpt, definitions[7]],
       about: [definitions[6], ...([
         [t('about.reportBug'), t('about.reportBug.desc'), 'https://github.com/joeseesun/qiaomu-ai-rss/issues/new'],
         [t('about.email'), 'vista8@gmail.com', 'mailto:vista8@gmail.com'],
