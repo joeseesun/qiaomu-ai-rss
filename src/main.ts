@@ -7,6 +7,8 @@ import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, re
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { contextProvider } from './agent-bridge';
+import { createHomeProvider } from './home';
+import { notifyHomeChanged } from './qiaomu-home';
 import { vaultSourceId, VaultFolderPicker, VaultSources } from './vault-source';
 import { fontName, readingFonts, selectableFonts, ReadingFonts } from './fonts';
 import { registerImageDrops } from './image-drag';
@@ -23,6 +25,8 @@ export default class QiaomuRssPlugin extends Plugin {
   subscriptions!: Subscriptions;
   /** Shares the open article with Qiaomu Agent; see qiaomu-context.ts. */
   qiaomuContext = contextProvider(leaf => leaf.view instanceof ReaderView ? leaf.view.agentSnapshot() : null);
+  /** Shows the newest unread articles on Qiaomu Home; see qiaomu-home.ts. */
+  qiaomuHome = createHomeProvider(this);
   private lastNote: TFile | null = null;
   private libraryEdits: Promise<void> = Promise.resolve();
   private saving: Promise<void> = Promise.resolve();
@@ -124,6 +128,8 @@ export default class QiaomuRssPlugin extends Plugin {
   }
   persist(): Promise<void> {
     this.saving = this.saving.catch(() => undefined).then(() => this.saveData(this.state));
+    // Read state, favorites and fetched entries all persist through here; Home coalesces bursts.
+    void this.saving.then(() => notifyHomeChanged(this.app, this.manifest.id), () => undefined);
     return this.saving;
   }
   remember(bundle: Bundle) {

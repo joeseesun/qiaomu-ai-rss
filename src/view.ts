@@ -599,6 +599,8 @@ export class ReaderView extends ItemView {
       this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); this.renderList();
     }
   }
+  /** Opens one article from outside the list, e.g. from Qiaomu Home. */
+  openEntry(entry: Entry) { void this.openArticle(entry); }
   showSavedArticle(bundle: Bundle, mode: Mode) {
     this.stopRestoring();
     this.articleVersion++; this.articleLoading = false;
