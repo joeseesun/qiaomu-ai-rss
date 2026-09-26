@@ -1,11 +1,45 @@
 import { describe, expect, it } from 'vitest';
 import { exportBaseName } from '../src/article-export';
-import { availableNotePath, linkAttachments } from '../src/vault-export';
+import { articleFolderPath, availableNotePath, linkAttachments, saveArticleToVault } from '../src/vault-export';
+import { TFolder, type App } from 'obsidian';
+import type { LocalImages } from '../src/images';
 import type { Bundle } from '../src/model';
 
 const bundle = (title: string) => ({ entry: { id: 'a', sourceId: 's', title } }) as unknown as Bundle;
 
 describe('vault export', () => {
+  it('accepts nested note folders and the vault root while rejecting traversal and OS paths', () => {
+    expect(articleFolderPath(' 阅读/播客 ')).toBe('阅读/播客');
+    expect(articleFolderPath('阅读\\播客')).toBe('阅读/播客');
+    for (const root of ['', ' ', '/']) {
+      expect(articleFolderPath(root)).toBe('');
+      expect(availableNotePath(() => false, articleFolderPath(root), 'T')).toBe('T.md');
+    }
+    for (const path of ['../notes', '.obsidian', 'A/../B', '/tmp/notes', 'C:\\notes', 'A//B']) expect(() => articleFolderPath(path)).toThrow();
+  });
+  it('creates nested target folders, preserves existing notes, and rejects a file in the folder path', async () => {
+    const files = new Map<string, unknown>();
+    const contents = new Map<string, string>();
+    const app = { vault: {
+      getAbstractFileByPath: (path: string) => files.get(path),
+      createFolder: async (path: string) => { files.set(path, new TFolder(path)); },
+      create: async (path: string, content: string) => {
+        if (files.has(path)) throw new Error('File already exists');
+        const file = { path }; files.set(path, file); contents.set(path, content); return file;
+      },
+    }, fileManager: {} } as unknown as App;
+    const article = { entry: { id: 'a', sourceId: 's', title: 'T', origin: 'vault', markdown: '正文' } } as Bundle;
+    const save = (folder: string) => saveArticleToVault(app, article, 'original', {} as Document, {} as LocalImages, false, folder);
+    const first = await save('阅读/播客');
+    expect(first.file.path).toBe('阅读/播客/T - 原文.md');
+    const second = await save('阅读/播客');
+    expect(second.file.path).toBe('阅读/播客/T - 原文 (2).md');
+    expect(contents.get(first.file.path)).toBe('正文\n');
+    expect(files.get('阅读')).toBeInstanceOf(TFolder);
+    const root = await save('/'); expect(root.file.path).toBe('T - 原文.md');
+    await expect(save('T - 原文.md/child')).rejects.toThrow();
+    expect(files.has('T - 原文.md/child')).toBe(false);
+  });
   it('names files after the title and mode without link-breaking characters', () => {
     expect(exportBaseName(bundle('A/B: [C] #tag^x'), 'rewrite')).toBe('A B C tag x - 乔木改写');
     expect(exportBaseName(bundle('   '), 'original')).toMatch(/^文章 - /);

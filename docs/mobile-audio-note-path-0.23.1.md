@@ -1,0 +1,9 @@
+# 0.23.1 validation
+
+The audio dock previously reserved only the hardware safe area. With Obsidian floating navigation visible in a 390×844 layout, its audio controls ended at y=810 while navigation began at y=760. The new scoped rule leaves the controls ending at y=750 (10px clearance). The same geometry passed at 320px width. Hidden navigation, automatic fullscreen, keyboard offset, desktop and tablet layouts were also checked in the desktop host using isolated iframe fixtures with the host stylesheet. This is layout simulation, not physical iOS/Android verification.
+
+Notes: the existing save-folder preference was in the Sources tab. It is now under Notes. A separate Save note to action supports a one-time path and an explicit default-location toggle without changing the one-click save action. Root paths and new nested directories are supported; existing files are never overwritten. A real menu → modal → save flow in rockfish created a three-level test path, verified its Markdown contents and the remembered setting, then removed test data and restored the original preference.
+
+Validation: npm run check passed (131 tests, TypeScript and production build; seven pre-existing lint warnings, zero errors). Local plugin reload succeeded; no captured runtime errors. Original plugin assets were backed up; data.json and caches were not replaced.
+
+Independent review caught a post-save failure case: retrying settings persistence could create a second note. The save flow now completes after file creation and exposes a settings-only retry. A regression test verifies one file creation across the failure and retry. Fresh plugin assets and preserved-data upgrade loading were also exercised in the dedicated public-install vault; manifest refresh was verified with the native plugin reload command.

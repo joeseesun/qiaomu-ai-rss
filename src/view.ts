@@ -11,6 +11,8 @@ import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
 import { saveArticlePdf } from './desktop-export';
 import { saveArticleToVault } from './vault-export';
+import { exportBaseName } from './article-export';
+import { NoteLocationModal } from './note-location';
 import { cleanExcerpt } from './excerpt';
 import { AudioDock, pauseVideos, renderMedia, stopMedia, youtubeEmbedUrl } from './media';
 import { sameRemoteContent, uniqueRemoteEntries, wechatArticleKey, xiaoyuzhouEpisodeKey } from './wechat-articles';
@@ -200,18 +202,28 @@ export class ReaderView extends ItemView {
     return file instanceof TFile ? file : null;
   }
   private saveNote(bundle: Bundle, mode: Mode) {
-    this.run(async () => {
-      const state = this.plugin.state, progress = new Notice(t('notice.savingArticle'), 0);
-      const { file, missingImages } = await saveArticleToVault(this.app, bundle, mode, this.contentEl.ownerDocument, this.plugin.images, state.settings.remoteImages, state.settings.articleFolder).finally(() => progress.hide());
-      state.articleNotes[articleNoteKey(bundle.entry.id, mode)] = file.path;
-      await this.plugin.persist();
-      if (this.bundle?.entry.id === bundle.entry.id) this.renderReader(true);
-      new Notice(createFragment(f => {
-        f.appendText(missingImages ? t('notice.savedNoteWithMissing', { n: missingImages }) : t('notice.savedNote'));
-        const open = f.createEl('a', { text: t('notice.open'), href: '#' });
-        open.onclick = e => { e.preventDefault(); void this.app.workspace.getLeaf('tab').openFile(file); };
-      }), 8000);
-    });
+    this.run(() => this.saveNoteAt(bundle, mode, this.plugin.state.settings.articleFolder));
+  }
+  private async saveNoteAt(bundle: Bundle, mode: Mode, folder: string, remember = false): Promise<void> {
+    const state = this.plugin.state, progress = new Notice(t('notice.savingArticle'), 0);
+    const { file, missingImages } = await saveArticleToVault(this.app, bundle, mode, this.contentEl.ownerDocument, this.plugin.images, state.settings.remoteImages, folder).finally(() => progress.hide());
+    state.articleNotes[articleNoteKey(bundle.entry.id, mode)] = file.path;
+    if (remember) state.settings.articleFolder = folder;
+    // The note already exists. A settings failure must not send the save
+    // dialog back through file creation (and create a duplicate on retry).
+    let settingsSaved = true;
+    try { await this.plugin.persist(); } catch { settingsSaved = false; }
+    if (!this.closed && this.bundle?.entry.id === bundle.entry.id) this.renderReader(true);
+    new Notice(createFragment(f => {
+      f.appendText(missingImages ? t('notice.savedNoteWithMissing', { n: missingImages }) : t('notice.savedNote'));
+      if (!settingsSaved) {
+        f.appendText(t('note.settingsSaveFailed'));
+        const retry = f.createEl('a', { text: t('common.retry'), href: '#' });
+        retry.onclick = e => { e.preventDefault(); this.run(() => this.plugin.persist()); };
+      }
+      const open = f.createEl('a', { text: t('notice.open'), href: '#' });
+      open.onclick = e => { e.preventDefault(); void this.app.workspace.getLeaf('tab').openFile(file); };
+    }), 8000);
   }
   private addIconButton(parent: HTMLElement, icon: string, label: string, action: () => void): HTMLButtonElement {
     const button = parent.createEl('button', { cls: 'qrs-icon', attr: { 'data-qrs-label': label } });
@@ -740,6 +752,10 @@ export class ReaderView extends ItemView {
       menu.addItem(item => item.setTitle(t('reader.reloadArticle')).setIcon('refresh-cw').onClick(() => { void this.openArticle(bundle.entry); }));
       menu.addSeparator();
       if (savedNote) menu.addItem(item => item.setTitle(t('reader.saveAnotherNote')).setIcon('file-plus').onClick(() => this.saveNote(bundle, mode)));
+      menu.addItem(item => item.setTitle(t('reader.saveNoteTo')).setIcon('folder').onClick(() => {
+        new NoteLocationModal(this.app, this.plugin.state.settings.articleFolder, exportBaseName(bundle, mode),
+          (folder, remember) => this.saveNoteAt(bundle, mode, folder, remember)).open();
+      }));
       if (Platform.isDesktopApp) {
         menu.addItem(item => item.setTitle(t('reader.exportPdf')).setIcon('file-down').onClick(() => this.run(async () => {
           const article = this.reader.querySelector<HTMLElement>('.qrs-article');

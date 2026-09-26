@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.1
+
+- Keep mobile podcast controls above Obsidian’s floating navigation bar, with touch-sized close and audio controls. Reclaim the extra space when navigation is hidden.
+- Put note save-folder settings under Notes. Support the vault root, new nested folders, and a “Save note to…” action with an optional default location; preserve existing notes with numbered filenames.
+
 ## 0.23.0
 
 - Appear on Qiaomu Home (乔木Home), the Obsidian start page, through the Qiaomu Home Protocol (version 1): the newest unread articles with the unread count, an "Add feed" quick action, and article search over local and saved articles. Opening an item from Home opens that article in the reader.
