@@ -77,6 +77,7 @@ export class LibraryPanel extends Component {
     const feed = this.feed(item.id); if (!feed) return;
     const status = parent.createDiv('qrs-library-status');
     if (feed.error) { const err = status.createSpan('qrs-library-error'); setIcon(err.createSpan(), 'alert-circle'); err.createSpan({ text: t('library.kind.error') }); return; }
+    if (feed.paused) { const paused = status.createSpan('qrs-library-paused'); setIcon(paused.createSpan(), 'pause-circle'); paused.createSpan({ text: t('library.paused') }); return; }
     status.createSpan({ text: updatedLabel(feed.updatedAt) });
     const unread = feed.entries.filter(e => !read.has(e.id)).length;
     if (unread) { const badge = status.createSpan({ cls: 'qrs-library-unread', text: String(unread) }); badge.createSpan({ cls: 'qrs-visually-hidden', text: t('library.unreadSuffix') }); }
@@ -141,6 +142,9 @@ export class LibraryPanel extends Component {
     menu.addItem(i => i.setTitle(t('library.moveToGroup')).setIcon('folder').onClick(() => new GroupChoice(this.plugin, t('library.moveToGroup'), item.groupId, async id => { await this.plugin.editLibrary(() => moveSources(this.plugin.state, [item.id], id)); this.updated(); }).open()));
     if (feed) {
       menu.addItem(i => i.setTitle(t('library.refreshNow')).setIcon('refresh-cw').onClick(() => this.refreshFeeds([item.id])));
+      menu.addItem(i => i.setTitle(feed.paused ? t('library.resume') : t('library.pause')).setIcon(feed.paused ? 'play' : 'pause-circle').onClick(() => {
+        void this.plugin.subscriptions.setPaused(item.id, !feed.paused).then(() => { this.plugin.refreshPersonalViews(); this.updated(); });
+      }));
       menu.addItem(i => i.setTitle(t('library.copyFeedUrl')).setIcon('link').onClick(() => { void navigator.clipboard.writeText(feed.url).then(() => new Notice(t('notice.copiedFeedUrl'))); }));
     }
     menu.addSeparator();

@@ -4,7 +4,7 @@ import { webcrypto } from 'node:crypto';
 import { articleFragment } from '../src/content';
 import { exportOpml, feedUrl, parseFeed, parseOpml, MAX_SUBSCRIPTIONS } from '../src/feeds';
 import { initialState, withServiceOrigin, type Bundle } from '../src/model';
-import { Subscriptions } from '../src/subscriptions';
+import { Subscriptions, refreshBackoffMs } from '../src/subscriptions';
 beforeAll(() => { Object.defineProperty(window.crypto, 'subtle', { value: webcrypto.subtle, configurable: true }); });
 const rss = (body = '<p>文章 <img src="/cover.jpg" onerror="evil()"></p>') => `<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>RSS &amp; news</title><item><guid>urn:one</guid><title>First</title><link>https://example.com/posts/one</link><pubDate>Mon, 07 Sep 2026 00:00:00 GMT</pubDate><content:encoded><![CDATA[${body}]]></content:encoded></item></channel></rss>`;
 const atom = `<feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://example.org/blog/"><title>Atom</title><entry><id>urn:one</id><title type="html">Hello &amp;lt;b&amp;gt;world&amp;lt;/b&amp;gt;</title><link rel="self" href="entry.xml"/><link href="article"/><updated>2026-09-07T00:00:00Z</updated><content type="xhtml" xml:base="assets/"><div xmlns="http://www.w3.org/1999/xhtml"><p>Body<img src="photo.png"/></p></div></content></entry></feed>`;
@@ -150,5 +150,62 @@ describe('local subscription lifecycle', () => {
     const service = new Subscriptions(() => state, async () => {}, () => new Promise(() => {}));
     const assertion = expect(service.add('https://example.com/feed', '', document)).rejects.toThrow('超时');
     await vi.advanceTimersByTimeAsync(20001); await assertion; vi.useRealTimers();
+  });
+});
+describe('smart sync', () => {
+  it('stores conditional validators, sends them on the next sync and treats 304 as unchanged', async () => {
+    const state = initialState(null);
+    let call = 0;
+    const transport = vi.fn(async () => ++call === 1
+      ? { status: 200, text: rss(), headers: { ETag: '"v1"', 'Last-Modified': 'Mon, 07 Sep 2026 00:00:00 GMT' } }
+      : { status: 304, text: '', headers: {} });
+    const service = new Subscriptions(() => state, async () => {}, transport);
+    const feed = await service.add('https://example.com/feed', '', document);
+    expect(feed.etag).toBe('"v1"'); expect(feed.lastModified).toBe('Mon, 07 Sep 2026 00:00:00 GMT');
+    feed.updatedAt -= 600000; // fall outside the 5-minute freshness window
+    const progress = vi.fn();
+    const summary = await service.refresh([feed.id], document, false, progress);
+    expect(summary.unchanged).toBe(1); expect(summary.bodiesChanged).toBe(false);
+    expect(feed.entries).toHaveLength(1);
+    expect(transport).toHaveBeenLastCalledWith('https://example.com/feed', expect.objectContaining({ 'If-None-Match': '"v1"', 'If-Modified-Since': 'Mon, 07 Sep 2026 00:00:00 GMT' }));
+    expect(progress).toHaveBeenCalledWith(1, 1);
+  });
+  it('failed feeds back off exponentially (5m → 1h cap) and are skipped until the window passes', async () => {
+    expect(refreshBackoffMs(1)).toBe(300000); expect(refreshBackoffMs(2)).toBe(600000); expect(refreshBackoffMs(3)).toBe(1200000); expect(refreshBackoffMs(9)).toBe(3600000);
+    const state = initialState(null);
+    const transport = vi.fn(async () => ({ status: 200, text: rss() }));
+    const service = new Subscriptions(() => state, async () => {}, transport);
+    const feed = await service.add('https://example.com/feed', '', document);
+    transport.mockRejectedValue(new Error('down'));
+    const failed = await service.refresh([feed.id], document, true);
+    expect(failed.failed).toBe(1); expect(feed.errorCount).toBe(1); expect(feed.error).toContain('无法读取');
+    const skipped = await service.refresh([feed.id], document);
+    expect(skipped.skipped).toBe(1); expect(transport).toHaveBeenCalledTimes(2);
+    const forced = await service.refresh([feed.id], document, true);
+    expect(forced.failed).toBe(1); expect(feed.errorCount).toBe(2);
+  });
+  it('skips paused feeds on background syncs but still refreshes them when forced', async () => {
+    const state = initialState(null);
+    const transport = vi.fn(async () => ({ status: 200, text: rss() }));
+    const service = new Subscriptions(() => state, async () => {}, transport);
+    const feed = await service.add('https://example.com/feed', '', document);
+    await service.setPaused(feed.id, true);
+    expect(feed.paused).toBe(true);
+    const summary = await service.refresh([feed.id], document);
+    expect(summary.skipped).toBe(1); expect(transport).toHaveBeenCalledTimes(1);
+    const forced = await service.refresh([feed.id], document, true);
+    expect(forced.changed).toBe(1); expect(transport).toHaveBeenCalledTimes(2); expect(feed.paused).toBe(true);
+  });
+  it('persists once per sync and reports changed bodies once', async () => {
+    const state = initialState(null);
+    const transport = vi.fn(async () => ({ status: 200, text: rss() }));
+    const persist = vi.fn(async () => {}); const bodies = vi.fn();
+    const service = new Subscriptions(() => state, persist, transport, bodies);
+    const a = await service.add('https://example.com/a', '', document);
+    const b = await service.add('https://example.com/b', '', document);
+    persist.mockClear();
+    const summary = await service.refresh([a.id, b.id], document, true);
+    expect(summary).toMatchObject({ refreshed: 2, changed: 2, failed: 0, skipped: 0 });
+    expect(persist).toHaveBeenCalledTimes(1); expect(bodies).toHaveBeenCalledTimes(1);
   });
 });

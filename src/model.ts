@@ -41,11 +41,13 @@ export const pageSchema = z.object({ entries: z.array(entrySchema), hasMore: z.b
 export const subscriptionSchema = z.object({
   id: z.string(), url: z.string(), name: z.string(), group: z.string().default(''), site: z.string().optional(), image: z.string().optional(),
   entries: z.array(entrySchema).default([]), updatedAt: z.number().default(0), lastAttemptAt: z.number().default(0), error: z.string().default(''),
+  etag: z.string().optional(), lastModified: z.string().optional(),
+  paused: z.boolean().default(false), errorCount: z.number().default(0), lastErrorAt: z.number().default(0),
 });
 export type Subscription = z.infer<typeof subscriptionSchema>;
 export const channelStateSchema = z.object({
   entries: z.array(entrySchema), bundle: bundleSchema.nullable(), mode: modeSchema,
-  filter: z.enum(['all', 'unread', 'favorites']), query: z.string(), unread: z.array(z.string()),
+  filter: z.enum(['all', 'unread', 'favorites', 'later']), query: z.string(), unread: z.array(z.string()),
   cursor: z.string(), hasMore: z.boolean(), listTop: z.number().nonnegative(), readerTop: z.number().nonnegative(),
   articlePending: z.boolean(),
 });
@@ -74,6 +76,7 @@ export const stateSchema = z.object({
   collectionJobs: z.array(collectionJobSchema).default([]),
   deletedEntries: z.record(z.string(), z.array(z.string())).default({}),
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
+  readLater: z.array(z.string()).default([]), readAt: z.record(z.string(), z.number()).catch({}).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
   subscriptions: z.array(subscriptionSchema).default([]),
   channelStates: z.record(z.string(), channelStateSchema).catch({}).default({}),
@@ -107,6 +110,49 @@ export function initialState(data: unknown): State {
   return state;
 }
 export function titleOf(entry: Entry): string { return entry.titleZh?.trim() || entry.title; }
+// Content-cache split: entry `content` (~95% of persisted bytes) lives in a rebuildable
+// content-cache.json keyed by entry id, so data.json stays small and every persist is cheap.
+// In-memory entries always carry content; split/attach convert only at the storage boundary.
+export function splitContentCache(state: State): { slim: State; cache: Record<string, string> } {
+  const cache: Record<string, string> = {};
+  const strip = (entry: Entry): Entry => {
+    if (entry.content) { cache[entry.id] = entry.content; return { ...entry, content: undefined }; }
+    return entry;
+  };
+  const mapBundles = (record: Record<string, Bundle>): Record<string, Bundle> =>
+    Object.fromEntries(Object.entries(record).map(([key, bundle]) => [key, { ...bundle, entry: strip(bundle.entry) }]));
+  return {
+    slim: {
+      ...state,
+      subscriptions: state.subscriptions.map(feed => ({ ...feed, entries: feed.entries.map(strip) })),
+      channelStates: Object.fromEntries(Object.entries(state.channelStates).map(([key, cs]) => [key, {
+        ...cs, entries: cs.entries.map(strip), bundle: cs.bundle ? { ...cs.bundle, entry: strip(cs.bundle.entry) } : cs.bundle,
+      }])),
+      entries: state.entries.map(strip),
+      cache: mapBundles(state.cache), favorites: mapBundles(state.favorites), savedArticles: mapBundles(state.savedArticles),
+    },
+    cache,
+  };
+}
+export function attachContentCache(state: State, cache: Record<string, string>): void {
+  const attach = (entry: Entry): void => { if (!entry.content && typeof cache[entry.id] === 'string') entry.content = cache[entry.id]; };
+  for (const feed of state.subscriptions) for (const entry of feed.entries) attach(entry);
+  for (const cs of Object.values(state.channelStates)) { for (const entry of cs.entries) attach(entry); if (cs.bundle) attach(cs.bundle.entry); }
+  for (const entry of state.entries) attach(entry);
+  for (const bundle of Object.values(state.cache)) attach(bundle.entry);
+  for (const bundle of Object.values(state.favorites)) attach(bundle.entry);
+  for (const bundle of Object.values(state.savedArticles)) attach(bundle.entry);
+}
+/** Copies entries with bodies stripped, so an open article keeps rendering while the feed frees its bytes. */
+export function stripFeedBodies(entries: Entry[]): { entries: Entry[]; freedBytes: number; freedCount: number } {
+  let freedBytes = 0, freedCount = 0;
+  const next = entries.map(entry => {
+    if (!entry.content) return entry;
+    freedBytes += new TextEncoder().encode(entry.content).length; freedCount++;
+    return { ...entry, content: undefined };
+  });
+  return { entries: next, freedBytes, freedCount };
+}
 export function safeUrl(value: string, base?: string): string | null {
   try {
     const url = new URL(value, base);
