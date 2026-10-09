@@ -47,22 +47,37 @@ function chineseJoeRoganTitle(title: string): string | null {
 }
 export class RssApi {
   private base: string;
+  private requests = new Map<string, Promise<HttpResponse>>();
+  private catalog?: { expires: number; sources: z.infer<typeof sourceSchema>[] };
   constructor(base: string, private transport: Transport) { this.base = serviceUrl(base); }
-  private async get<T>(path: string, schema: z.ZodType<T>): Promise<T> {
+  private request(path: string): Promise<HttpResponse> {
+    const existing = this.requests.get(path);
+    if (existing) return existing;
     let timer: number | undefined;
-    try {
-      const result = await Promise.race([
-        this.transport(this.base + path),
-        new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error(t('error.requestTimeout'))), 20000); }),
-      ]);
-      if (result.status < 200 || result.status >= 300) throw new ApiStatusError(result.status);
-      if (result.text.length > 12_000_000) throw new Error(t('error.responseTooLarge'));
-      const parsed = schema.safeParse(JSON.parse(result.text) as unknown);
-      if (!parsed.success) throw new Error(t('error.responseIncompatible'));
-      return parsed.data;
-    } finally { window.clearTimeout(timer); }
+    const pending = Promise.race([
+      this.transport(this.base + path),
+      new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error(t('error.requestTimeout'))), 20000); }),
+    ]).finally(() => {
+      window.clearTimeout(timer);
+      if (this.requests.get(path) === pending) this.requests.delete(path);
+    });
+    this.requests.set(path, pending);
+    return pending;
   }
-  sources() { return this.get('/api/sources', z.object({ sources: z.array(sourceSchema) })); }
+  private async get<T>(path: string, schema: z.ZodType<T>): Promise<T> {
+    const result = await this.request(path);
+    if (result.status < 200 || result.status >= 300) throw new ApiStatusError(result.status);
+    if (result.text.length > 12_000_000) throw new Error(t('error.responseTooLarge'));
+    const parsed = schema.safeParse(JSON.parse(result.text) as unknown);
+    if (!parsed.success) throw new Error(t('error.responseIncompatible'));
+    return parsed.data;
+  }
+  async sources(force = false) {
+    if (!force && this.catalog && this.catalog.expires > Date.now()) return { sources: z.array(sourceSchema).parse(this.catalog.sources) };
+    const result = await this.get('/api/sources', z.object({ sources: z.array(sourceSchema) }));
+    this.catalog = { expires: Date.now() + 60_000, sources: result.sources };
+    return { sources: z.array(sourceSchema).parse(result.sources) };
+  }
   deletedEntries(ids: string[]) { return this.get('/api/lab/entries/deleted?ids=' + encodeURIComponent(ids.join(',')), z.object({ deletedIds: z.array(z.string()) })); }
   entries(source = '', cursor = '', limit = source ? 40 : 100) {
     const query = new URLSearchParams({ limit: String(limit) });
