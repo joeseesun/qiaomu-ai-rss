@@ -2,6 +2,8 @@
 
 ## 0.27.1
 
+- Honor the default reading version for video articles and restore delayed rewrite/translation after a temporary original fallback, without overriding manual choices.
+
 - Display lists and originals independently of slower supplementary requests; refresh channels progressively and keep failed-source caches.
 - Wrap reading/platform filters within the sidebar and restore reader-submitted channels after restart.
 - Retain Read later, windowed list rendering, split content storage and source refresh controls from the installed 0.27.0 build.

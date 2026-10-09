@@ -122,16 +122,20 @@ export class RssApi {
       return { bundle: bundleSchema.parse({ entry, rewrite: null, translation: null, fetchedAt: Date.now() }), warnings: [] };
     }
     const path = `/api/entry/${encodeURIComponent(id)}`;
+    let readable: Bundle | undefined;
+    let earlyRewrite: Bundle['rewrite'] = null;
+    let earlyTranslation: Bundle['translation'] = null;
+    const notify = () => { if (readable) onContent?.({ ...readable, rewrite: earlyRewrite ?? readable.rewrite, translation: earlyTranslation }); };
     // Optional versions must not delay a readable original or a primary error.
     // Attach rejection handlers immediately, even if detail fails first.
     const versions = Promise.allSettled([
-      this.get(`${path}/rewrite`, z.object({ rewrite: rewriteSchema.nullable() })),
-      this.get(`${path}/translation`, z.object({ translation: translationSchema.nullable() })),
+      this.get(`${path}/rewrite`, z.object({ rewrite: rewriteSchema.nullable() })).then(result => { earlyRewrite = result.rewrite; notify(); return result; }),
+      this.get(`${path}/translation`, z.object({ translation: translationSchema.nullable() })).then(result => { earlyTranslation = result.translation; notify(); return result; }),
     ]);
     const detail = await this.get(path, z.object({ entry: remoteEntrySchema }));
     const entry = detail.entry;
     const needsTranscript = entry.sourceId === 'allin' || entry.sourceId === 'joerogan' || entry.sourceId.startsWith('podscribe-');
-    if (!needsTranscript) onContent?.(bundleSchema.parse({ entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: Date.now() }));
+    if (!needsTranscript) { readable = bundleSchema.parse({ entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: Date.now() }); notify(); }
     const [rewrite, translation] = await versions;
     const warnings: string[] = [];
     if (rewrite.status === 'rejected') warnings.push(t('warning.rewriteUnavailable'));

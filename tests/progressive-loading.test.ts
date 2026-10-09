@@ -8,6 +8,21 @@ const entry = { id: 'ready', sourceId: 'user-submitted', title: 'Ready article',
 const response = (value: unknown) => ({ status: 200, text: JSON.stringify(value) });
 
 describe('progressive article loading', () => {
+  it('delivers the rewrite without waiting for a stalled translation', async () => {
+    vi.useFakeTimers();
+    const onContent = vi.fn();
+    const api = new RssApi('https://rss.qiaomu.ai', async url => {
+      if (url.endsWith('/translation')) return new Promise(() => {});
+      if (url.endsWith('/rewrite')) { await new Promise(resolve => setTimeout(resolve, 10)); return response({ rewrite: { body: 'Preferred rewrite' } }); }
+      return response({ entry });
+    });
+    const pending = api.article(entry.id, undefined, onContent);
+    await vi.advanceTimersByTimeAsync(11);
+    expect(onContent).toHaveBeenLastCalledWith(expect.objectContaining({ rewrite: { body: 'Preferred rewrite' } }));
+    await vi.advanceTimersByTimeAsync(20001);
+    expect((await pending).bundle.rewrite?.body).toBe('Preferred rewrite');
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it('delivers the original before stalled optional versions settle', async () => {
     vi.useFakeTimers();
     const onContent = vi.fn();

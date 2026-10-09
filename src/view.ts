@@ -21,7 +21,7 @@ import { AudioDock, pauseVideos, renderMedia, stopMedia, videoEmbedUrl } from '.
 import { sameRemoteContent, uniqueRemoteEntries, wechatArticleKey, xiaoyuzhouEpisodeKey } from './wechat-articles';
 import { platformOf, PLATFORMS, type LinkPlatform } from './platform';
 import { featuredXiaoyuzhouPodcasts, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuDividerIcons, qiaomuDividers, qiaomuFeaturedEntries } from './discovery';
-import { articleNoteKey, modeLabel, modeSchema, podcastDefaultMode, readingFontSchema, readingThemeSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
+import { articleNoteKey, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
 import { dividerLabel, relativeTime, t } from './i18n';
 import { agentAvailable, articleSnapshot, askAgent } from './agent-bridge';
 import { notifyContextChanged, type ContextSnapshot } from './qiaomu-context';
@@ -112,6 +112,7 @@ export class ReaderView extends ItemView {
   private featuredEpisodes: Entry[] = [];
   private loading = false;
   private articleLoading = false;
+  private requestedMode: Mode = 'original';
   private focused = false;
   private appearanceOpen = false;
   private appearanceId = `qrs-reading-settings-${crypto.randomUUID()}`;
@@ -831,12 +832,12 @@ export class ReaderView extends ItemView {
     if (this.plugin.isLater(entry.id)) void this.plugin.toggleLater(entry).then(() => { if (!this.closed) this.renderList(); });
     this.run(() => this.plugin.persist());
     this.mode = entry.origin === 'local' || entry.origin === 'vault' ? 'original'
-      : podcastDefaultMode(entry, state.sources, state.settings.followedPodcasts)
-        ?? (entry.audio || videoEmbedUrl(entry.videoUrl || entry.link) ? 'original' : state.settings.defaultMode);
+      : entry.podcastSlug ? 'original' : state.settings.defaultMode;
     const ready = this.mode === 'original' ? !!this.bundle.entry.content?.trim() : this.mode === 'rewrite' ? !!this.bundle.rewrite?.body.trim() : !!this.bundle.translation?.content?.length;
     this.message = ''; this.articleLoading = !ready; this.reader.setAttribute('aria-busy', String(this.articleLoading));
     this.contentEl.addClass('qrs-has-article'); this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
     if (resume) { this.mode = resume.mode; this.pendingScroll = { listTop: resume.listTop, readerTop: resume.readerTop }; this.renderReader(); this.restoreOffsets(); }
+    this.requestedMode = this.mode;
     if (entry.origin === 'local') {
       this.bundle = { entry, rewrite: null, translation: null, fetchedAt: Date.now() };
       this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
@@ -846,11 +847,11 @@ export class ReaderView extends ItemView {
     try {
       const { bundle, warnings } = entry.origin === 'vault' ? { bundle: await this.plugin.vaultSources.article(entry), warnings: [] } : await this.plugin.api().article(entry.id, entry, content => {
         if (this.closed || version !== this.articleVersion || this.plugin.articleDeleted(entry)) return;
-        this.bundle = { ...content, rewrite: content.rewrite ?? this.bundle?.rewrite ?? null, translation: this.bundle?.translation ?? null };
-        if (this.mode === 'rewrite' && !this.bundle.rewrite?.body.trim() || this.mode === 'translation' && !this.bundle.translation?.content?.length) this.mode = 'original';
+        this.bundle = { ...content, rewrite: content.rewrite ?? this.bundle?.rewrite ?? null, translation: content.translation ?? this.bundle?.translation ?? null };
+        this.mode = this.availableMode(this.requestedMode);
         this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
+        this.renderReader(originalShown && this.mode === 'original');
         originalShown = this.mode === 'original';
-        this.renderReader();
         this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
       });
       if (this.closed || version !== this.articleVersion || this.plugin.articleDeleted(entry)) return;
@@ -862,9 +863,12 @@ export class ReaderView extends ItemView {
       this.message = `${error instanceof Error ? error.message : t('reader.contentFailed')}${cached}`;
     }
     if (!this.closed && version === this.articleVersion) {
-      if (this.mode === 'rewrite' && !this.bundle.rewrite?.body.trim()) this.mode = 'original';
+      this.mode = this.availableMode(this.requestedMode);
       this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(originalShown && this.mode === 'original'); this.renderList();
     }
+  }
+  private availableMode(mode: Mode): Mode {
+    return mode === 'rewrite' && !this.bundle?.rewrite?.body.trim() || mode === 'translation' && !this.bundle?.translation?.content?.length ? 'original' : mode;
   }
   /** Opens one article from outside the list, e.g. from Qiaomu Home. */
   openEntry(entry: Entry) { void this.openArticle(entry); }
@@ -971,7 +975,7 @@ export class ReaderView extends ItemView {
     const fullTranscript = !!bundle.entry.podcastSlug || ['allin', 'joerogan'].includes(bundle.entry.sourceId) || bundle.entry.sourceId.startsWith('podscribe-');
     for (const mode of modeSchema.options.filter(mode => (bundle.entry.origin !== 'local' && bundle.entry.origin !== 'vault' && !bundle.entry.podcastSlug) || mode === 'original')) select.createEl('option', { value: mode, text: podcast && mode === 'original' ? (fullTranscript ? t('mode.transcript') : t('mode.podcastOriginal')) : modeLabel(mode) });
     select.disabled = bundle.entry.origin === 'local' || bundle.entry.origin === 'vault' || !!bundle.entry.podcastSlug;
-    select.value = this.mode; select.onchange = () => { this.mode = modeSchema.parse(select.value); this.renderReader(); };
+    select.value = this.mode; select.onchange = () => { this.mode = this.requestedMode = modeSchema.parse(select.value); this.renderReader(); };
     const nav = toolbar.createDiv('qrs-reader-nav');
     this.addIconButton(nav, 'chevron-up', t('reader.prevArticle'), () => this.navigate(-1));
     this.addIconButton(nav, 'chevron-down', t('reader.nextArticle'), () => this.navigate(1));
