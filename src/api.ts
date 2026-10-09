@@ -102,7 +102,7 @@ export class RssApi {
     }
     return { entries, hasMore: !!result.pagination?.has_next, nextCursor: result.pagination?.next_page ? String(result.pagination.next_page) : null };
   }
-  async article(id: string, preview?: Entry): Promise<{ bundle: Bundle; warnings: string[] }> {
+  async article(id: string, preview?: Entry, onContent?: (bundle: Bundle) => void): Promise<{ bundle: Bundle; warnings: string[] }> {
     if (preview?.podcastSlug && preview.episodeSlug) {
       const slug = preview.podcastSlug, episode = preview.episodeSlug;
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(episode)) fail('error.invalidEpisodeId');
@@ -122,16 +122,24 @@ export class RssApi {
       return { bundle: bundleSchema.parse({ entry, rewrite: null, translation: null, fetchedAt: Date.now() }), warnings: [] };
     }
     const path = `/api/entry/${encodeURIComponent(id)}`;
-    const [detail, rewrite, translation] = await Promise.allSettled([
-      this.get(path, z.object({ entry: remoteEntrySchema })),
-      this.get(`${path}/rewrite`, z.object({ rewrite: rewriteSchema.nullable() })),
-      this.get(`${path}/translation`, z.object({ translation: translationSchema.nullable() })),
+    let readable: Bundle | undefined;
+    let earlyRewrite: Bundle['rewrite'] = null;
+    let earlyTranslation: Bundle['translation'] = null;
+    const notify = () => { if (readable) onContent?.({ ...readable, rewrite: earlyRewrite ?? readable.rewrite, translation: earlyTranslation }); };
+    // Optional versions must not delay a readable original or a primary error.
+    // Attach rejection handlers immediately, even if detail fails first.
+    const versions = Promise.allSettled([
+      this.get(`${path}/rewrite`, z.object({ rewrite: rewriteSchema.nullable() })).then(result => { earlyRewrite = result.rewrite; notify(); return result; }),
+      this.get(`${path}/translation`, z.object({ translation: translationSchema.nullable() })).then(result => { earlyTranslation = result.translation; notify(); return result; }),
     ]);
-    if (detail.status === 'rejected') throw detail.reason;
+    const detail = await this.get(path, z.object({ entry: remoteEntrySchema }));
+    const entry = detail.entry;
+    const needsTranscript = entry.sourceId === 'allin' || entry.sourceId === 'joerogan' || entry.sourceId.startsWith('podscribe-');
+    if (!needsTranscript) { readable = bundleSchema.parse({ entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: Date.now() }); notify(); }
+    const [rewrite, translation] = await versions;
     const warnings: string[] = [];
     if (rewrite.status === 'rejected') warnings.push(t('warning.rewriteUnavailable'));
     if (translation.status === 'rejected') warnings.push(t('warning.translationUnavailable'));
-    const entry = detail.value.entry;
     if (entry.sourceId === 'allin' || entry.sourceId === 'joerogan' || entry.sourceId.startsWith('podscribe-')) {
       const shortClip = /^(?:https:\/\/)?(?:www\.)?youtube\.com\/shorts\/[a-zA-Z0-9_-]+(?:[/?#]|$)/.test(entry.link || '');
       if (shortClip) {
@@ -152,7 +160,7 @@ export class RssApi {
       warnings.push(t('warning.shownotesOnly'));
     }
     const bundle = bundleSchema.parse({ entry,
-      rewrite: rewrite.status === 'fulfilled' ? rewrite.value.rewrite : detail.value.entry.rewrite ?? null,
+      rewrite: (rewrite.status === 'fulfilled' ? rewrite.value.rewrite : null) ?? entry.rewrite ?? null,
       translation: translation.status === 'fulfilled' ? translation.value.translation : null, fetchedAt: Date.now() });
     return { bundle, warnings };
   }

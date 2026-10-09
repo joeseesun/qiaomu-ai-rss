@@ -1,6 +1,27 @@
 import type { Entry, Source, State } from './model';
 import { communityChannelSources, readerChannelSources } from './discovery';
 
+/** Release each worker when its source settles; slow sources cannot hold a whole batch. */
+export async function loadCuratedPages(ids: string[], fetch: (id: string) => Promise<Entry[]>, progress: (results: (PromiseSettledResult<Entry[]> | undefined)[]) => void, current: () => boolean = () => true) {
+  const results = new Array<PromiseSettledResult<Entry[]> | undefined>(ids.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(8, ids.length) }, async () => {
+    while (next < ids.length && current()) {
+      const index = next++;
+      try { results[index] = { status: 'fulfilled', value: await fetch(ids[index]) }; }
+      catch (reason) { results[index] = { status: 'rejected', reason }; }
+      if (current()) progress(results);
+    }
+  }));
+  return results;
+}
+
+/** Failed and unfinished sources keep their cached page; a successful empty page replaces it. */
+export function curatedPageEntries(ids: string[], results: (PromiseSettledResult<Entry[]> | undefined)[], cached: Entry[]): Entry[] {
+  const pending = new Set(ids.filter((_, index) => results[index]?.status !== 'fulfilled'));
+  return [...new Map([...cached.filter(entry => pending.has(entry.sourceId)), ...results.flatMap(result => result?.status === 'fulfilled' ? result.value : [])].map(entry => [entry.id, entry])).values()].sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
+}
+
 export function pickedSources(state: State): Set<string> | null {
   return state.settings.pickedSourceIds === null ? null : new Set(state.settings.pickedSourceIds);
 }

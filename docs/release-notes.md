@@ -1,9 +1,19 @@
-- 新增实验室「链接收录转写」：右键链接提交，服务器验证邀请码，后台处理完成后通知，重启继续检查。
-- 「我的订阅」新增「申请转写」；经现有 RSS 网站管理员账号验证后可查看「用户转写」。
-- 修复打开文章或重启后转写列表被旧英文标题覆盖。
-- 英文标题自动中文化，中文标题保留，专有名词保持原拼写；正文页保留原标题作对照。
-- 管理员登录有效期为 365 天，保存令牌而不保存密码。有效登录期间高级管理直接显示；在「关于」页开源许可说明句末点击盾牌图标直接打开管理登录弹窗。
-- 统一转写列表与普通文章列表的排版及键盘操作，集中设置入口，邀请码显式验证并保存。
-- 修复今日日记始终使用电脑本地当天日期，RSS 文章链接右键增加复制链接。
+## 中文
 
-实验室默认关闭。启用并提交后，链接会发送给配置的 RSS 服务，生成的改写公开收录。管理员登录令牌和邀请码保存在插件数据中；密码不保存。桌面安装及升级已验证，未进行手机真机测试。
+- 文章列表先显示已返回的内容，不再等待频道目录、删除核查和补充播客请求。多频道读取逐个更新，失败源保留缓存。
+- 原文先于改写和翻译显示；辅助请求失败不遮住正文，迟到结果不覆盖新选择，改写返回后恢复默认阅读版本，尊重手动选择。视频文章也遵循默认版本设置。
+- 读者提交的阅读状态与平台筛选分行排列，窄侧栏自动换行。重启后恢复读者提交频道。
+- 保留稍后读、分批列表渲染与正文缓存拆分，升级不改变现有订阅、收藏和阅读记录。
+- 同步 Atom 命名空间解析及移动端文字选择、订阅菜单修复。
+
+已验证桌面 Obsidian 的慢请求、乱序响应、缓存恢复及 220/300/520px 侧栏；未进行手机真机测试。网络本身较慢时仍需等待正文请求，但可继续阅读已有缓存。
+
+## English
+
+- Show returned articles without waiting for the channel catalog, deletion checks or supplementary podcast requests. Update channels independently and retain cached pages for failed sources.
+- Display the original before optional rewrite and translation requests finish. Ignore outdated results and restore the preferred version when it arrives, respecting manual changes. Video articles also follow the default version setting.
+- Separate reading and platform filters, wrap them within narrow sidebars, and restore the reader-submitted channel after restart.
+- Preserve Read later, windowed lists and split content storage without changing subscriptions, favorites or reading history.
+- Include Atom namespace parsing and mobile text-selection/subscription-menu fixes.
+
+Verified in desktop Obsidian with stalled requests, out-of-order responses, cached restoration and 220/300/520px sidebars. Physical mobile devices were not tested. Slow networks can still delay the primary request; cached content remains usable.

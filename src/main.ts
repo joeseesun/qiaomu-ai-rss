@@ -9,7 +9,7 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, type App, type SettingDefinitionItem, type SettingGroupItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, type Bundle, type Entry, type Mode, type State } from './model';
+import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, attachContentCache, stripFeedBodies, type Bundle, type Entry, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, captureMoment, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { contextProvider } from './agent-bridge';
@@ -20,9 +20,17 @@ import { fontName, readingFonts, selectableFonts, ReadingFonts } from './fonts';
 import { registerImageDrops } from './image-drag';
 import { LocalImages } from './images';
 import { Subscriptions } from './subscriptions';
+import { SourceHealthModal } from './source-health';
 import { RETIRED_VIEW_TYPES, RetiredView, SubscriptionCenter, type CenterTab } from './subscription-center';
+import { ConfirmAction } from './subscription-ui';
 import { t } from './i18n';
 import { articleFolderPath } from './vault-export';
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default class QiaomuRssPlugin extends Plugin {
   fonts = new ReadingFonts();
@@ -56,6 +64,7 @@ export default class QiaomuRssPlugin extends Plugin {
     try { this.state = initialState(data); }
     catch { new Notice(t('notice.dataUnreadable')); throw new Error('Incompatible RSS data'); }
     applyCuratedPicks(this.state);
+    await this.loadContentCache();
     this.adminSession = this.state.collectionAdminSession ?? undefined;
     if (data && typeof data === 'object' && !('libraryVersion' in data)) {
       const backup = `${this.app.vault.configDir}/plugins/${this.manifest.id}/data-before-library-v1.json`;
@@ -64,7 +73,7 @@ export default class QiaomuRssPlugin extends Plugin {
     }
     this.images = new LocalImages(this.app.vault, `${this.app.vault.configDir}/plugins/${this.manifest.id}/image-cache`);
     registerImageDrops(this);
-    this.subscriptions = new Subscriptions(() => this.state, () => this.persist().then(() => { this.refreshDiscovery(); this.refreshPersonalViews(); }));
+    this.subscriptions = new Subscriptions(() => this.state, () => this.persist().then(() => { this.refreshDiscovery(); this.refreshPersonalViews(); }), undefined, () => this.markBodiesDirty());
     this.addCommand({ id: 'manage-subscriptions', name: t('cmd.manageSubscriptions'), callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
     for (const type of RETIRED_VIEW_TYPES) this.registerView(type, leaf => new RetiredView(leaf, type));
@@ -74,6 +83,7 @@ export default class QiaomuRssPlugin extends Plugin {
     this.addCommand({ id: 'pick-qiaomu-sources', name: t('pick.title'), callback: () => this.pickCuratedSources() });
     this.addRibbonIcon('rss', t('cmd.openReader'), () => { void this.openReader(); });
     this.addCommand({ id: 'open-reader', name: t('cmd.openReader'), callback: () => { void this.openReader(); } });
+    this.addCommand({ id: 'source-health', name: t('cmd.sourceHealth'), callback: () => this.openSourceHealth() });
     this.registerInterval(window.setInterval(() => { void this.checkCollectionJobs(); }, 15000));
     void this.checkCollectionJobs();
     this.addSettingTab(new RssSettings(this.app, this));
@@ -306,17 +316,80 @@ export default class QiaomuRssPlugin extends Plugin {
   persist(): Promise<void> {
     applyCuratedPicks(this.state);
     if (this.state.deletedEntries[this.state.settings.baseUrl]?.length) applyDeletedEntries(this.state, [], this.state.settings.baseUrl);
-    this.saving = this.saving.catch(() => undefined).then(() => this.saveData(this.state));
+    this.saving = this.saving.catch(() => undefined).then(() => this.saveSplit());
     // Read state, favorites and fetched entries all persist through here; Home coalesces bursts.
     void this.saving.then(() => notifyHomeChanged(this.app, this.manifest.id), () => undefined);
     return this.saving;
   }
+  private cacheDirty = true;
+  /** Entry bodies live in a rebuildable side file; only a body change may rewrite it. */
+  markBodiesDirty() { this.cacheDirty = true; }
+  private cachePath() { return `${this.app.vault.configDir}/plugins/${this.manifest.id}/content-cache.json`; }
+  private async saveSplit(): Promise<void> {
+    // data.json keeps config + metadata; entry bodies go to a rebuildable cache file,
+    // rewritten only when bodies actually changed (scroll checkpoints must not rewrite megabytes).
+    const { slim, cache } = splitContentCache(this.state);
+    await this.saveData(slim);
+    if (!this.cacheDirty) return;
+    try { await this.app.vault.adapter.write(this.cachePath(), JSON.stringify(cache)); this.cacheDirty = false; }
+    catch { /* The body cache is rebuildable from feeds; a failed write must not break state save. */ }
+  }
+  private async loadContentCache(): Promise<void> {
+    try {
+      const parsed: unknown = JSON.parse(await this.app.vault.adapter.read(this.cachePath()));
+      if (parsed && typeof parsed === 'object') attachContentCache(this.state, parsed as Record<string, string>);
+    } catch { /* No cache yet; bodies rehydrate on the next refresh. */ }
+  }
+  isLater(id: string): boolean { return this.state.readLater.includes(id); }
+  async toggleLater(entry: Entry): Promise<boolean> {
+    const queued = this.state.readLater.includes(entry.id);
+    this.state.readLater = queued
+      ? this.state.readLater.filter(id => id !== entry.id)
+      : [...this.state.readLater, entry.id].slice(-200);
+    await this.persist();
+    return !queued;
+  }
+  openSourceHealth() {
+    new SourceHealthModal(this.app, () => this.state, async id => {
+      await this.subscriptions.remove(id);
+      this.resetViews();
+    }, () => this.resetViews()).open();
+  }
+  async storageStats() {
+    const dir = `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+    const sizeOf = async (path: string): Promise<number> => { try { return (await this.app.vault.adapter.stat(path))?.size ?? 0; } catch { return 0; } };
+    const [dataJson, cacheJson, images] = await Promise.all([
+      sizeOf(`${dir}/data.json`), sizeOf(this.cachePath()), this.images.usage(),
+    ]);
+    return { dataJson, cacheJson, images };
+  }
+  async clearSourceBodies(id: string): Promise<{ freedBytes: number; freedCount: number }> {
+    const feed = this.state.subscriptions.find(item => item.id === id);
+    if (!feed) return { freedBytes: 0, freedCount: 0 };
+    const result = stripFeedBodies(feed.entries);
+    feed.entries = result.entries;
+    this.markBodiesDirty();
+    await this.persist();
+    return result;
+  }
+  async clearAllBodies(): Promise<{ freedBytes: number; freedCount: number }> {
+    let freedBytes = 0, freedCount = 0;
+    for (const feed of this.state.subscriptions) {
+      const result = stripFeedBodies(feed.entries);
+      feed.entries = result.entries; freedBytes += result.freedBytes; freedCount += result.freedCount;
+    }
+    this.markBodiesDirty();
+    await this.persist();
+    return { freedBytes, freedCount };
+  }
+  async clearImages(): Promise<{ files: number; bytes: number }> { return this.images.clear(); }
   remember(bundle: Bundle) {
     if (this.articleDeleted(bundle.entry)) return;
     this.state.cache[bundle.entry.id] = bundle;
     const recent = Object.values(this.state.cache).sort((a, b) => b.fetchedAt - a.fetchedAt).slice(0, 40);
     this.state.cache = Object.fromEntries(recent.map(value => [value.entry.id, value]));
     if (this.state.favorites[bundle.entry.id]) this.state.favorites[bundle.entry.id] = bundle;
+    if (bundle.entry.content) this.markBodiesDirty();
   }
   private async ensureFolder(path: string) {
     let current = '';
@@ -598,6 +671,7 @@ class RssSettings extends PluginSettingTab {
       ] },
       { name: t('settings.subscriptions.name'), desc: t('settings.subscriptions.desc'), render: setting => {
         setting.addButton(button => button.setButtonText(t('settings.manageSubscriptions')).onClick(() => { (this.app as App & { setting: { close(): void } }).setting.close(); this.plugin.manageSubscriptions(); }));
+        setting.addButton(button => button.setButtonText(t('settings.readingStats')).onClick(() => { (this.app as App & { setting: { close(): void } }).setting.close(); this.plugin.openSourceHealth(); }));
       } },
       { type: 'group', heading: t('settings.groupSaveExport'), items: [
         folderSetting(t('settings.articleFolder.name'), t('note.folderHint'), 'articleFolder'),
@@ -642,7 +716,29 @@ class RssSettings extends PluginSettingTab {
       lab: [{ name: t('lab.collection'), desc: t('lab.entryDescription'), render: setting => {
         setting.addButton(button => button.setButtonText(t('lab.manage')).onClick(() => this.plugin.openCollectionSettings()));
       } }],
-      about: [definitions[6], ...([
+      about: [definitions[6], {
+        // Storage panel: sizes are computed when the tab opens, never serialized into definitions.
+        name: t('settings.storage.name'), desc: t('settings.storage.calculating'), render: setting => {
+          void this.plugin.storageStats().then(stats => {
+            const parts = [`${t('settings.storage.data')} ${formatBytes(stats.dataJson)}`, `${t('settings.storage.cache')} ${formatBytes(stats.cacheJson)}`,
+              `${t('settings.storage.images')} ${formatBytes(stats.images.bytes)} (${stats.images.files})`];
+            setting.setName(t('settings.storage.name'));
+            setting.setDesc(parts.join(' · '));
+          });
+          setting.addButton(button => button.setButtonText(t('settings.storage.clearImages')).onClick(() => {
+            new ConfirmAction(this.plugin, t('settings.storage.clearImages'), t('settings.storage.clearImagesConfirm'), async () => {
+              const cleared = await this.plugin.clearImages();
+              new Notice(t('settings.storage.cleared', { size: formatBytes(cleared.bytes) })); this.update();
+            }).open();
+          }));
+          setting.addButton(button => button.setButtonText(t('settings.storage.clearBodies')).onClick(() => {
+            new ConfirmAction(this.plugin, t('settings.storage.clearBodies'), t('settings.storage.clearBodiesConfirm'), async () => {
+              const freed = await this.plugin.clearAllBodies();
+              new Notice(t('settings.storage.cleared', { size: formatBytes(freed.freedBytes) })); this.update();
+            }).open();
+          }));
+        },
+      }, ...([
         [t('about.reportBug'), t('about.reportBug.desc'), 'https://github.com/joeseesun/qiaomu-ai-rss/issues/new'],
         [t('about.email'), 'vista8@gmail.com', 'mailto:vista8@gmail.com'],
         [t('about.guide'), t('about.guide.desc'), 'https://github.com/joeseesun/qiaomu-ai-rss#readme'],
