@@ -1,4 +1,4 @@
-import { curatedChannels, curatedCommunityChannels, filterCuratedEntries, keepCuratedEntry, pickedSources } from './curated-sources';
+import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCuratedPages, filterCuratedEntries, keepCuratedEntry, pickedSources } from './curated-sources';
 import type { CollectionItem } from './collection';
 import { todayLabel } from './daily-note';
 import { groupsInOrder, personalSources } from './personal-library';
@@ -223,7 +223,7 @@ export class ReaderView extends ItemView {
     const remembered = this.plugin.state.settings.lastSource;
     const localExists = this.plugin.state.subscriptions.some(feed => feed.id === remembered);
     const groupExists = remembered.startsWith('@group:') && this.plugin.state.subscriptions.some(feed => feed.group === remembered.slice(7));
-    this.focused = false; this.source = (remembered !== 'levelingup' || this.plugin.state.settings.pickedSourceIds?.includes(remembered)) && (remembered === '@local' || remembered === '@collection' || remembered === '@collection-all' && this.plugin.collectionAdminAvailable() || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists || this.plugin.state.settings.followedPodcasts.includes(remembered) || (qiaomuDividers as readonly string[]).includes(remembered.replace(/^@qiaomu:/, '')) && remembered.startsWith('@qiaomu:') || curatedChannels(this.plugin.state).some(source => source.id === remembered)) ? remembered : '';
+    this.focused = false; this.source = (remembered !== 'levelingup' || this.plugin.state.settings.pickedSourceIds?.includes(remembered)) && (remembered === '@local' || remembered === '@collection' || remembered === '@collection-all' && this.plugin.collectionAdminAvailable() || this.plugin.state.settings.markdownFolders.some(folder => vaultSourceId(folder) === remembered) || groupExists || localExists || this.plugin.state.settings.followedPodcasts.includes(remembered) || (qiaomuDividers as readonly string[]).includes(remembered.replace(/^@qiaomu:/, '')) && remembered.startsWith('@qiaomu:') || [...curatedChannels(this.plugin.state), ...curatedCommunityChannels(this.plugin.state)].some(source => source.id === remembered)) ? remembered : '';
     this.cursor = ''; this.bundle = null; this.loading = false; this.hasMore = false;
     this.mode = this.plugin.state.settings.defaultMode;
     this.collectionItems = this.source === '@collection' ? this.plugin.collectionLocalItems() : [];
@@ -340,16 +340,20 @@ export class ReaderView extends ItemView {
     this.filters.empty();
     this.filters.toggleClass('is-hidden', this.collectionScope());
     this.collectionSettingsButton?.toggleClass('is-hidden', !this.collectionScope());
+    const readingFilters = this.collectionScope() ? this.filters : this.filters.createDiv('qrs-filter-row');
     if (!this.collectionScope()) for (const [value, label] of [['all', t('common.all')], ['unread', t('reader.filter.unread')], ['favorites', t('reader.filter.favorites')], ['later', t('reader.filter.later')]] as const) {
-      const button = this.filters.createEl('button', { text: label, attr: { 'aria-pressed': String(value === this.filter), 'data-filter': value } });
+      const button = readingFilters.createEl('button', { text: label, attr: { 'aria-pressed': String(value === this.filter), 'data-filter': value } });
       button.addEventListener('click', () => { this.filter = value; this.unreadSession.clear(); this.resetWindow(); this.renderFilters(); this.renderList(); });
     }
     // Reader submissions mix video, WeChat and web links, so that channel can be narrowed by where a link comes from.
-    if (this.communityScope()) for (const value of ['all', ...PLATFORMS] as const) {
-      const button = this.filters.createEl('button', { text: value === 'all' ? t('common.all') : t(`platform.${value}`), attr: { 'aria-pressed': String(value === this.platform), 'data-platform': value } });
-      button.addEventListener('click', () => { this.platform = value; this.renderFilters(); this.renderList(); });
+    if (this.communityScope()) {
+      const platformFilters = this.filters.createDiv('qrs-filter-row');
+      for (const value of ['all', ...PLATFORMS] as const) {
+        const button = platformFilters.createEl('button', { text: value === 'all' ? t('common.all') : t(`platform.${value}`), attr: { 'aria-pressed': String(value === this.platform), 'data-platform': value } });
+        button.addEventListener('click', () => { this.platform = value; this.renderFilters(); this.renderList(); });
+      }
     }
-    if (!this.collectionScope()) this.addIconButton(this.filters, 'settings', t('reader.pluginSettings'), () => this.plugin.openSettings()).addClass('qrs-settings-button');
+    if (!this.collectionScope()) this.addIconButton(readingFilters, 'settings', t('reader.pluginSettings'), () => this.plugin.openSettings()).addClass('qrs-settings-button');
   }
   private communityScope() { return curatedCommunityChannels(this.plugin.state).some(source => source.id === this.source); }
   private channelChoices(): ChannelChoice[] {
@@ -520,8 +524,9 @@ export class ReaderView extends ItemView {
     const state = this.plugin.state;
     try {
       if (force && !more) {
-        try { await this.plugin.syncDeletedArticles(); } catch { /* Keep offline reading; never infer deletion from a failed request. */ }
-        if (this.closed || version !== this.listVersion) return;
+        // Deletion checks update and purge the shared state when ready. They
+        // must not hold up unrelated lists or local subscriptions.
+        void this.plugin.syncDeletedArticles().catch(() => undefined);
       }
       if (this.collectionScope()) {
         const scope = this.source, page = await this.plugin.collectionPage(scope === '@collection-all', more ? this.cursor : '');
@@ -556,11 +561,15 @@ export class ReaderView extends ItemView {
       }
       const picked = pickedSources(state);
       if (this.source.startsWith('@qiaomu:') || !this.source && picked !== null && picked.size <= 36) {
-        const ids = this.source ? [...this.qiaomuGroupIds()] : [...picked!], results: PromiseSettledResult<Entry[]>[] = [];
-        for (let i = 0; i < ids.length; i += 8) results.push(...await Promise.allSettled(ids.slice(i, i + 8).map(id => api.entries(id, '', 12).then(page => page.entries))));
+        const ids = this.source ? [...this.qiaomuGroupIds()] : [...picked!], cached = [...this.entries];
+        const current = () => !this.closed && version === this.listVersion && state === this.plugin.state;
+        const results = await loadCuratedPages(ids, id => api.entries(id, '', 12).then(page => page.entries), progress => {
+          this.entries = filterCuratedEntries(state, curatedPageEntries(ids, progress, cached)).filter(entry => !this.plugin.articleDeleted(entry));
+          this.renderList();
+        }, current);
         if (this.closed || version !== this.listVersion) return;
-        const entries = filterCuratedEntries(state, results.flatMap(result => result.status === 'fulfilled' ? result.value : []));
-        const failed = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        const entries = filterCuratedEntries(state, curatedPageEntries(ids, results, cached)).filter(entry => !this.plugin.articleDeleted(entry));
+        const failed = results.filter((result): result is PromiseRejectedResult => result?.status === 'rejected');
         if (!entries.length && failed.length) throw failed[0].reason;
         this.entries = [...new Map(entries.map(entry => [entry.id, entry])).values()].sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));
         this.cursor = ''; this.hasMore = false;
@@ -569,25 +578,35 @@ export class ReaderView extends ItemView {
         if (!this.closed && version === this.listVersion) this.status.setText(failed.length ? t('reader.channelsUnavailable', { n: failed.length }) : '');
         return;
       }
-      const [page, sources] = await Promise.allSettled([api.entries(this.source, more ? this.cursor : ''), api.sources()]);
+      // The catalog is supplementary: use the last known channels while it
+      // refreshes and never wait for it before showing the article page.
+      void api.sources().then(async sources => {
+        if (this.closed || version !== this.listVersion || state !== this.plugin.state) return;
+        state.sources = sources.sources; this.renderChannel(); this.renderFilters();
+        await this.plugin.persist();
+      }).catch(() => {
+        if (!this.closed && version === this.listVersion && !this.status.textContent) this.status.setText(t('reader.channelsFailed'));
+      });
+      const page = await api.entries(this.source, more ? this.cursor : '');
       if (this.closed || version !== this.listVersion) return;
-      if (sources.status === 'fulfilled') { state.sources = sources.value.sources; this.renderChannel(); }
-      if (page.status === 'rejected') throw page.reason;
-      const pageEntries = filterCuratedEntries(state, this.source || picked !== null ? page.value.entries : qiaomuFeaturedEntries(page.value.entries));
+      const pageEntries = filterCuratedEntries(state, this.source || picked !== null ? page.entries : qiaomuFeaturedEntries(page.entries)).filter(entry => !this.plugin.articleDeleted(entry));
       this.entries = more ? [...new Map([...this.entries, ...pageEntries].map(entry => [entry.id, entry])).values()] : pageEntries;
-      this.cursor = page.value.nextCursor || ''; this.hasMore = !!page.value.hasMore && !!this.cursor;
+      this.cursor = page.nextCursor || ''; this.hasMore = !!page.hasMore && !!this.cursor;
       if (!this.source && !more) {
         this.renderList();
         const featured = featuredXiaoyuzhouPodcasts(state.sources).filter(source => picked === null || picked.has(source.id));
-        const latest = await Promise.allSettled(featured.map(source => api.entries(source.id, '', 1)));
-        if (this.closed || version !== this.listVersion) return;
-        this.featuredEpisodes = latest.flatMap(result => result.status === 'fulfilled' ? result.value.entries : []);
+        void Promise.allSettled(featured.map(source => api.entries(source.id, '', 1))).then(async latest => {
+          if (this.closed || version !== this.listVersion || state !== this.plugin.state) return;
+          this.featuredEpisodes = latest.flatMap(result => result.status === 'fulfilled' ? result.value.entries : []);
+          this.entries = filterCuratedEntries(state, mergeFeaturedPodcasts(this.entries, this.featuredEpisodes, !this.hasMore)).filter(entry => !this.plugin.articleDeleted(entry));
+          state.entries = this.entries; this.renderList(); this.saveChannel();
+          await this.plugin.persist();
+        }).catch(() => undefined);
       }
       if (!this.source) this.entries = filterCuratedEntries(state, mergeFeaturedPodcasts(this.entries, this.featuredEpisodes, !this.hasMore));
       if (!this.source) { state.entries = this.entries; state.updatedAt = Date.now(); }
       await this.plugin.persist();
       if (this.closed || version !== this.listVersion) return;
-      this.status.setText(sources.status === 'rejected' ? t('reader.channelsFailed') : '');
     } catch (error) {
       if (this.closed || version !== this.listVersion) return;
       this.status.setText(`${error instanceof Error ? error.message : t('error.networkUnavailable')}${this.entries.length ? t('reader.showingCached') : t('reader.refreshRetry')}`);
@@ -814,7 +833,8 @@ export class ReaderView extends ItemView {
     this.mode = entry.origin === 'local' || entry.origin === 'vault' ? 'original'
       : podcastDefaultMode(entry, state.sources, state.settings.followedPodcasts)
         ?? (entry.audio || videoEmbedUrl(entry.videoUrl || entry.link) ? 'original' : state.settings.defaultMode);
-    this.message = ''; this.articleLoading = true; this.reader.setAttribute('aria-busy', 'true');
+    const ready = this.mode === 'original' ? !!this.bundle.entry.content?.trim() : this.mode === 'rewrite' ? !!this.bundle.rewrite?.body.trim() : !!this.bundle.translation?.content?.length;
+    this.message = ''; this.articleLoading = !ready; this.reader.setAttribute('aria-busy', String(this.articleLoading));
     this.contentEl.addClass('qrs-has-article'); this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
     if (resume) { this.mode = resume.mode; this.pendingScroll = { listTop: resume.listTop, readerTop: resume.readerTop }; this.renderReader(); this.restoreOffsets(); }
     if (entry.origin === 'local') {
@@ -822,8 +842,17 @@ export class ReaderView extends ItemView {
       this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
       this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); return;
     }
+    let originalShown = false;
     try {
-      const { bundle, warnings } = entry.origin === 'vault' ? { bundle: await this.plugin.vaultSources.article(entry), warnings: [] } : await this.plugin.api().article(entry.id, entry);
+      const { bundle, warnings } = entry.origin === 'vault' ? { bundle: await this.plugin.vaultSources.article(entry), warnings: [] } : await this.plugin.api().article(entry.id, entry, content => {
+        if (this.closed || version !== this.articleVersion || this.plugin.articleDeleted(entry)) return;
+        this.bundle = { ...content, rewrite: content.rewrite ?? this.bundle?.rewrite ?? null, translation: this.bundle?.translation ?? null };
+        if (this.mode === 'rewrite' && !this.bundle.rewrite?.body.trim() || this.mode === 'translation' && !this.bundle.translation?.content?.length) this.mode = 'original';
+        this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
+        originalShown = this.mode === 'original';
+        this.renderReader();
+        this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
+      });
       if (this.closed || version !== this.articleVersion || this.plugin.articleDeleted(entry)) return;
       this.bundle = bundle; this.message = warnings.join('；');
       this.plugin.remember(bundle); this.run(() => this.plugin.persist());
@@ -834,7 +863,7 @@ export class ReaderView extends ItemView {
     }
     if (!this.closed && version === this.articleVersion) {
       if (this.mode === 'rewrite' && !this.bundle.rewrite?.body.trim()) this.mode = 'original';
-      this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(); this.renderList();
+      this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false'); this.renderReader(originalShown && this.mode === 'original'); this.renderList();
     }
   }
   /** Opens one article from outside the list, e.g. from Qiaomu Home. */
@@ -1005,7 +1034,14 @@ export class ReaderView extends ItemView {
       const rect = more.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });
     if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
-    if (previous) { this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); return; }
+    if (previous) {
+      previous.querySelector('.qrs-feedback')?.remove();
+      if (this.message) {
+        const feedback = previous.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
+        previous.querySelector('h1')?.after(feedback);
+      }
+      this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); return;
+    }
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
     const title = article.createEl('h1');
     const originalUrl = safeUrl(bundle.entry.link || '');
