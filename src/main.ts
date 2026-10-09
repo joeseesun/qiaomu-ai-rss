@@ -51,6 +51,8 @@ export default class QiaomuRssPlugin extends Plugin {
   private lastNote: TFile | null = null;
   private libraryEdits: Promise<void> = Promise.resolve();
   private saving: Promise<void> = Promise.resolve();
+  private apiClient?: RssApi;
+  private apiBase = '';
   private dailyNoteWrite: Promise<unknown> = Promise.resolve();
   async onload() {
     watchPaneDividers(this);
@@ -142,10 +144,14 @@ export default class QiaomuRssPlugin extends Plugin {
   }
   onunload() { this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
   api(): RssApi {
-    return new RssApi(this.state.settings.baseUrl, async url => {
+    const base = this.state.settings.baseUrl;
+    if (this.apiClient && this.apiBase === base) return this.apiClient;
+    this.apiBase = base;
+    this.apiClient = new RssApi(base, async url => {
       const response = await requestUrl({ url, method: 'GET', headers: { Accept: 'application/json' }, throw: false });
       return { status: response.status, text: response.text };
     });
+    return this.apiClient;
   }
   private collectionClient(baseUrl = this.state.settings.baseUrl, invite = this.state.settings.labInviteCode) {
     this.state.collectionIdentity ??= { id: crypto.randomUUID(), key: crypto.randomUUID() + crypto.randomUUID() };

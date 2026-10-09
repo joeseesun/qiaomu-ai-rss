@@ -566,7 +566,7 @@ export class ReaderView extends ItemView {
         const current = () => !this.closed && version === this.listVersion && state === this.plugin.state;
         const results = await loadCuratedPages(ids, id => api.entries(id, '', 12).then(page => page.entries), progress => {
           this.entries = filterCuratedEntries(state, curatedPageEntries(ids, progress, cached)).filter(entry => !this.plugin.articleDeleted(entry));
-          this.renderList();
+          this.scheduleRenderList();
         }, current);
         if (this.closed || version !== this.listVersion) return;
         const entries = filterCuratedEntries(state, curatedPageEntries(ids, results, cached)).filter(entry => !this.plugin.articleDeleted(entry));
@@ -581,7 +581,7 @@ export class ReaderView extends ItemView {
       }
       // The catalog is supplementary: use the last known channels while it
       // refreshes and never wait for it before showing the article page.
-      void api.sources().then(async sources => {
+      void api.sources(force).then(async sources => {
         if (this.closed || version !== this.listVersion || state !== this.plugin.state) return;
         state.sources = sources.sources; this.renderChannel(); this.renderFilters();
         await this.plugin.persist();

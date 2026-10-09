@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.2
+
+- Share API clients and coalesce concurrent identical reads across reader views; failures and timeouts remain retryable.
+- Reuse the source catalog for 60 seconds, with explicit refresh bypass and isolated responses.
+- Coalesce progressive multi-channel list rendering into animation frames.
+
 ## 0.27.1
 
 - Honor the default reading version for video articles and restore delayed rewrite/translation after a temporary original fallback, without overriding manual choices.

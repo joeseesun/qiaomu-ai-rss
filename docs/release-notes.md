@@ -1,19 +1,15 @@
 ## 中文
 
-- 文章列表先显示已返回的内容，不再等待频道目录、删除核查和补充播客请求。多频道读取逐个更新，失败源保留缓存。
-- 原文先于改写和翻译显示；辅助请求失败不遮住正文，迟到结果不覆盖新选择，改写返回后恢复默认阅读版本，尊重手动选择。视频文章也遵循默认版本设置。
-- 读者提交的阅读状态与平台筛选分行排列，窄侧栏自动换行。重启后恢复读者提交频道。
-- 保留稍后读、分批列表渲染与正文缓存拆分，升级不改变现有订阅、收藏和阅读记录。
-- 同步 Atom 命名空间解析及移动端文字选择、订阅菜单修复。
+- 多个阅读窗和重复打开共享正在进行的相同请求，减少重复正文、改写、翻译与频道请求。完成后的正文请求仍读最新数据，失败或超时后可以重新尝试。
+- 频道目录在本机复用 60 秒；点击刷新会重新获取。切换服务地址时不会复用原服务的请求或目录。
+- 多频道同时返回时，合并同一帧的列表渲染，减少重复创建列表。
 
-已验证桌面 Obsidian 的慢请求、乱序响应、缓存恢复及 220/300/520px 侧栏；未进行手机真机测试。网络本身较慢时仍需等待正文请求，但可继续阅读已有缓存。
+已验证桌面 Obsidian：同一客户端模拟 100 次并发打开同篇文章，网络请求由 300 次降至 3 次；目录连续读取 20 次复用一次请求。这些是重复操作测试，不代表服务器可承载的用户数量。保留默认乔木改写、手动版本选择和删除校验。未进行手机真机测试。
 
 ## English
 
-- Show returned articles without waiting for the channel catalog, deletion checks or supplementary podcast requests. Update channels independently and retain cached pages for failed sources.
-- Display the original before optional rewrite and translation requests finish. Ignore outdated results and restore the preferred version when it arrives, respecting manual changes. Video articles also follow the default version setting.
-- Separate reading and platform filters, wrap them within narrow sidebars, and restore the reader-submitted channel after restart.
-- Preserve Read later, windowed lists and split content storage without changing subscriptions, favorites or reading history.
-- Include Atom namespace parsing and mobile text-selection/subscription-menu fixes.
+- Share in-flight identical reads across reader views and repeated opens. Completed article reads remain fresh, and failed or timed-out requests remain retryable.
+- Reuse the source catalog locally for 60 seconds; explicit refresh bypasses it. Changing the service origin isolates requests and cached catalogs.
+- Coalesce simultaneous channel updates into one list render per animation frame.
 
-Verified in desktop Obsidian with stalled requests, out-of-order responses, cached restoration and 220/300/520px sidebars. Physical mobile devices were not tested. Slow networks can still delay the primary request; cached content remains usable.
+Verified in desktop Obsidian: 100 concurrent simulated opens of the same article in one client reduce network requests from 300 to 3; 20 sequential catalog reads reuse one request. These are duplicate-operation tests, not server capacity claims. Preferred rewrites, manual version choices and deletion checks remain supported. No physical-phone verification.
