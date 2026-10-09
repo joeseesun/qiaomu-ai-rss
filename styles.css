@@ -732,3 +732,18 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
   .qrs-pick-row { grid-template-columns: 18px minmax(0, 1fr); }
   .qrs-pick-badge { grid-column: 2; margin-top: 0; }
 }
+
+/* Source health report */
+.qrs-health-modal { max-width: 760px; width: 90vw; }
+.qrs-health .qrs-health-note { color: var(--qrs-muted); font-size: 12px; margin: 0 0 10px; }
+.qrs-health .qrs-health-summary { color: var(--qrs-muted); font-size: 13px; margin: 0 0 8px; }
+.qrs-health .qrs-health-body { max-height: 55vh; overflow: auto; }
+.qrs-health-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.qrs-health-table th { text-align: left; font-weight: 500; color: var(--qrs-muted); padding: 6px 8px; border-bottom: 1px solid var(--qrs-faint); position: sticky; top: 0; background: var(--background-primary); white-space: nowrap; }
+.qrs-health-table td { padding: 6px 8px; border-bottom: 1px solid var(--background-modifier-border-hover); }
+.qrs-health-table td:not(:first-child) { font-variant-numeric: tabular-nums; color: var(--qrs-muted); white-space: nowrap; }
+.qrs-health-table tr.is-armed td { background: var(--background-modifier-error-hover); }
+.qrs-health-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+/* Paused subscription status */
+.qrs-library-paused { display: inline-flex; align-items: center; gap: 4px; color: var(--qrs-muted); font-size: 12px; }

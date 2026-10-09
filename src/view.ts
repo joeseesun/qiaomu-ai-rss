@@ -27,7 +27,7 @@ import { agentAvailable, articleSnapshot, askAgent } from './agent-bridge';
 import { notifyContextChanged, type ContextSnapshot } from './qiaomu-context';
 import { fontName } from './fonts';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
-type Filter = 'all' | 'unread' | 'favorites';
+type Filter = 'all' | 'unread' | 'favorites' | 'later';
 export class ReaderView extends ItemView {
   private channelPicker?: ChannelPicker;
   private restoreObserver?: ResizeObserver;
@@ -39,8 +39,11 @@ export class ReaderView extends ItemView {
   private saveChannel() {
     if (this.collectionScope()) return;
     if (!this.list || !this.reader) return;
+    // Strip heavy `content` from channelStates: bodies live in subscriptions and the content
+    // cache, so duplicating them here once doubled data.json for every visited channel.
+    const strip = (entry: Entry): Entry => entry.content ? { ...entry, content: undefined } : entry;
     this.plugin.state.channelStates[this.channelKey()] = {
-      entries: this.entries, bundle: this.bundle, mode: this.mode, filter: this.filter, query: this.query,
+      entries: this.entries.map(strip), bundle: this.bundle ? { ...this.bundle, entry: strip(this.bundle.entry) } : null, mode: this.mode, filter: this.filter, query: this.query,
       unread: [...this.unreadSession], cursor: this.cursor, hasMore: this.hasMore,
       listTop: this.pendingScroll?.listTop ?? (this.list.clientHeight ? this.list.scrollTop : this.lastListTop),
       readerTop: this.pendingScroll?.readerTop ?? (this.reader.clientHeight ? this.reader.scrollTop : this.lastReaderTop), articlePending: this.articleLoading,
@@ -58,8 +61,21 @@ export class ReaderView extends ItemView {
     this.restoreObserver.observe(this.list); this.restoreObserver.observe(this.reader);
   }
   private restoreChannel(saved: ChannelState) {
-    this.entries = filterCuratedEntries(this.plugin.state, this.source || this.plugin.state.settings.pickedSourceIds !== null ? saved.entries : qiaomuFeaturedEntries(saved.entries));
-    this.bundle = saved.bundle && (!keepCuratedEntry(this.plugin.state, saved.bundle.entry) || !this.source && this.plugin.state.settings.pickedSourceIds === null && !qiaomuFeaturedEntries([saved.bundle.entry]).length) ? null : saved.bundle;
+    // Re-hydrate body content stripped from channelStates on save; subscriptions hold the single copy.
+    const byId = new Map<string, Entry>();
+    for (const feed of this.plugin.state.subscriptions) for (const entry of feed.entries) byId.set(entry.id, entry);
+    for (const bundle of Object.values(this.plugin.state.cache)) byId.set(bundle.entry.id, bundle.entry);
+    for (const bundle of Object.values(this.plugin.state.favorites)) byId.set(bundle.entry.id, bundle.entry);
+    for (const bundle of Object.values(this.plugin.state.savedArticles)) byId.set(bundle.entry.id, bundle.entry);
+    const hydrate = (entry: Entry): Entry => {
+      if (entry.content) return entry;
+      const found = byId.get(entry.id);
+      return found?.content ? { ...entry, content: found.content, summary: entry.summary ?? found.summary } : entry;
+    };
+    const savedBundle = saved.bundle ? { ...saved.bundle, entry: hydrate(saved.bundle.entry) } : null;
+    this.entries = filterCuratedEntries(this.plugin.state, this.source || this.plugin.state.settings.pickedSourceIds !== null ? saved.entries.map(hydrate) : qiaomuFeaturedEntries(saved.entries.map(hydrate)));
+    this.bundle = savedBundle && (!keepCuratedEntry(this.plugin.state, savedBundle.entry) || !this.source && this.plugin.state.settings.pickedSourceIds === null && !qiaomuFeaturedEntries([savedBundle.entry]).length) ? null : savedBundle;
+    this.expandWindowTo(savedBundle?.entry.id);
     this.mode = saved.mode;
     this.filter = saved.filter; this.query = saved.query; this.unreadSession = new Set(saved.unread);
     this.cursor = saved.cursor; this.hasMore = saved.hasMore; this.lastListTop = saved.listTop; this.lastReaderTop = saved.readerTop;
@@ -111,6 +127,13 @@ export class ReaderView extends ItemView {
   private thumbnailPending = new Map<string, Promise<string | null>>();
   private thumbnailVersion = 0;
   private imageObserver?: IntersectionObserver;
+  // Windowed list rendering: only the first `renderedCount` rows enter the DOM; a sentinel
+  // extends the window while scrolling so a 2000-entry channel no longer builds 2000 rows.
+  private static readonly PAGE_SIZE = 60;
+  private static readonly THUMB_CAP = 60;
+  private renderedCount = ReaderView.PAGE_SIZE;
+  private listSentinelObserver?: IntersectionObserver;
+  private renderScheduled = false;
   constructor(leaf: WorkspaceLeaf, private plugin: QiaomuRssPlugin) {
     super(leaf); this.mode = plugin.state.settings.defaultMode;
   }
@@ -184,6 +207,7 @@ export class ReaderView extends ItemView {
     stopMedia(this.reader); this.audioDock?.stop();
     this.saveChannel(); this.channelPicker?.close(false); this.stopRestoring();
     if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
+    this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined;
     this.selectionCapture?.dispose();
     this.closed = true; this.listVersion++; this.articleVersion++; this.clearImages(); this.clearThumbnails(); this.contentEl.onkeydown = null;
     return this.plugin.persist().catch(() => undefined);
@@ -193,6 +217,7 @@ export class ReaderView extends ItemView {
     this.audioDock?.stop();
     this.channelPicker?.close(false); this.stopRestoring();
     if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
+    this.resetWindow();
     this.unreadSession.clear();
     this.closed = false; this.listVersion++; this.articleVersion++; this.clearThumbnails();
     const remembered = this.plugin.state.settings.lastSource;
@@ -286,7 +311,7 @@ export class ReaderView extends ItemView {
     this.searchInput = this.searchBox.createEl('input', { type: 'search', placeholder: t('reader.searchPlaceholder'), attr: { id: searchId } });
     addSearchClear(this.searchInput);
     this.searchInput.value = this.query;
-    this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.unreadSession.clear(); this.renderList(); });
+    this.searchInput.addEventListener('input', () => { this.query = this.searchInput.value; this.unreadSession.clear(); this.resetWindow(); this.renderList(); });
     this.searchInput.addEventListener('keydown', event => { if (event.key === 'Escape') { event.stopPropagation(); this.toggleSearch(false); } });
     this.status = sidebar.createDiv({ cls: 'qrs-status', attr: { role: 'status', 'aria-live': 'polite' } });
     this.list = sidebar.createDiv({ cls: 'qrs-list' });
@@ -315,9 +340,9 @@ export class ReaderView extends ItemView {
     this.filters.empty();
     this.filters.toggleClass('is-hidden', this.collectionScope());
     this.collectionSettingsButton?.toggleClass('is-hidden', !this.collectionScope());
-    if (!this.collectionScope()) for (const [value, label] of [['all', t('common.all')], ['unread', t('reader.filter.unread')], ['favorites', t('reader.filter.favorites')]] as const) {
+    if (!this.collectionScope()) for (const [value, label] of [['all', t('common.all')], ['unread', t('reader.filter.unread')], ['favorites', t('reader.filter.favorites')], ['later', t('reader.filter.later')]] as const) {
       const button = this.filters.createEl('button', { text: label, attr: { 'aria-pressed': String(value === this.filter), 'data-filter': value } });
-      button.addEventListener('click', () => { this.filter = value; this.unreadSession.clear(); this.renderFilters(); this.renderList(); });
+      button.addEventListener('click', () => { this.filter = value; this.unreadSession.clear(); this.resetWindow(); this.renderFilters(); this.renderList(); });
     }
     // Reader submissions mix video, WeChat and web links, so that channel can be narrowed by where a link comes from.
     if (this.communityScope()) for (const value of ['all', ...PLATFORMS] as const) {
@@ -394,7 +419,7 @@ export class ReaderView extends ItemView {
     this.listVersion++; this.loading = false; this.refreshButton.removeClass('is-loading');
     this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
     this.collectionItems = source === '@collection' ? this.plugin.collectionLocalItems() : [];
-    this.personalLimit = 100; this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
+    this.personalLimit = 100; this.resetWindow(); this.source = source; this.cursor = ''; this.entries = []; this.hasMore = false;
     this.plugin.state.settings.lastSource = source; this.run(() => this.plugin.persist());
     this.bundle = null; this.articleVersion++; this.focused = false; this.contentEl.removeClass('qrs-focus');
     this.contentEl.removeClass('qrs-focus'); this.contentEl.removeClass('qrs-has-article');
@@ -454,9 +479,34 @@ export class ReaderView extends ItemView {
     if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing ||
       (target?.closest?.('input,textarea,select,[contenteditable=true]'))) return;
     const key = event.key.toLowerCase();
-    if (key === 'j' || key === 'k') { event.preventDefault(); event.stopPropagation(); this.navigate(key === 'j' ? 1 : -1); }
-    if (event.key === '[' || event.key === 'f') { event.preventDefault(); this.toggleFocus(); }
-    if (event.key === '/') { event.preventDefault(); this.toggleSearch(true); }
+    if (key === 'j' || key === 'k') { event.preventDefault(); event.stopPropagation(); this.navigate(key === 'j' ? 1 : -1); return; }
+    if (event.key === '[') { event.preventDefault(); this.toggleFocus(); return; }
+    if (event.key === '/') { event.preventDefault(); this.toggleSearch(true); return; }
+    if (key === 'f' || key === 'u' || key === 'o' || key === 'e' || key === 'm') {
+      const bundle = this.bundle; if (!bundle) return;
+      event.preventDefault();
+      const relatedIds = this.relatedContentIds(bundle.entry);
+      if (key === 'f') this.run(async () => {
+        const favoriteId = relatedIds.find(id => this.plugin.state.favorites[id]);
+        if (favoriteId) for (const id of this.relatedContentIds(bundle.entry)) delete this.plugin.state.favorites[id];
+        else this.plugin.state.favorites[bundle.entry.id] = bundle;
+        await this.plugin.persist(); this.renderReader(true); this.renderList();
+      });
+      else if (key === 'u') this.run(async () => {
+        const read = relatedIds.some(id => this.plugin.state.readIds.includes(id));
+        const ids = this.plugin.state.readIds.filter(id => !relatedIds.includes(id));
+        this.plugin.state.readIds = read ? ids : [...ids, bundle.entry.id].slice(-5000);
+        await this.plugin.persist(); this.renderReader(true); this.renderList();
+      });
+      else if (key === 'o') { const link = safeUrl(bundle.entry.link || ''); if (link) this.contentEl.win.open(link, '_blank', 'noopener,noreferrer'); }
+      else if (key === 'e') this.noteCurrent();
+      else if (key === 'm') this.run(async () => {
+        const queued = await this.plugin.toggleLater(bundle.entry);
+        new Notice(queued ? t('reader.addedLater') : t('reader.removedLater'));
+        this.renderList();
+      });
+      return;
+    }
     if (event.key === 'Escape') { this.focused = false; this.contentEl.removeClass('qrs-focus'); this.showList(); }
   }
   private navigate(direction: number) {
@@ -484,8 +534,11 @@ export class ReaderView extends ItemView {
       if (this.vaultScope()) { this.entries = this.plugin.vaultSources.entries(this.source.slice(7)); this.hasMore = false; return; }
       if (this.personalScope()) {
         const feeds = [...this.selectedFeeds()].sort((a, b) => (a.lastAttemptAt || a.updatedAt) - (b.lastAttemptAt || b.updatedAt)).slice(0, 20);
-        await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, () => {
-          if (!this.closed && version === this.listVersion) { this.entries = this.localEntries(); this.renderList(); }
+        await this.plugin.subscriptions.refresh(feeds.map(feed => feed.id), this.reader.ownerDocument, force, (done, total) => {
+          if (this.closed || version !== this.listVersion) return;
+          this.entries = this.localEntries();
+          this.status.setText(total > 1 ? t('reader.syncProgress', { done, total }) : '');
+          this.scheduleRenderList();
         });
         if (this.closed || version !== this.listVersion) return;
         this.entries = this.localEntries(); this.hasMore = false;
@@ -544,11 +597,22 @@ export class ReaderView extends ItemView {
   }
   private visibleEntries(): Entry[] {
     const state = this.plugin.state;
-    const entries = this.filter === 'favorites' ? Object.values(state.favorites).map(b => b.entry) : this.entries;
+    // Read-later is a cross-source queue: it resolves ids against every stored entry in queue order.
+    let entries: Entry[];
+    if (this.filter === 'favorites') entries = Object.values(state.favorites).map(b => b.entry);
+    else if (this.filter === 'later') {
+      const byId = new Map<string, Entry>();
+      for (const feed of state.subscriptions) for (const entry of feed.entries) if (!byId.has(entry.id)) byId.set(entry.id, entry);
+      for (const entry of state.entries) if (!byId.has(entry.id)) byId.set(entry.id, entry);
+      for (const bundle of Object.values(state.favorites)) if (!byId.has(bundle.entry.id)) byId.set(bundle.entry.id, bundle.entry);
+      for (const bundle of Object.values(state.savedArticles)) if (!byId.has(bundle.entry.id)) byId.set(bundle.entry.id, bundle.entry);
+      entries = state.readLater.map(id => byId.get(id)).filter((entry): entry is Entry => !!entry);
+    } else entries = this.entries;
     const query = this.query.trim().toLocaleLowerCase(), group = this.qiaomuGroupIds();
-    return uniqueRemoteEntries(entries, this.bundle?.entry.id).filter(entry => (this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source : this.personalScope()
+    const inScope = (entry: Entry) => this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source : this.personalScope()
       ? entry.origin === 'local' && (this.source === '@local' || this.selectedFeeds().some(feed => feed.id === entry.sourceId))
-      : entry.origin !== 'local' && entry.origin !== 'vault' && (!this.source || (this.source.startsWith('@qiaomu:') ? group.has(entry.sourceId) : entry.sourceId === this.source))) &&
+      : entry.origin !== 'local' && entry.origin !== 'vault' && (!this.source || (this.source.startsWith('@qiaomu:') ? group.has(entry.sourceId) : entry.sourceId === this.source));
+    return uniqueRemoteEntries(entries, this.bundle?.entry.id).filter(entry => (this.filter === 'later' || inScope(entry)) &&
       !this.plugin.articleDeleted(entry) && keepCuratedEntry(state, entry) && (state.settings.pickedSourceIds !== null || entry.sourceId !== 'levelingup') && (this.platform === 'all' || !this.communityScope() || platformOf(entry.link) === this.platform) &&
       (this.filter !== 'unread' || !this.relatedContentIds(entry).some(id => state.readIds.includes(id)) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
       (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
@@ -579,7 +643,7 @@ export class ReaderView extends ItemView {
     const version = this.thumbnailVersion;
     const promise = this.plugin.images.load(url).then(blob => {
       if (this.closed || version !== this.thumbnailVersion) return null;
-      const local = URL.createObjectURL(blob); this.thumbnailUrls.set(url, local); return local;
+      const local = URL.createObjectURL(blob); this.cacheThumbnail(url, local); return local;
     }).catch(() => null);
     this.thumbnailPending.set(url, promise);
     void promise.finally(() => { if (this.thumbnailPending.get(url) === promise) this.thumbnailPending.delete(url); });
@@ -634,6 +698,33 @@ export class ReaderView extends ItemView {
     this.list.scrollTop = scroll;
     if (focusedId) Array.from(this.list.querySelectorAll<HTMLElement>('[data-collection-id]')).find(row => row.dataset.collectionId === focusedId)?.focus({ preventScroll: true });
   }
+  /** Windowed list rendering: only the first rows paint; a sentinel extends as the reader scrolls. */
+  private resetWindow() {
+    this.renderedCount = ReaderView.PAGE_SIZE;
+    this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined;
+  }
+  private expandWindowTo(entryId?: string) {
+    if (!entryId) return;
+    const entries = this.visibleEntries();
+    const index = entries.findIndex(entry => entry.id === entryId);
+    if (index >= this.renderedCount) this.renderedCount = Math.min(entries.length, index + ReaderView.PAGE_SIZE);
+  }
+  private scheduleRenderList() {
+    if (this.renderScheduled || this.closed) return;
+    this.renderScheduled = true;
+    window.requestAnimationFrame(() => { this.renderScheduled = false; if (!this.closed) this.renderList(); });
+  }
+  /** Thumbnail object URLs are capped so a long session cannot leak blobs. */
+  private cacheThumbnail(url: string, local: string) {
+    if (this.thumbnailUrls.has(url)) return;
+    this.thumbnailUrls.set(url, local);
+    // Evict oldest entries beyond the cap; one insert evicts at most one.
+    for (const oldest of this.thumbnailUrls.keys()) {
+      if (this.thumbnailUrls.size <= ReaderView.THUMB_CAP) break;
+      URL.revokeObjectURL(this.thumbnailUrls.get(oldest)!);
+      this.thumbnailUrls.delete(oldest);
+    }
+  }
   private renderList() {
     if (this.collectionScope()) { this.renderCollectionList(); return; }
     const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
@@ -646,10 +737,11 @@ export class ReaderView extends ItemView {
         for (const item of items) sources.createEl('button', { text: item.name }).onclick = () => this.selectSource(item.id);
       }
     }
-    if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? t('reader.loadingEntries') : this.filter === 'favorites' ? t('reader.emptyFavorites') : this.personalScope() && !this.entries.length ? t('reader.emptyPersonal') : t('reader.emptyFilter') });
+    if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? t('reader.loadingEntries') : this.filter === 'favorites' ? t('reader.emptyFavorites') : this.filter === 'later' ? t('reader.emptyLater') : this.personalScope() && !this.entries.length ? t('reader.emptyPersonal') : t('reader.emptyFilter') });
     // Inside one channel every row would repeat the same source name, so it only appears when sources mix.
     const mixed = new Set(entries.map(entry => entry.sourceId)).size > 1;
-    for (const entry of (this.personalScope() ? entries.slice(0, this.personalLimit) : entries)) {
+    const limit = this.personalScope() ? this.personalLimit : this.renderedCount;
+    for (const entry of entries.slice(0, limit)) {
       const relatedIds = this.relatedContentIds(entry);
       const read = relatedIds.some(id => this.plugin.state.readIds.includes(id));
       const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
@@ -679,9 +771,26 @@ export class ReaderView extends ItemView {
       row.addEventListener('click', () => { void this.openArticle(entry); });
     }
     if (this.personalScope() && entries.length > this.personalLimit) this.list.createEl('button', { text: t('reader.showMoreArticles'), cls: 'qrs-more' }).onclick = () => { this.personalLimit += 100; this.renderList(); };
-    if (this.hasMore && this.filter !== 'favorites') {
+    if (this.hasMore && this.filter !== 'favorites' && this.filter !== 'later') {
       const button = this.list.createEl('button', { text: this.loading ? t('reader.loadingMore') : t('reader.loadEarlier'), cls: 'qrs-more' });
       button.disabled = this.loading; button.addEventListener('click', () => { void this.loadEntries(true); });
+    }
+    // Windowed rendering: the sentinel lazily paints the next page as it scrolls into view.
+    if (!this.personalScope() && entries.length > this.renderedCount) {
+      const remaining = entries.length - this.renderedCount;
+      const sentinel = this.list.createEl('button', { text: t('reader.showMore', { n: Math.min(remaining, ReaderView.PAGE_SIZE) }), cls: 'qrs-more' });
+      sentinel.onclick = () => { this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined; this.renderedCount = Math.min(entries.length, this.renderedCount + ReaderView.PAGE_SIZE); this.renderList(); };
+      sentinel.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); sentinel.click(); } };
+      this.listSentinelObserver?.disconnect();
+      const observer = new IntersectionObserver(items => {
+        if (!items.some(item => item.isIntersecting)) return;
+        observer.disconnect();
+        if (this.listSentinelObserver === observer) this.listSentinelObserver = undefined;
+        this.renderedCount = Math.min(entries.length, this.renderedCount + ReaderView.PAGE_SIZE);
+        this.renderList();
+      }, { root: this.list, rootMargin: '800px' });
+      observer.observe(sentinel);
+      this.listSentinelObserver = observer;
     }
     this.list.scrollTop = scroll;
     if (restoreFocus) this.reader.focus({ preventScroll: true });
@@ -691,10 +800,17 @@ export class ReaderView extends ItemView {
     this.stopRestoring();
     // Keep this unread reading session navigable after opening marks entries read.
     if (this.filter === 'unread') this.unreadSession.add(entry.id);
+    this.expandWindowTo(entry.id);
     const version = ++this.articleVersion; const state = this.plugin.state;
     this.audioDock?.open(entry);
     this.bundle = state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
-    state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000); this.run(() => this.plugin.persist());
+    state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000);
+    // Open time feeds the 30-day source health stats; the queue consumes itself on open.
+    state.readAt[entry.id] = Date.now();
+    const readSet = new Set(state.readIds);
+    for (const id of Object.keys(state.readAt)) if (!readSet.has(id)) delete state.readAt[id];
+    if (this.plugin.isLater(entry.id)) void this.plugin.toggleLater(entry).then(() => { if (!this.closed) this.renderList(); });
+    this.run(() => this.plugin.persist());
     this.mode = entry.origin === 'local' || entry.origin === 'vault' ? 'original'
       : podcastDefaultMode(entry, state.sources, state.settings.followedPodcasts)
         ?? (entry.audio || videoEmbedUrl(entry.videoUrl || entry.link) ? 'original' : state.settings.defaultMode);
@@ -814,7 +930,7 @@ export class ReaderView extends ItemView {
       empty.createEl('button', { cls: 'qrs-welcome-next', text: t('welcome.next') }).onclick = () => { this.welcomeTip = (this.welcomeTip + 1) % tips.length; showTip(); };
       if (!Platform.isMobileApp) {
         const keys = empty.createDiv('qrs-welcome-keys');
-        for (const [key, label] of [['J / K', t('welcome.key.nextPrev')], ['[', t('welcome.key.collapse')], ['/', t('welcome.key.search')]]) { const item = keys.createSpan(); item.createEl('kbd', { text: key }); item.createSpan({ text: label }); }
+        for (const [key, label] of [['J / K', t('welcome.key.nextPrev')], ['[', t('welcome.key.collapse')], ['F', t('welcome.key.favorite')], ['M', t('welcome.key.later')], ['/', t('welcome.key.search')]]) { const item = keys.createSpan(); item.createEl('kbd', { text: key }); item.createSpan({ text: label }); }
       }
       return;
     }

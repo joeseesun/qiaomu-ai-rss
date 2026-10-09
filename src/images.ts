@@ -63,4 +63,19 @@ export class LocalImages {
     await this.queue.catch(() => undefined);
     return new Blob([bytes], { type });
   }
+  async usage(): Promise<{ files: number; bytes: number }> {
+    try {
+      if (!await this.vault.adapter.exists(this.directory)) return { files: 0, bytes: 0 };
+      const { files } = await this.vault.adapter.list(this.directory);
+      const images = files.filter(file => /\/[a-f0-9]{64}\.img$/.test(file));
+      const bytes = (await Promise.all(images.map(async file => { try { return (await this.vault.adapter.stat(file))?.size ?? 0; } catch { return 0; } })))
+        .reduce((total, size) => total + size, 0);
+      return { files: images.length, bytes };
+    } catch { return { files: 0, bytes: 0 }; }
+  }
+  async clear(): Promise<{ files: number; bytes: number }> {
+    const usage = await this.usage();
+    try { if (await this.vault.adapter.exists(this.directory)) await this.vault.adapter.rmdir(this.directory, true); } catch { /* Keep settings flowing if the folder cannot be removed. */ }
+    return usage;
+  }
 }
