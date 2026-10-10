@@ -5,33 +5,34 @@ const ok = (value: unknown) => ({ status: 200, text: JSON.stringify(value) });
 afterEach(() => vi.useRealTimers());
 
 describe('bounded recovery for shared reads', () => {
-  it('recovers a stalled first read without a manual refresh or extra retries per subscriber', async () => {
+  it('shares a slow read without a speculative second request', async () => {
     vi.useFakeTimers();
-    const transport = vi.fn().mockImplementationOnce(() => new Promise(() => {})).mockResolvedValue(ok({ sources: [] }));
+    const transport = vi.fn(() => new Promise<never>(() => {}));
     const api = new RssApi('https://rss.qiaomu.ai', transport);
-    const result = Promise.all([api.sources(), api.sources()]);
+    const result = Promise.allSettled([api.sources(), api.sources()]);
     await vi.advanceTimersByTimeAsync(8001);
-    expect(transport).toHaveBeenCalledTimes(2);
-    await expect(result).resolves.toHaveLength(2);
+    expect(transport).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(12000);
+    expect((await result).every(value => value.status === 'rejected')).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
-  it('accepts the first response when it arrives during the recovery request', async () => {
+  it('accepts a slow first response without duplicating work', async () => {
     vi.useFakeTimers();
     const transport = vi.fn().mockImplementationOnce(() => new Promise(resolve => setTimeout(() => resolve(ok({ sources: [{ id: 'one', name: 'One' }] })), 9000))).mockImplementation(() => new Promise(() => {}));
     const api = new RssApi('https://rss.qiaomu.ai', transport);
     const result = api.sources();
     await vi.advanceTimersByTimeAsync(9001);
     await expect(result).resolves.toMatchObject({ sources: [{ id: 'one' }] });
-    expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
-  it.each([502, 503, 504])('recovers HTTP %i once', async status => {
+  it.each([502, 504])('recovers HTTP %i once', async status => {
     vi.useFakeTimers();
     const transport = vi.fn().mockResolvedValueOnce({ status, text: '' }).mockResolvedValue(ok({ entries: [] }));
     const result = new RssApi('https://rss.qiaomu.ai', transport).entries();
     // Attach before advancing timers so the old failure is not unhandled.
     const observed = result.then(value => ({ value }), error => ({ error }));
-    await vi.advanceTimersByTimeAsync(301);
+    await vi.advanceTimersByTimeAsync(2001);
     expect(await observed).toEqual({ value: { entries: [] } });
     expect(transport).toHaveBeenCalledTimes(2);
   });
@@ -39,11 +40,11 @@ describe('bounded recovery for shared reads', () => {
     vi.useFakeTimers();
     const transport = vi.fn().mockRejectedValueOnce(new Error('net::ERR_CONNECTION_RESET')).mockResolvedValue(ok({ entries: [] }));
     const observed = new RssApi('https://rss.qiaomu.ai', transport).entries().then(value => ({ value }), error => ({ error }));
-    await vi.advanceTimersByTimeAsync(301);
+    await vi.advanceTimersByTimeAsync(2001);
     expect(await observed).toEqual({ value: { entries: [] } });
     expect(transport).toHaveBeenCalledTimes(2);
   });
-  it.each([400, 401, 403, 404, 429])('does not retry terminal HTTP %i', async status => {
+  it.each([400, 401, 403, 404, 429, 503])('does not retry terminal HTTP %i', async status => {
     const transport = vi.fn(async () => ({ status, text: '' }));
     await expect(new RssApi('https://rss.qiaomu.ai', transport).entries()).rejects.toThrow(`HTTP ${status}`);
     expect(transport).toHaveBeenCalledOnce();
@@ -55,7 +56,7 @@ describe('bounded recovery for shared reads', () => {
     const observed = api.entries().catch(error => error.message);
     await vi.advanceTimersByTimeAsync(20001);
     expect(await observed).toContain('请求超时');
-    expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
     transport.mockResolvedValueOnce(ok({ entries: [] }) as never);
     await expect(api.entries()).resolves.toEqual({ entries: [] });
@@ -82,11 +83,10 @@ describe('late transport isolation and diagnostics', () => {
     releases[0](ok({ entries: [{ id: 'old', sourceId: 'source', title: 'Old' }] }));
     await vi.advanceTimersByTimeAsync(1);
     const shared = api.entries();
-    expect(transport).toHaveBeenCalledTimes(3);
-    releases[2](ok({ entries: [] }));
+    expect(transport).toHaveBeenCalledTimes(2);
+    releases[1](ok({ entries: [] }));
     expect(await current).toEqual({ entries: [] });
     expect(await shared).toEqual({ entries: [] });
-    releases[1](ok({ entries: [] }));
     await vi.advanceTimersByTimeAsync(1);
     expect(vi.getTimerCount()).toBe(0);
   });

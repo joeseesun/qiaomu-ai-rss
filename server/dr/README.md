@@ -42,3 +42,16 @@ Before DELETE, admin mutations and source visibility changes, primary middleware
 ## Routing rollback
 
 Remove only this Worker's two formal routes, then restore the recorded `rss.qiaomu.ai` DNS record to the primary DNS-only address. Keep the control preview, services and deletion middleware alive until a controlled middleware removal. DNS-only clients may continue using origin until their DNS cache expires; rollback is not instantaneous. The unmodified Reader `server.js` is backed up under `.deploy-backups/rss-dr-20261006/` on primary. Do not overwrite subsequent application changes from that file wholesale.
+
+## Primary public read cache (2026-10-11)
+
+`ensure-gate.py` optionally mounts `public-read-cache.cjs` when that module is present beside it. Place the module from `server/public-read-cache.cjs` there only after validation. The cache is installed after compression/security headers and before session lookup. It does not replace the deletion gate, Worker, standby, or authentication. The data stamp includes the configured SQLite file and WAL; requests observe data changes without waiting for TTL. Authenticated reads always reach existing handlers.
+
+Validate unit and HTTP integration separately (HTTP integration uses the backend's installed Express, with no new plugin dependency):
+
+```
+node --test server/public-read-cache.check.cjs
+QMREADER_MODULES=/path/to/qmreader node --test server/dr/public-read-cache-http.integration.cjs
+```
+
+Before mounting, back up the current `server.js`, `ensure-gate.py` and any existing cache module. Syntax-check, restart only qmreader, and verify anonymous list/detail routes, compact/legacy variants, authentication bypass and existing standby checks. Roll back by restoring those exact files and removing the new module only if none existed previously, then restart qmreader. Restoring `server.js` alone is insufficient because ExecStartPre remounts the middleware. Never use an old full checkout to overwrite later production edits.

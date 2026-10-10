@@ -39,7 +39,7 @@ describe('bounded disk image cache', () => {
     requestUrl.mockResolvedValue({status: 200, arrayBuffer: new Uint8Array([137,80,78,71,13,10,26,10]).buffer});
     const {images, files} = cache();
     await Promise.all([images.load('https://example.com/photo.png'), images.load('https://example.com/photo.png')]);
-    expect(requestUrl).toHaveBeenCalledTimes(1); expect(files.size).toBe(1);
+    expect(requestUrl).toHaveBeenCalledTimes(1); await images.flush(); expect(files.size).toBe(1);
     requestUrl.mockRejectedValue(new Error('offline'));
     const blob = await images.load('https://example.com/photo.png');
     expect(blob.type).toBe('image/png'); expect(requestUrl).toHaveBeenCalledTimes(1);
@@ -51,7 +51,7 @@ describe('bounded disk image cache', () => {
     requestUrl.mockResolvedValue({status:200,arrayBuffer:new TextEncoder().encode('<svg/>').buffer});
     const {images,files}=cache();
     const blob=await images.load('https://example.com/badge');
-    expect(blob.type).toBe('image/png'); expect([...files.values()][0]).toEqual(png);
+    await images.flush(); expect(blob.type).toBe('image/png'); expect([...files.values()][0]).toEqual(png);
     requestUrl.mockRejectedValue(new Error('offline'));
     expect((await images.load('https://example.com/badge')).type).toBe('image/png');
     expect(requestUrl).toHaveBeenCalledTimes(1); expect(svgPng).toHaveBeenCalledTimes(1);
@@ -74,6 +74,30 @@ describe('bounded disk image cache', () => {
     await expect(images.load('https://example.com/large')).rejects.toThrow('8 MB'); expect(files.size).toBe(0);
     for(let i=0;i<102;i++)files.set('cache/'+i.toString(16).padStart(64,'0')+'.img',new Uint8Array([1]).buffer);
     requestUrl.mockResolvedValue({status:200,arrayBuffer:new Uint8Array([137,80,78,71]).buffer});
-    await images.load('https://example.com/small'); expect(files.size).toBe(100);
+    await images.load('https://example.com/small'); await images.flush(); expect(files.size).toBe(100);
   });
+});
+it('makes a downloaded image readable while disk storage is stalled, without redownloading', async () => {
+  requestUrl.mockReset();
+  requestUrl.mockResolvedValue({status:200,arrayBuffer:new Uint8Array([137,80,78,71]).buffer});
+  let release!: () => void;
+  const adapter = { exists: async () => false, mkdir: async () => {}, writeBinary: () => new Promise<void>(resolve => { release = resolve; }), list: async () => ({ files: [] }) };
+  const images = new LocalImages({adapter} as unknown as Vault, 'cache');
+  let readable = false;
+  const first = images.load('https://example.com/slow-disk').then(blob => { readable = true; return blob; });
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+  expect(readable).toBe(true);
+  expect((await images.load('https://example.com/slow-disk')).type).toBe('image/png');
+  expect(requestUrl).toHaveBeenCalledOnce();
+  release(); await first;
+});
+it('clear waits for outstanding writes and blocks late downloads from repopulating disk', async () => {
+  requestUrl.mockReset();
+  let finish!: (value: unknown) => void;
+  requestUrl.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const adapter={exists:vi.fn(async()=>false),writeBinary:vi.fn(),list:async()=>({files:[]}),rmdir:vi.fn(),mkdir:vi.fn()};
+  const images=new LocalImages({adapter} as unknown as Vault,'cache');
+  const downloading=images.load('https://example.com/late'); await vi.waitFor(()=>expect(finish).toBeTypeOf('function'));
+  await images.clear(); finish({status:200,arrayBuffer:new Uint8Array([137,80,78,71]).buffer}); await downloading; await images.flush();
+  expect(adapter.writeBinary).not.toHaveBeenCalled();
 });
