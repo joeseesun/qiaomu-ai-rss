@@ -1,4 +1,5 @@
 import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCuratedPages, filterCuratedEntries, keepCuratedEntry, pickedSources } from './curated-sources';
+import type { RssApi } from './api';
 import type { CollectionItem } from './collection';
 import { todayLabel } from './daily-note';
 import { groupsInOrder, personalSources } from './personal-library';
@@ -112,6 +113,7 @@ export class ReaderView extends ItemView {
   private featuredEpisodes: Entry[] = [];
   private loading = false;
   private articleLoading = false;
+  private articleFailed = false;
   private requestedMode: Mode = 'original';
   private focused = false;
   private appearanceOpen = false;
@@ -581,13 +583,7 @@ export class ReaderView extends ItemView {
       }
       // The catalog is supplementary: use the last known channels while it
       // refreshes and never wait for it before showing the article page.
-      void api.sources(force).then(async sources => {
-        if (this.closed || version !== this.listVersion || state !== this.plugin.state) return;
-        state.sources = sources.sources; this.renderChannel(); this.renderFilters();
-        await this.plugin.persist();
-      }).catch(() => {
-        if (!this.closed && version === this.listVersion && !this.status.textContent) this.status.setText(t('reader.channelsFailed'));
-      });
+      void this.refreshCatalog(api, version, force);
       const page = await api.entries(this.source, more ? this.cursor : '');
       if (this.closed || version !== this.listVersion) return;
       const pageEntries = filterCuratedEntries(state, this.source || picked !== null ? page.entries : qiaomuFeaturedEntries(page.entries)).filter(entry => !this.plugin.articleDeleted(entry));
@@ -614,6 +610,43 @@ export class ReaderView extends ItemView {
     } finally {
       if (!this.closed && version === this.listVersion) { this.loading = false; this.refreshButton.removeClass('is-loading'); this.renderList(); }
     }
+  }
+  private catalogFeedback(message: string, retry: () => Promise<void>) {
+    const previous = this.status.querySelector('.qrs-catalog-feedback');
+    if (this.status.textContent && !previous) return; // Keep primary list errors visible.
+    previous?.remove();
+    const feedback = this.status.createDiv('qrs-catalog-feedback');
+    feedback.createSpan({ text: message });
+    const button = feedback.createEl('button', { text: t('common.retry'), cls: 'qrs-feedback-retry' });
+    button.onclick = () => { button.disabled = true; void retry().finally(() => { button.disabled = false; }); };
+  }
+  private async refreshCatalog(api: RssApi, version: number, force: boolean) {
+    const state = this.plugin.state;
+    const current = () => !this.closed && version === this.listVersion && state === this.plugin.state;
+    let result: Awaited<ReturnType<RssApi['sources']>>;
+    try { result = await api.sources(force); }
+    catch (error) {
+      if (!current()) return;
+      console.warn('[Qiaomu RSS] Catalog request failed', error);
+      this.catalogFeedback(t(state.sources.length ? 'reader.catalogCached' : 'reader.channelsFailed'), () => this.refreshCatalog(api, version, true));
+      return;
+    }
+    if (!current()) return;
+    state.sources = result.sources;
+    // A local UI/storage error must not be reported as a failed network request.
+    const apply = async () => {
+      if (!current()) return;
+      try {
+        this.renderChannel(); this.renderFilters();
+        await this.plugin.persist();
+        if (current()) this.status.querySelector('.qrs-catalog-feedback')?.remove();
+      } catch (error) {
+        if (!current()) return;
+        console.warn('[Qiaomu RSS] Catalog state update failed', error);
+        this.catalogFeedback(t('reader.catalogSaveFailed'), apply);
+      }
+    };
+    await apply();
   }
   private visibleEntries(): Entry[] {
     const state = this.plugin.state;
@@ -815,7 +848,7 @@ export class ReaderView extends ItemView {
     this.list.scrollTop = scroll;
     if (restoreFocus) this.reader.focus({ preventScroll: true });
   }
-  private async openArticle(entry: Entry, resume?: ChannelState) {
+  private async openArticle(entry: Entry, resume?: ChannelState, preferredMode?: Mode) {
     if (this.plugin.articleDeleted(entry)) { new Notice(t('moderation.deleted')); return; }
     this.stopRestoring();
     // Keep this unread reading session navigable after opening marks entries read.
@@ -833,11 +866,12 @@ export class ReaderView extends ItemView {
     this.run(() => this.plugin.persist());
     this.mode = entry.origin === 'local' || entry.origin === 'vault' ? 'original'
       : entry.podcastSlug ? 'original' : state.settings.defaultMode;
+    this.requestedMode = preferredMode ?? resume?.mode ?? this.mode;
+    this.mode = this.availableMode(this.requestedMode);
     const ready = this.mode === 'original' ? !!this.bundle.entry.content?.trim() : this.mode === 'rewrite' ? !!this.bundle.rewrite?.body.trim() : !!this.bundle.translation?.content?.length;
-    this.message = ''; this.articleLoading = !ready; this.reader.setAttribute('aria-busy', String(this.articleLoading));
+    this.message = ''; this.articleFailed = false; this.articleLoading = !ready; this.reader.setAttribute('aria-busy', String(this.articleLoading));
     this.contentEl.addClass('qrs-has-article'); this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
-    if (resume) { this.mode = resume.mode; this.pendingScroll = { listTop: resume.listTop, readerTop: resume.readerTop }; this.renderReader(); this.restoreOffsets(); }
-    this.requestedMode = this.mode;
+    if (resume) { this.pendingScroll = { listTop: resume.listTop, readerTop: resume.readerTop }; this.renderReader(); this.restoreOffsets(); }
     if (entry.origin === 'local') {
       this.bundle = { entry, rewrite: null, translation: null, fetchedAt: Date.now() };
       this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
@@ -859,6 +893,7 @@ export class ReaderView extends ItemView {
       this.plugin.remember(bundle); this.run(() => this.plugin.persist());
     } catch (error) {
       if (this.closed || version !== this.articleVersion) return;
+      this.articleFailed = true;
       const cached = this.bundle.fetchedAt ? t('reader.cachedAt', { date: new Date(this.bundle.fetchedAt).toLocaleString() }) : t('reader.reopenRetry');
       this.message = `${error instanceof Error ? error.message : t('reader.contentFailed')}${cached}`;
     }
@@ -875,10 +910,19 @@ export class ReaderView extends ItemView {
   showSavedArticle(bundle: Bundle, mode: Mode) {
     if (this.plugin.articleDeleted(bundle.entry)) { new Notice(t('moderation.deleted')); return; }
     this.stopRestoring();
-    this.articleVersion++; this.articleLoading = false;
+    this.articleVersion++; this.articleLoading = false; this.articleFailed = false;
     this.bundle = bundle; this.mode = mode; this.message = ''; this.audioDock?.open(bundle.entry);
     this.reader.setAttribute('aria-busy', 'false'); this.contentEl.addClass('qrs-has-article');
     this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
+  }
+  private readerFeedback(parent: Element, bundle: Bundle) {
+    const feedback = parent.createDiv({ cls: 'qrs-feedback', attr: { role: 'status' } });
+    feedback.createSpan({ text: this.message });
+    if (this.articleFailed) {
+      const retry = feedback.createEl('button', { text: t('common.retry'), cls: 'qrs-feedback-retry' });
+      retry.onclick = () => { if (this.bundle?.entry.id === bundle.entry.id) void this.openArticle(bundle.entry, undefined, this.requestedMode); };
+    }
+    return feedback;
   }
   private noteCurrent() {
     const bundle = this.bundle; if (!bundle) return;
@@ -1041,7 +1085,7 @@ export class ReaderView extends ItemView {
     if (previous) {
       previous.querySelector('.qrs-feedback')?.remove();
       if (this.message) {
-        const feedback = previous.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
+        const feedback = this.readerFeedback(previous, bundle);
         previous.querySelector('h1')?.after(feedback);
       }
       this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); return;
@@ -1075,7 +1119,7 @@ export class ReaderView extends ItemView {
       notice.createSpan({ text: t('reader.wechatNotice') });
       notice.createEl('a', { text: t('reader.wechatOriginal'), href: original, attr: { target: '_blank', rel: 'noopener noreferrer' } });
     }
-    if (this.message) article.createDiv({ cls: 'qrs-feedback', text: this.message, attr: { role: 'status' } });
+    if (this.message) this.readerFeedback(article, bundle);
     if (!this.articleLoading) renderMedia(article, bundle.entry);
     try {
       if (bundle.entry.origin === 'vault' && bundle.entry.markdown != null) {

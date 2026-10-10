@@ -749,3 +749,8 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 
 /* Paused subscription status */
 .qrs-library-paused { display: inline-flex; align-items: center; gap: 4px; color: var(--qrs-muted); font-size: 12px; }
+
+.qrs-root .qrs-feedback-retry { margin-inline-start:8px; height:28px; padding:0 8px; border:0; border-radius:4px; background:transparent; color:var(--qrs-fg); box-shadow:inset 0 0 0 1px var(--qrs-border); font-size:12px; cursor:pointer; }
+.qrs-root .qrs-feedback-retry:hover { background:var(--qrs-hover); }
+.qrs-root .qrs-feedback-retry:focus-visible { outline:1px solid var(--qrs-muted); outline-offset:2px; }
+.qrs-root .qrs-feedback-retry:disabled { opacity:0.5; cursor:wait; }

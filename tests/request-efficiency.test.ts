@@ -26,7 +26,7 @@ describe('shared read requests', () => {
     vi.useFakeTimers();
     let attempt = 0;
     const transport = vi.fn(async () => {
-      if (++attempt === 1) return new Promise<never>(() => {});
+      if (++attempt <= 2) return new Promise<never>(() => {});
       return reply({ entries: [entry] });
     });
     const api = new RssApi('https://rss.qiaomu.ai', transport);
@@ -35,7 +35,7 @@ describe('shared read requests', () => {
     await vi.advanceTimersByTimeAsync(20_001);
     expect((await outcomes).every(result => result.status === 'rejected')).toBe(true);
     expect((await api.entries()).entries).toHaveLength(1);
-    expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport).toHaveBeenCalledTimes(3);
     expect(vi.getTimerCount()).toBe(0);
   });
 

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { bundleSchema, entrySchema, pageSchema, rewriteSchema, serviceUrl, sourceSchema, translationSchema, type Bundle, type Entry } from './model';
 import { youtubeEmbedUrl } from './media';
 import { fail, t } from './i18n';
+import { recoverRead, type ReadDiagnostic } from './read-request';
 const remoteEntrySchema = entrySchema.transform(entry => ({ ...entry, origin: 'qiaomu' as const, markdown: undefined, markdownPath: undefined }));
 export interface HttpResponse { status: number; text: string }
 export type Transport = (url: string) => Promise<HttpResponse>;
@@ -49,16 +50,16 @@ export class RssApi {
   private base: string;
   private requests = new Map<string, Promise<HttpResponse>>();
   private catalog?: { expires: number; sources: z.infer<typeof sourceSchema>[] };
+  private diagnostics: ReadDiagnostic[] = [];
+  readDiagnostics() { return this.diagnostics.map(event => ({ ...event })); }
   constructor(base: string, private transport: Transport) { this.base = serviceUrl(base); }
   private request(path: string): Promise<HttpResponse> {
     const existing = this.requests.get(path);
     if (existing) return existing;
-    let timer: number | undefined;
-    const pending = Promise.race([
-      this.transport(this.base + path),
-      new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error(t('error.requestTimeout'))), 20000); }),
-    ]).finally(() => {
-      window.clearTimeout(timer);
+    const pending = recoverRead(this.base + path, this.transport, event => {
+      this.diagnostics.push(event);
+      if (this.diagnostics.length > 60) this.diagnostics.shift();
+    }).finally(() => {
       if (this.requests.get(path) === pending) this.requests.delete(path);
     });
     this.requests.set(path, pending);

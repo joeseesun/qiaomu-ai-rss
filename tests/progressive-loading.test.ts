@@ -45,7 +45,7 @@ describe('progressive article loading', () => {
       return { status: 503, text: '' };
     });
     const assertion = expect(api.article(entry.id)).rejects.toThrow('HTTP 503');
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(301);
     await assertion;
     await vi.advanceTimersByTimeAsync(20001);
     expect(vi.getTimerCount()).toBe(0);
