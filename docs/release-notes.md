@@ -1,15 +1,15 @@
 ## 中文
 
-- 多个阅读窗和重复打开共享正在进行的相同请求，减少重复正文、改写、翻译与频道请求。完成后的正文请求仍读最新数据，失败或超时后可以重新尝试。
-- 频道目录在本机复用 60 秒；点击刷新会重新获取。切换服务地址时不会复用原服务的请求或目录。
-- 多频道同时返回时，合并同一帧的列表渲染，减少重复创建列表。
+- 频道和文章读取遇到连接中断、502/503/504 等暂时性错误时自动重试一次；请求长时间无响应时也会尝试一次恢复，总等待上限仍为 20 秒。首次请求迟到仍可恢复页面，相同请求继续共享，避免重复点击放大重试。
+- 有原文缓存时立即显示，改写返回后再切换；保留用户手动选择的阅读版本。加载失败可在正文旁直接重试。
+- 频道目录失败时保留旧频道和文章，重试只更新目录；本地更新失败单独提示，不再误报为频道加载失败。增加仅在本机内存保存的有限请求诊断，不记录正文、查询参数或凭据。
 
-已验证桌面 Obsidian：同一客户端模拟 100 次并发打开同篇文章，网络请求由 300 次降至 3 次；目录连续读取 20 次复用一次请求。这些是重复操作测试，不代表服务器可承载的用户数量。保留默认乔木改写、手动版本选择和删除校验。未进行手机真机测试。
+已在桌面 Obsidian 中验证 12 项交互，包括超时恢复、503 恢复、断网后重试、旧响应隔离、缓存阅读和本地保存失败。本机真实链路仍可能超过 20 秒；自动重试不能保证持续网络故障时加载成功。未进行手机真机测试。
 
 ## English
 
-- Share in-flight identical reads across reader views and repeated opens. Completed article reads remain fresh, and failed or timed-out requests remain retryable.
-- Reuse the source catalog locally for 60 seconds; explicit refresh bypasses it. Changing the service origin isolates requests and cached catalogs.
-- Coalesce simultaneous channel updates into one list render per animation frame.
+- Retry transient connection failures and HTTP 502/503/504 once. A stalled read gets one recovery request while retaining a 20-second overall deadline. The original response can still succeed; concurrent callers share the entire recovery operation.
+- Show a cached original immediately while the preferred rewrite refreshes. Preserve manual reading-version choices and offer an inline retry after failure.
+- Preserve existing channels and articles when catalog refresh fails. Retry only the failed catalog or local update, and distinguish local update errors from fetch failures. Keep bounded diagnostics in local memory without response bodies, query values, or credentials.
 
-Verified in desktop Obsidian: 100 concurrent simulated opens of the same article in one client reduce network requests from 300 to 3; 20 sequential catalog reads reuse one request. These are duplicate-operation tests, not server capacity claims. Preferred rewrites, manual version choices and deletion checks remain supported. No physical-phone verification.
+Verified 12 interaction checks in desktop Obsidian, including recovery, offline retry, stale-response isolation, cached reading and local save failures. Real network requests can still exceed 20 seconds; retries cannot guarantee recovery during a sustained outage. Physical phones were not tested.
