@@ -1,3 +1,4 @@
+import { SaveQueue } from './save-queue';
 import { CuratedSourcePicker } from './curated-source-picker';
 import { applyCuratedPicks } from './curated-sources';
 import { watchPaneDividers } from "./pane-dividers";
@@ -50,7 +51,7 @@ export default class QiaomuRssPlugin extends Plugin {
   private collectionStopped = false;
   private lastNote: TFile | null = null;
   private libraryEdits: Promise<void> = Promise.resolve();
-  private saving: Promise<void> = Promise.resolve();
+  private saves = new SaveQueue(async () => { await this.saveSplit(); notifyHomeChanged(this.app, this.manifest.id); });
   private apiClient?: RssApi;
   private apiBase = '';
   private dailyNoteWrite: Promise<unknown> = Promise.resolve();
@@ -142,14 +143,17 @@ export default class QiaomuRssPlugin extends Plugin {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice(t('notice.localCopyMissingShort')));
     });
   }
-  onunload() { this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
+  onunload() { this.apiClient?.dispose(); this.images?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
   api(): RssApi {
     const base = this.state.settings.baseUrl;
     if (this.apiClient && this.apiBase === base) return this.apiClient;
+    this.apiClient?.dispose();
     this.apiBase = base;
     this.apiClient = new RssApi(base, async url => {
-      const response = await requestUrl({ url, method: 'GET', headers: { Accept: 'application/json' }, throw: false });
-      return { status: response.status, text: response.text };
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (new URL(url).pathname.endsWith('/entries')) headers['X-Rss-List'] = 'reader-v1';
+      const response = await requestUrl({ url, method: 'GET', headers, throw: false });
+      return { status: response.status, text: response.text, headers: response.headers };
     });
     return this.apiClient;
   }
@@ -322,22 +326,21 @@ export default class QiaomuRssPlugin extends Plugin {
   persist(): Promise<void> {
     applyCuratedPicks(this.state);
     if (this.state.deletedEntries[this.state.settings.baseUrl]?.length) applyDeletedEntries(this.state, [], this.state.settings.baseUrl);
-    this.saving = this.saving.catch(() => undefined).then(() => this.saveSplit());
-    // Read state, favorites and fetched entries all persist through here; Home coalesces bursts.
-    void this.saving.then(() => notifyHomeChanged(this.app, this.manifest.id), () => undefined);
-    return this.saving;
+    return this.saves.request();
   }
-  private cacheDirty = true;
+  private cacheRevision = 1;
+  private savedCacheRevision = 0;
   /** Entry bodies live in a rebuildable side file; only a body change may rewrite it. */
-  markBodiesDirty() { this.cacheDirty = true; }
+  markBodiesDirty() { this.cacheRevision++; }
   private cachePath() { return `${this.app.vault.configDir}/plugins/${this.manifest.id}/content-cache.json`; }
   private async saveSplit(): Promise<void> {
     // data.json keeps config + metadata; entry bodies go to a rebuildable cache file,
     // rewritten only when bodies actually changed (scroll checkpoints must not rewrite megabytes).
+    const revision = this.cacheRevision;
     const { slim, cache } = splitContentCache(this.state);
     await this.saveData(slim);
-    if (!this.cacheDirty) return;
-    try { await this.app.vault.adapter.write(this.cachePath(), JSON.stringify(cache)); this.cacheDirty = false; }
+    if (revision === this.savedCacheRevision) return;
+    try { await this.app.vault.adapter.write(this.cachePath(), JSON.stringify(cache)); this.savedCacheRevision = revision; }
     catch { /* The body cache is rebuildable from feeds; a failed write must not break state save. */ }
   }
   private async loadContentCache(): Promise<void> {

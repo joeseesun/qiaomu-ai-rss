@@ -43,26 +43,26 @@ try {
   let api = new Api('https://rss.qiaomu.ai', async url => {
     if (url.endsWith('/rewrite')) return reply({ rewrite: null });
     if (url.endsWith('/translation')) return reply({ translation: null });
-    return ++detailCalls === 1 ? { status: 503, text: '' } : reply({ entry });
+    return ++detailCalls === 1 ? { status: 502, text: '' } : reply({ entry });
   });
   p.api = () => api; v.entries = [preview]; v.renderList();
   let started = Date.now(); v.list.querySelector('.qrs-entry').click();
   await waitFor(() => body().includes('正文已恢复'));
-  check('actual article click recovers HTTP 503 once', detailCalls === 2 && !v.articleFailed, { ms: Date.now() - started });
+  check('actual article click recovers HTTP 502 once', detailCalls === 2 && !v.articleFailed, { ms: Date.now() - started });
 
   detailCalls = 0;
   api = new Api('https://rss.qiaomu.ai', async url => {
     if (url.endsWith('/rewrite')) return reply({ rewrite: null });
     if (url.endsWith('/translation')) return reply({ translation: null });
-    return ++detailCalls === 1 ? new Promise(() => {}) : reply({ entry });
+    detailCalls++; return new Promise(resolve => setTimeout(() => resolve(reply({ entry })), 8500));
   }); p.api = () => api; started = Date.now(); await v.openArticle(preview);
-  check('stalled detail recovers automatically within 9 seconds', detailCalls === 2 && Date.now() - started < 9000 && body().includes('正文已恢复'), { ms: Date.now() - started });
+  check('slow detail stays one request and appears within 9 seconds', detailCalls === 1 && Date.now() - started < 9000 && body().includes('正文已恢复'), { ms: Date.now() - started });
 
   api = new Api('https://rss.qiaomu.ai', () => new Promise(() => {})); p.api = () => api;
   started = Date.now(); await v.openArticle(preview, undefined, 'original');
   check('offline stops loading at total deadline and offers inline retry', Date.now() - started < 21000 && !v.articleLoading && v.articleFailed && v.reader.querySelector('.qrs-feedback-retry'), { ms: Date.now() - started });
   await capture('qrs-article-retry');
-  api.transport = async url => reply(url.endsWith('/rewrite') ? { rewrite: { body: 'Available rewrite' } } : url.endsWith('/translation') ? { translation: null } : { entry });
+  api = new Api('https://rss.qiaomu.ai', async url => reply(url.endsWith('/rewrite') ? { rewrite: { body: 'Available rewrite' } } : url.endsWith('/translation') ? { translation: null } : { entry }));
   v.reader.querySelector('.qrs-feedback-retry').click();
   await waitFor(() => !v.articleFailed && !v.articleLoading && body().includes('正文已恢复'));
   check('retry button recovers while retaining selected original', v.mode === 'original' && !v.reader.querySelector('.qrs-feedback-retry'));

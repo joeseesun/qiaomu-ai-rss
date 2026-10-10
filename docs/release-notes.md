@@ -1,15 +1,15 @@
 ## 中文
 
-- 频道和文章读取遇到连接中断、502/503/504 等暂时性错误时自动重试一次；请求长时间无响应时也会尝试一次恢复，总等待上限仍为 20 秒。首次请求迟到仍可恢复页面，相同请求继续共享，避免重复点击放大重试。
-- 有原文缓存时立即显示，改写返回后再切换；保留用户手动选择的阅读版本。加载失败可在正文旁直接重试。
-- 频道目录失败时保留旧频道和文章，重试只更新目录；本地更新失败单独提示，不再误报为频道加载失败。增加仅在本机内存保存的有限请求诊断，不记录正文、查询参数或凭据。
+- 阅读列表只更新变化的文章行，翻页追加内容；连续保存合并写入，图片下载后立即显示，后台整理本地缓存。
+- 当前阅读优先，频道请求受并发限制。取消等待 8 秒就补发请求的行为；连接失败和 408/502/504 最多恢复一次，多个请求共享重试预算。遇到 429/503 遵守冷却与 Retry-After，避免服务繁忙时放大请求。
+- 列表使用兼容旧服务的轻量响应，只省去插件不使用的统计等字段；标题、摘要、图片、分页和详情保持完整。自有 API 已部署公开读取的短时共享缓存，认证请求绕过，修改和数据变化使缓存失效。
 
-已在桌面 Obsidian 中验证 12 项交互，包括超时恢复、503 恢复、断网后重试、旧响应隔离、缓存阅读和本地保存失败。本机真实链路仍可能超过 20 秒；自动重试不能保证持续网络故障时加载成功。未进行手机真机测试。
+本机桌面 Obsidian 已验证列表、焦点、阅读、保存和失败恢复。服务器小样本验证了响应体缩小和缓存命中；未进行最大容量压测或手机真机测试。更新后保留设置、收藏、阅读记录和缓存。
 
 ## English
 
-- Retry transient connection failures and HTTP 502/503/504 once. A stalled read gets one recovery request while retaining a 20-second overall deadline. The original response can still succeed; concurrent callers share the entire recovery operation.
-- Show a cached original immediately while the preferred rewrite refreshes. Preserve manual reading-version choices and offer an inline retry after failure.
-- Preserve existing channels and articles when catalog refresh fails. Retry only the failed catalog or local update, and distinguish local update errors from fetch failures. Keep bounded diagnostics in local memory without response bodies, query values, or credentials.
+- Reuse unchanged article rows and append pages. Coalesce durable saves and display downloaded images before background cache maintenance finishes.
+- Prioritize reading and bound channel concurrency. Remove speculative duplicate reads after eight seconds. Retry settled connection failures and HTTP 408/502/504 at most once within a shared retry budget; cool down on 429/503 and honor Retry-After.
+- Negotiate lean list responses without removing titles, summaries, images, pagination or article content. The self-hosted API now shares short-lived anonymous responses, bypasses authenticated requests, and invalidates on mutations and data changes.
 
-Verified 12 interaction checks in desktop Obsidian, including recovery, offline retry, stale-response isolation, cached reading and local save failures. Real network requests can still exceed 20 seconds; retries cannot guarantee recovery during a sustained outage. Physical phones were not tested.
+Verified desktop Obsidian interactions and small production API samples. These checks do not establish maximum server capacity or physical-phone compatibility. Existing settings, favorites, reading history and caches are preserved on upgrade.

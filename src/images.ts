@@ -18,16 +18,25 @@ export function imageMime(data: ArrayBuffer): string | null {
 export class LocalImages {
   private pending = new Map<string, Promise<Blob>>();
   private queue: Promise<void> = Promise.resolve();
+  private ready = new Map<string, Blob>();
+  private queuedBytes = 0;
+  private queuedWrites = 0;
+  private generation = 0;
+  flush() { return this.queue; }
+  dispose() { this.generation++; this.ready.clear(); }
   constructor(private vault: Vault, private directory: string) {}
   load(url: string, refresh = false): Promise<Blob> {
     const safe = safeUrl(url);
     if (!safe) return Promise.reject(new Error(t('error.imageUrlInvalid')));
+    const downloaded = this.ready.get(safe);
+    if (downloaded && !refresh) return Promise.resolve(downloaded);
     const existing = this.pending.get(safe);
     if (existing) return existing;
     const promise = this.read(safe, refresh).finally(() => this.pending.delete(safe));
     this.pending.set(safe, promise); return promise;
   }
   private async read(url: string, refresh: boolean): Promise<Blob> {
+    const generation = this.generation;
     const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(url));
     const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
     const path = `${this.directory}/${hash}.img`;
@@ -47,10 +56,17 @@ export class LocalImages {
     if (!imageMime(data)) data = await svgPng(data);
     const type = data && imageMime(data);
     if (!data || !type || data.byteLength > MAX_IMAGE) throw new Error(t('error.imageUnsupported'));
-    const bytes = data;
+    const bytes = data, blob = new Blob([bytes], { type });
+    // A slow disk must neither delay display nor cause a duplicate download.
+    // Bound buffers waiting for storage; the rendered blob remains usable if caching is skipped.
+    if (generation !== this.generation || this.queuedBytes + bytes.byteLength > 32 * 1024 * 1024 || this.queuedWrites >= 16) return blob;
+    this.ready.set(url, blob); this.queuedBytes += bytes.byteLength; this.queuedWrites++;
     this.queue = this.queue.catch(() => undefined).then(async () => {
+      if (generation !== this.generation) return;
       if (!await this.vault.adapter.exists(this.directory)) await this.vault.adapter.mkdir(this.directory);
       await this.vault.adapter.writeBinary(path, bytes);
+      // Only the last queued write scans/evicts the cache, not every downloaded image.
+      if (this.queuedWrites > 1) return;
       const { files } = await this.vault.adapter.list(this.directory);
       const items = (await Promise.all(files.filter(file => /\/[a-f0-9]{64}\.img$/.test(file)).map(async file => ({ file, stat: await this.vault.adapter.stat(file) })))).sort((a, b) => (b.stat?.mtime || 0) - (a.stat?.mtime || 0));
       let total = 0;
@@ -58,10 +74,11 @@ export class LocalImages {
         total += item.stat?.size || 0;
         if (index >= 100 || total > MAX_CACHE) await this.vault.adapter.remove(item.file);
       }
+    }).catch(() => undefined).finally(() => {
+      this.queuedBytes -= bytes.byteLength; this.queuedWrites--;
+      if (this.ready.get(url) === blob) this.ready.delete(url);
     });
-    // A cache write failure must not prevent reading a successfully downloaded image.
-    await this.queue.catch(() => undefined);
-    return new Blob([bytes], { type });
+    return blob;
   }
   async usage(): Promise<{ files: number; bytes: number }> {
     try {
@@ -74,6 +91,8 @@ export class LocalImages {
     } catch { return { files: 0, bytes: 0 }; }
   }
   async clear(): Promise<{ files: number; bytes: number }> {
+    this.generation++; this.ready.clear();
+    await this.flush();
     const usage = await this.usage();
     try { if (await this.vault.adapter.exists(this.directory)) await this.vault.adapter.rmdir(this.directory, true); } catch { /* Keep settings flowing if the folder cannot be removed. */ }
     return usage;

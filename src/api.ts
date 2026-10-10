@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { bundleSchema, entrySchema, pageSchema, rewriteSchema, serviceUrl, sourceSchema, translationSchema, type Bundle, type Entry } from './model';
 import { youtubeEmbedUrl } from './media';
 import { fail, t } from './i18n';
+import { ReadBudget } from './read-budget';
 import { recoverRead, type ReadDiagnostic } from './read-request';
 const remoteEntrySchema = entrySchema.transform(entry => ({ ...entry, origin: 'qiaomu' as const, markdown: undefined, markdownPath: undefined }));
-export interface HttpResponse { status: number; text: string }
+export interface HttpResponse { status: number; text: string; headers?: Record<string, string> }
 export type Transport = (url: string) => Promise<HttpResponse>;
 class ApiStatusError extends Error {
   constructor(readonly status: number) { super(t('error.serviceUnavailable', { status })); }
@@ -50,16 +51,20 @@ export class RssApi {
   private base: string;
   private requests = new Map<string, Promise<HttpResponse>>();
   private catalog?: { expires: number; sources: z.infer<typeof sourceSchema>[] };
+  private budget = new ReadBudget();
   private diagnostics: ReadDiagnostic[] = [];
+  dispose() { this.budget.dispose(); }
   readDiagnostics() { return this.diagnostics.map(event => ({ ...event })); }
   constructor(base: string, private transport: Transport) { this.base = serviceUrl(base); }
   private request(path: string): Promise<HttpResponse> {
     const existing = this.requests.get(path);
     if (existing) return existing;
-    const pending = recoverRead(this.base + path, this.transport, event => {
+    const expires = Date.now() + 20_000;
+    const priority = /^\/api\/entry\/[^/]+(?:\/podscribe-transcript)?$/.test(path) || /^\/api\/podscribe\/episodes\/[^/]+\/[^/]+\/transcript$/.test(path) ? 0 : path.startsWith('/api/entry/') ? 1 : 2;
+    const pending = recoverRead(this.base + path, url => this.budget.run(priority, expires, () => this.transport(url)), event => {
       this.diagnostics.push(event);
       if (this.diagnostics.length > 60) this.diagnostics.shift();
-    }).finally(() => {
+    }, this.budget).finally(() => {
       if (this.requests.get(path) === pending) this.requests.delete(path);
     });
     this.requests.set(path, pending);
@@ -144,11 +149,12 @@ export class RssApi {
     const notify = () => { if (readable) onContent?.({ ...readable, rewrite: earlyRewrite ?? readable.rewrite, translation: earlyTranslation }); };
     // Optional versions must not delay a readable original or a primary error.
     // Attach rejection handlers immediately, even if detail fails first.
+    const detailRequest = this.get(path, z.object({ entry: remoteEntrySchema }));
     const versions = Promise.allSettled([
       this.get(`${path}/rewrite`, z.object({ rewrite: rewriteSchema.nullable() })).then(result => { earlyRewrite = result.rewrite; notify(); return result; }),
       this.get(`${path}/translation`, z.object({ translation: translationSchema.nullable() })).then(result => { earlyTranslation = result.translation; notify(); return result; }),
     ]);
-    const detail = await this.get(path, z.object({ entry: remoteEntrySchema }));
+    const detail = await detailRequest;
     const entry = detail.entry;
     const needsTranscript = entry.sourceId === 'allin' || entry.sourceId === 'joerogan' || entry.sourceId.startsWith('podscribe-');
     if (!needsTranscript) { readable = bundleSchema.parse({ entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: Date.now() }); notify(); }

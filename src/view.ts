@@ -686,6 +686,7 @@ export class ReaderView extends ItemView {
     return cleanExcerpt(text || entry.summary || '');
   }
   private clearThumbnails() {
+    this.listRows.clear();
     this.thumbnailVersion++;
     for (const url of this.thumbnailUrls.values()) URL.revokeObjectURL(url);
     this.thumbnailUrls.clear(); this.thumbnailPending.clear();
@@ -778,26 +779,46 @@ export class ReaderView extends ItemView {
       this.thumbnailUrls.delete(oldest);
     }
   }
+  private listRows = new Map<string, { key: string; row: HTMLElement; entry: Entry }>();
   private renderList() {
-    if (this.collectionScope()) { this.renderCollectionList(); return; }
+    if (this.collectionScope()) { this.listRows.clear(); this.renderCollectionList(); return; }
     const restoreFocus = this.list.contains(this.contentEl.ownerDocument.activeElement);
-    const scroll = this.list.scrollTop; this.list.empty(); const entries = this.visibleEntries();
+    const focused = this.contentEl.ownerDocument.activeElement as HTMLElement | null;
+    const scroll = this.list.scrollTop; const entries = this.visibleEntries();
+    const output = this.list.ownerDocument.createElement('div');
+    const ordered: HTMLElement[] = [];
+    const rows = new Map<string, { key: string; row: HTMLElement; entry: Entry }>();
+    this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined;
     if (this.source === '@local' || this.source.startsWith('@group:')) {
       const items = personalSources(this.plugin.state).filter(item => item.kind !== 'rss' && (this.source === '@local' || item.groupId === this.source.slice(7)) && (!this.query || item.name.toLocaleLowerCase().includes(this.query.toLocaleLowerCase())));
       if (items.length) {
-        const sources = this.list.createEl('details', { cls: 'qrs-personal-sources' }); sources.open = true;
+        const sources = output.createEl('details', { cls: 'qrs-personal-sources' }); sources.open = true;
         sources.createEl('summary', { text: t('reader.podcastLocalSection', { n: items.length }) });
         for (const item of items) sources.createEl('button', { text: item.name }).onclick = () => this.selectSource(item.id);
       }
     }
-    if (!entries.length) this.list.createDiv({ cls: 'qrs-empty', text: this.loading ? t('reader.loadingEntries') : this.filter === 'favorites' ? t('reader.emptyFavorites') : this.filter === 'later' ? t('reader.emptyLater') : this.personalScope() && !this.entries.length ? t('reader.emptyPersonal') : t('reader.emptyFilter') });
+    if (!entries.length) output.createDiv({ cls: 'qrs-empty', text: this.loading ? t('reader.loadingEntries') : this.filter === 'favorites' ? t('reader.emptyFavorites') : this.filter === 'later' ? t('reader.emptyLater') : this.personalScope() && !this.entries.length ? t('reader.emptyPersonal') : t('reader.emptyFilter') });
     // Inside one channel every row would repeat the same source name, so it only appears when sources mix.
     const mixed = new Set(entries.map(entry => entry.sourceId)).size > 1;
     const limit = this.personalScope() ? this.personalLimit : this.renderedCount;
+    ordered.push(...Array.from(output.children) as HTMLElement[]); output.empty();
     for (const entry of entries.slice(0, limit)) {
       const relatedIds = this.relatedContentIds(entry);
       const read = relatedIds.some(id => this.plugin.state.readIds.includes(id));
-      const row = this.list.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
+      const summary = this.excerpt(entry);
+      const key = JSON.stringify([entry.title, entry.titleZh, entry.sourceId, entry.publishedTs, entry.published,
+        entry.publishedRelative, entry.podcastViews, entry.podcastDurationSeconds, entry.image, entry.link,
+        mixed && this.sourceName(entry), summary, read, relatedIds.some(id => this.plugin.state.favorites[id]),
+        this.plugin.state.settings.remoteImages, t('reader.read')]);
+      const cached = this.listRows.get(entry.id);
+      if (cached?.key === key) {
+        cached.entry = entry;
+        cached.row.toggleClass('qrs-selected', this.bundle?.entry.id === entry.id);
+        cached.row.setAttribute('aria-pressed', String(this.bundle?.entry.id === entry.id));
+        rows.set(entry.id, cached); ordered.push(cached.row); continue;
+      }
+      const row = output.createEl('button', { cls: 'qrs-entry', attr: { 'data-entry-id': entry.id } });
+      const record = { key, row, entry }; rows.set(entry.id, record); ordered.push(row);
       row.toggleClass('qrs-selected', this.bundle?.entry.id === entry.id);
       row.setAttribute('aria-pressed', String(this.bundle?.entry.id === entry.id)); row.toggleClass('qrs-read', read);
       const copy = row.createSpan('qrs-entry-copy');
@@ -819,22 +840,22 @@ export class ReaderView extends ItemView {
       heading.createEl('h3', { text: titleOf(entry) });
       if (bilingual) heading.createDiv({ cls: 'qrs-original-title', text: entry.title });
       if (relatedIds.some(id => this.plugin.state.favorites[id])) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
-      const summary = this.excerpt(entry); if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' }); else row.addClass('qrs-no-summary');
+      if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' }); else row.addClass('qrs-no-summary');
       this.renderThumbnail(row, entry);
-      row.addEventListener('click', () => { void this.openArticle(entry); });
+      row.addEventListener('click', () => { void this.openArticle(record.entry); });
     }
-    if (this.personalScope() && entries.length > this.personalLimit) this.list.createEl('button', { text: t('reader.showMoreArticles'), cls: 'qrs-more' }).onclick = () => { this.personalLimit += 100; this.renderList(); };
+    output.empty();
+    if (this.personalScope() && entries.length > this.personalLimit) output.createEl('button', { text: t('reader.showMoreArticles'), cls: 'qrs-more' }).onclick = () => { this.personalLimit += 100; this.renderList(); };
     if (this.hasMore && this.filter !== 'favorites' && this.filter !== 'later') {
-      const button = this.list.createEl('button', { text: this.loading ? t('reader.loadingMore') : t('reader.loadEarlier'), cls: 'qrs-more' });
+      const button = output.createEl('button', { text: this.loading ? t('reader.loadingMore') : t('reader.loadEarlier'), cls: 'qrs-more' });
       button.disabled = this.loading; button.addEventListener('click', () => { void this.loadEntries(true); });
     }
     // Windowed rendering: the sentinel lazily paints the next page as it scrolls into view.
     if (!this.personalScope() && entries.length > this.renderedCount) {
       const remaining = entries.length - this.renderedCount;
-      const sentinel = this.list.createEl('button', { text: t('reader.showMore', { n: Math.min(remaining, ReaderView.PAGE_SIZE) }), cls: 'qrs-more' });
+      const sentinel = output.createEl('button', { text: t('reader.showMore', { n: Math.min(remaining, ReaderView.PAGE_SIZE) }), cls: 'qrs-more' });
       sentinel.onclick = () => { this.listSentinelObserver?.disconnect(); this.listSentinelObserver = undefined; this.renderedCount = Math.min(entries.length, this.renderedCount + ReaderView.PAGE_SIZE); this.renderList(); };
       sentinel.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); sentinel.click(); } };
-      this.listSentinelObserver?.disconnect();
       const observer = new IntersectionObserver(items => {
         if (!items.some(item => item.isIntersecting)) return;
         observer.disconnect();
@@ -845,8 +866,17 @@ export class ReaderView extends ItemView {
       observer.observe(sentinel);
       this.listSentinelObserver = observer;
     }
+    ordered.push(...Array.from(output.children) as HTMLElement[]);
+    const wanted = new Set(ordered);
+    for (const child of Array.from(this.list.children)) if (!wanted.has(child as HTMLElement)) child.remove();
+    let cursor = this.list.firstElementChild;
+    for (const node of ordered) {
+      if (node === cursor) cursor = cursor.nextElementSibling;
+      else this.list.insertBefore(node, cursor);
+    }
+    this.listRows = rows;
     this.list.scrollTop = scroll;
-    if (restoreFocus) this.reader.focus({ preventScroll: true });
+    if (restoreFocus && !focused?.isConnected) this.reader.focus({ preventScroll: true });
   }
   private async openArticle(entry: Entry, resume?: ChannelState, preferredMode?: Mode) {
     if (this.plugin.articleDeleted(entry)) { new Notice(t('moderation.deleted')); return; }
