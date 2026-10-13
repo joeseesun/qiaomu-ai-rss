@@ -774,7 +774,7 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
   background-color: var(--qrs-speech-word); color: var(--qrs-speech-ink);
   text-decoration: underline; text-decoration-color: var(--qrs-speech-line); text-decoration-thickness: 2px;
 }
-[data-qrs-speech-style=underline]::highlight(qrs-sentence), [data-qrs-speech-style=underline] .qrs-speech-preview-sentence,
+[data-qrs-speech-style=underline]::highlight(qrs-sentence), [data-qrs-speech-style=underline] .qrs-speaking, [data-qrs-speech-style=underline] .qrs-speech-preview-sentence,
 [data-qrs-speech-style=underline]::highlight(qrs-word), [data-qrs-speech-style=underline] .qrs-speech-preview-word { background-color: transparent; }
 [data-qrs-speech-style=sentence]::highlight(qrs-sentence), [data-qrs-speech-style=sentence] .qrs-speech-preview-sentence,
 [data-qrs-speech-style] .qrs-speaking {
