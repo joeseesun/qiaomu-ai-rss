@@ -3,6 +3,7 @@ import { SpeechChoices, TTS_PROVIDERS, hiddenProvider, modelKey, changeSpeechMod
 import type { LocalState, SpeechProfile } from '@qiaomu/speech/speech';
 import type QiaomuRssPlugin from './main';
 import { speechError, speechChoiceText } from './speech';
+import { DEFAULT_HIGHLIGHT, applyHighlightAppearance, type SpeechHighlight } from './speech-highlight';
 import { t, locale } from './i18n';
 export class SpeechSettingsModal extends Modal {
   private cleanups: Array<() => void> = [];
@@ -50,6 +51,7 @@ export class SpeechSettingsModal extends Modal {
       const state = host.previewState(); if (state === 'idle') return;
       status.setText(state === 'ended' ? t('speech.verified') : state === 'error' ? speechError(host.speech.controller.error) : state === 'paused' ? t('speech.pause') : t('speech.loading')); status.toggleClass('is-error', state === 'error');
     }));
+    this.appearance(root);
     const details = root.createEl('details', { cls: 'qrs-speech-details' }); details.createEl('summary', { text: t('speech.advanced') });
     if (profile.baseUrl !== undefined && id !== 'compatible') field(details, 'API URL', 'baseUrl');
     new Setting(details).setName(t('speech.fromStart')).addButton(button => button.setButtonText(t('speech.fromStart')).onClick(() => { const view = this.plugin.app.workspace.getActiveViewOfType(ReaderView); if (view) { this.close(); host.start(view, undefined, true); } }));
@@ -58,6 +60,32 @@ export class SpeechSettingsModal extends Modal {
       new Setting(details).setName(t('speech.import')).setDesc(t('speech.importDesc')).addButton(button => button.setButtonText(t('speech.import')).onClick(async () => { const keys = await copySpeechSettings(host, 'qiaomu-audio'); if (keys >= 0) new Notice(t('speech.imported')); this.render(); })); this.labelInputs(root);
     });
     this.labelInputs(root);
+  }
+  private appearance(root: HTMLElement) {
+    const settings = this.plugin.state.settings.speechHighlight;
+    new Setting(root).setName(t('speech.highlight')).setHeading();
+    const styleRow = new Setting(root).setName(t('speech.highlightStyle'));
+    const colorRow = new Setting(root).setName(t('speech.highlightColor'));
+    const preview = root.createEl('p', { cls: 'qrs-speech-highlight-preview', attr: { 'aria-label': t('speech.highlightPreview') } });
+    const sentence = preview.createSpan({ cls: 'qrs-speech-preview-sentence' });
+    sentence.createSpan({ cls: 'qrs-speech-preview-word', text: t('speech.highlightWord') });
+    sentence.appendText(t('speech.highlightSample'));
+    const refresh = () => { applyHighlightAppearance(preview, settings); this.plugin.speech.updateHighlightAppearance(); };
+    const save = () => { refresh(); void this.plugin.persist().catch(() => new Notice(t('notice.cannotSaveSettings'))); };
+    let styleControl: import('obsidian').DropdownComponent;
+    let colorControl: import('obsidian').ColorComponent;
+    styleRow.addDropdown(drop => { styleControl = drop;
+      for (const value of ['background', 'underline', 'sentence'] as const) drop.addOption(value, t(`speech.highlight.${value}`));
+      drop.setValue(settings.style).onChange(value => { settings.style = value as SpeechHighlight['style']; save(); });
+    });
+    colorRow.addColorPicker(color => { colorControl = color; color.setValue(settings.color).onChange(value => { settings.color = value; save(); }); });
+    colorRow.addButton(button => button.setButtonText(t('speech.highlightReset')).onClick(() => {
+      Object.assign(settings, DEFAULT_HIGHLIGHT); styleControl.setValue(settings.style); colorControl.setValue(settings.color); save();
+    }));
+    const win = root.ownerDocument.defaultView!;
+    const Observer = (win as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver;
+    const observer = new Observer(refresh); observer.observe(root.ownerDocument.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    this.cleanups.push(() => observer.disconnect()); refresh();
   }
   private labelInputs(root: HTMLElement) {
     for (const row of root.querySelectorAll('.setting-item')) {

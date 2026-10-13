@@ -4,6 +4,7 @@ import type { LocalManager, SpeechOwner, SpeechSettings, VoiceCatalog } from '@q
 import type QiaomuRssPlugin from './main';
 import type { ReaderView } from './view';
 import { t, locale, type MessageKey } from './i18n';
+import { applyHighlightAppearance } from './speech-highlight';
 import { articleSpeechSource, type ArticleSpeechItem } from './speech-source';
 export interface SpeechContext { id: string; mode: string; prose: HTMLElement | null; loading: boolean }
 export function speechError(error: unknown): string {
@@ -21,7 +22,17 @@ export function speechButton(parent: HTMLElement, icon: string, label: string, r
   button.onclick = event => { event.preventDefault(); run(event); };
   return { button, label: (value: string) => text.setText(value), icon: (value: string) => setIcon(mark, value) };
 }
-type Session = { view: ReaderView; owner: SpeechOwner; items: ArticleSpeechItem[]; fingerprint: string; key: string; selection: boolean; follow: boolean; bar?: HTMLElement; highlighted?: HTMLElement; unwatch?: () => void; programmatic: number; render?: () => void };
+// Read-along highlight: the sentence, the part already spoken, and the current word, drawn with
+// the CSS Custom Highlight API so article DOM, selection and translation are never touched.
+type HighlightHost = { CSS?: { highlights?: Map<string, unknown> }; Highlight?: new (...ranges: Range[]) => unknown };
+const LAYERS = ['qrs-sentence', 'qrs-spoken', 'qrs-word'] as const;
+function paint(win: HighlightHost | null | undefined, layers: Partial<Record<typeof LAYERS[number], Range | null>>) {
+  const registry = win?.CSS?.highlights, Highlight = win?.Highlight;
+  if (!registry || !Highlight) return false;
+  for (const name of LAYERS) { const range = layers[name]; if (range) registry.set(name, new Highlight(range)); else registry.delete(name); }
+  return true;
+}
+type Session = { view: ReaderView; owner: SpeechOwner; items: ArticleSpeechItem[]; fingerprint: string; key: string; selection: boolean; follow: boolean; bar?: HTMLElement; highlighted?: HTMLElement; painted?: boolean; unwatch?: () => void; programmatic: number; render?: () => void };
 // Adapter exposes exactly the host contract shared with Audio; RSS state remains owned by RSS.
 export class RssSpeech {
   readonly speech: SpeechService;
@@ -43,6 +54,10 @@ export class RssSpeech {
     this.unsubscribe = this.speech.subscribe(() => { this.checkpoint(); this.session?.render?.(); this.renderActions(); });
   }
   get settings(): { tts: SpeechSettings } { return this.plugin.state.settings; }
+  updateHighlightAppearance() {
+    const prose = this.session?.view.speechContext()?.prose;
+    if (prose) applyHighlightAppearance(prose, this.plugin.state.settings.speechHighlight);
+  }
   saveSettings() { return this.plugin.persist(); }
   local() {
     if (!this.manager) { const path = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.(); this.manager = createLocalTtsManager({ vaultPaths: path ? [path] : [] }); }
@@ -80,7 +95,7 @@ export class RssSpeech {
     if (!context?.prose || context.loading) { new Notice(t('speech.empty')); return; }
     const { limit, clauses } = this.speech.chunking(), source = articleSpeechSource(context.prose, limit, clauses);
     if (!source.items.length) { new Notice(t('speech.empty')); return; }
-    const items = selectedText ? splitSpeechText(selectedText, limit, clauses).map(item => ({ ...item, block: context.prose! })) : source.items;
+    const items: ArticleSpeechItem[] = selectedText ? splitSpeechText(selectedText, limit, clauses).map(item => ({ ...item, block: context.prose! })) : source.items;
     if (!items.length) return;
     const profile = this.speech.profile(), problem = this.speech.configurationError(profile);
     if (problem) { new Notice(speechError(problem)); this.openSettings(); return; }
@@ -91,23 +106,47 @@ export class RssSpeech {
     const offset = selectedText || fromStart ? 0 : resumeOffset(this.plugin.state.speechProgress, key, source.fingerprint);
     const index = Math.max(0, items.findIndex(item => item.end > offset));
     const session: Session = { view, items, fingerprint: source.fingerprint, key, selection: !!selectedText, follow: true, programmatic: 0, owner: {} };
-    session.owner = { clearHighlight: () => { session.highlighted?.removeClass('qrs-speaking'); session.highlighted = undefined; }, onSegment: (_item, position) => {
+    const win = context.prose.ownerDocument.defaultView!;
+    session.owner = { clearHighlight: () => { session.highlighted?.removeClass('qrs-speaking'); session.highlighted = undefined; if (session.painted) { paint(win, {}); session.painted = false; } }, onSegment: (_item, position) => {
       if (this.session !== session) return;
       if (!context.prose?.isConnected) { this.stop(); return; }
       session.owner.clearHighlight?.();
-      const item = items[position]; session.highlighted = item.block; item.block.addClass('qrs-speaking');
-      if (session.follow) this.reveal(session, item.block);
+      const item = items[position], sentence = item.range?.(0, item.text.length) ?? null;
+      // Without a drawable range (selection, or no Highlight API) fall back to marking the paragraph.
+      if (sentence && paint(win, { 'qrs-sentence': sentence })) session.painted = true;
+      else { session.highlighted = item.block; item.block.addClass('qrs-speaking'); }
+      if (session.follow) this.reveal(session, sentence ?? item.block);
+    }, onProgress: (item, position, word) => {
+      const entry = items[position];
+      if (this.session !== session || !session.painted || !entry?.range || entry !== item) return;
+      const sentence = entry.range(0, entry.text.length);
+      if (!word) { paint(win, { 'qrs-sentence': sentence }); return; }
+      paint(win, { 'qrs-sentence': sentence, 'qrs-spoken': word.start > 0 ? entry.range(0, word.start) : null, 'qrs-word': entry.range(word.start, word.end) });
+      const range = entry.range(word.start, word.end);
+      if (session.follow && range) this.reveal(session, range);
     } };
-    this.session = session; this.mount(session);
-    const win = context.prose.ownerDocument.defaultView!;
+    this.session = session; this.updateHighlightAppearance(); this.mount(session);
+    const Observer = (win as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver;
+    const observer = new Observer(() => this.updateHighlightAppearance());
+    observer.observe(context.prose.ownerDocument.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    observer.observe(view.contentEl, { attributes: true, attributeFilter: ['data-qrs-theme'] });
+    const unwatch = session.unwatch;
+    session.unwatch = () => { unwatch?.(); observer.disconnect(); };
     this.speech.controller.makeAudio = () => new (win as unknown as { Audio: typeof Audio }).Audio();
     this.speech.controller.start(session.owner, items, profile, { index, rate: this.settings.tts.rate });
   }
-  private reveal(session: Session, block: HTMLElement) {
+  private reveal(session: Session, target: HTMLElement | Range) {
+    // Popout windows have their own Range/HTMLElement constructors, so test shape, not class.
+    const isRange = (value: HTMLElement | Range): value is Range => 'commonAncestorContainer' in value;
+    const common = isRange(target) ? target.commonAncestorContainer : target;
+    const block = common.nodeType === 1 ? common as HTMLElement : common.parentElement;
+    const reader = block?.closest<HTMLElement>('.qrs-reader');
+    const bounds = reader?.getBoundingClientRect(), rect = target.getBoundingClientRect();
+    if (!block || !bounds || !(rect.top < bounds.top + 60 || rect.bottom > bounds.bottom - 85)) return;
     session.programmatic = Date.now();
-    const reader = block.closest<HTMLElement>('.qrs-reader');
-    const bounds = reader?.getBoundingClientRect(), rect = block.getBoundingClientRect();
-    if (bounds && (rect.top < bounds.top + 60 || rect.bottom > bounds.bottom - 85)) block.scrollIntoView({ block: 'center', behavior: 'instant' });
+    // Keep a long paragraph's current line in view, not just its first one.
+    if (isRange(target)) reader!.scrollBy({ top: rect.top - bounds.top - bounds.height * 0.4, behavior: 'instant' });
+    else block.scrollIntoView({ block: 'center', behavior: 'instant' });
   }
   private mount(session: Session) {
     const bar = session.bar = session.view.contentEl.createDiv({ cls: 'qrs-speech-bar', attr: { role: 'region' } });
@@ -119,7 +158,7 @@ export class RssSpeech {
     const next = speechButton(row, 'skip-forward', t('speech.next'), () => this.speech.controller.skip(1));
     const speed = row.createEl('button', { cls: 'qrs-speech-button qrs-speech-speed', text: `${this.settings.tts.rate}×` });
     speed.onclick = event => { const menu = new Menu().setUseNativeMenu(false); for (const rate of RATES) menu.addItem(item => item.setTitle(`${rate}×`).setChecked(rate === this.settings.tts.rate).onClick(() => { this.settings.tts.rate = rate; this.speech.controller.setRate(rate); void this.saveSettings(); })); menu.showAtMouseEvent(event); };
-    const follow = speechButton(row, 'locate-fixed', t('speech.follow'), () => { session.follow = true; const item = session.items[this.speech.controller.index]; if (item) this.reveal(session, item.block); session.render?.(); });
+    const follow = speechButton(row, 'locate-fixed', t('speech.follow'), () => { session.follow = true; const item = session.items[this.speech.controller.index]; if (item) this.reveal(session, item.range?.(0, item.text.length) ?? item.block); session.render?.(); });
     speechButton(row, 'settings', t('speech.title'), () => this.openSettings());
     speechButton(row, 'x', t('speech.close'), () => this.stop());
     const message = bar.createDiv({ cls: 'qrs-speech-message', attr: { role: 'status', 'aria-live': 'polite' } });
