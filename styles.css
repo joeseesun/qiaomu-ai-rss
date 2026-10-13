@@ -767,6 +767,10 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 .qrs-speech-message:empty { display: none; }
 .qrs-speech-message.is-error, .qrs-speech-settings .is-error { color: var(--text-error); }
 .qrs-article .qrs-speaking { background: var(--text-highlight-bg); border-radius: 3px; }
+/* Read-along: sentence under a soft wash, spoken text dimmed, current word marked. */
+::highlight(qrs-sentence) { background-color: var(--background-modifier-hover); }
+::highlight(qrs-spoken) { color: var(--text-muted); }
+::highlight(qrs-word) { background-color: var(--text-highlight-bg); color: var(--text-normal); }
 .qrs-speech-settings { max-width: 640px; }
 .qrs-speech-hint { margin: 0 0 12px; color: var(--text-muted); font-size: var(--font-ui-small); }
 .qrs-speech-details summary { cursor: pointer; color: var(--text-muted); padding: 10px 0; }

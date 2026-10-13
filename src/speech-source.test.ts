@@ -18,4 +18,17 @@ describe('rendered article speech', () => {
     root.querySelector('p')!.textContent = '翻译后的正文。';
     expect(articleSpeechSource(root, 240, false).fingerprint).not.toBe(online.fingerprint);
   });
+  it('maps spoken character positions back to DOM text across inline markup and whitespace', () => {
+    const document = new DOMParser().parseFromString('<div><p>先读  <em>这一</em>句。\n  Then <b>bold</b> words.</p></div>', 'text/html');
+    const source = articleSpeechSource(document.querySelector('div')!, 240, false);
+    const [first, second] = source.items;
+    expect(first.text).toBe('先读 这一句。');
+    expect(first.range!(0, 2)!.toString()).toBe('先读');
+    expect(first.range!(3, 5)!.toString()).toBe('这一');
+    expect(first.range!(0, first.text.length)!.toString()).toBe('先读  这一句。');
+    expect(second.text).toBe('Then bold words.');
+    expect(second.range!(5, 9)!.toString()).toBe('bold');
+    expect(second.range!(10, 16)!.toString()).toBe('words.');
+    expect(second.range!(99, 100)).toBeNull();
+  });
 });
