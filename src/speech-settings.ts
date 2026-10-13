@@ -17,7 +17,7 @@ export class SpeechSettingsModal extends Modal {
     const host = this.plugin.speech, settings = host.settings.tts, profile = host.speech.profile(), id = profile.id;
     root.createEl('p', { cls: 'qrs-speech-hint', text: t('speech.description') });
     const names: Record<string, 'speech.system' | 'speech.macos' | 'speech.local'> = { system: 'speech.system', macos: 'speech.macos', localModel: 'speech.local' };
-    new Setting(root).setName(t('speech.service')).addDropdown(drop => {
+    new Setting(root).setName(t('speech.service')).setDesc(t(['system','macos','localModel'].includes(id) ? 'speech.deviceHelp' : 'speech.cloudHelp')).addDropdown(drop => {
       for (const [provider, value] of Object.entries(TTS_PROVIDERS)) if (!hiddenProvider(provider, id)) drop.addOption(provider, names[provider] ? t(names[provider]) : value.label || provider);
       drop.setValue(id).onChange(async value => { settings.provider = value; await this.changed(); });
     });

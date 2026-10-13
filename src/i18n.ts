@@ -17,6 +17,9 @@ export function locale(): Locale {
 // Columns: key, 简体中文, English, 繁體中文, 日本語, 한국어, Español, Français, Deutsch
 // Exported so tests can assert that every message has all eight translations.
 export const M = [
+  ["speech.cloudHelp", "文字会发送至所选语音服务；付费服务按用量计费。", "Text is sent to the selected speech service; paid services bill by usage.", "文字會傳送至所選語音服務；付費服務按用量計費。", "テキストは選択した音声サービスに送信され、有料サービスは使用量に応じて課金されます。", "텍스트는 선택한 음성 서비스로 전송되며 유료 서비스는 사용량에 따라 과금됩니다.", "El texto se envía al servicio de voz elegido; los servicios de pago cobran por uso.", "Le texte est envoyé au service vocal choisi ; les services payants facturent à l’usage.", "Text wird an den gewählten Sprachdienst gesendet; kostenpflichtige Dienste rechnen nach Nutzung ab."],
+  ["speech.deviceHelp", "使用设备声音或本机模型；部分系统音色可能需要联网。", "Uses device voices or local models; some system voices may require a network connection.", "使用裝置聲音或本機模型；部分系統音色可能需要連線。", "デバイスの音声またはローカルモデルを使用します。一部のシステム音声はネット接続が必要です。", "기기 음성이나 로컬 모델을 사용합니다. 일부 시스템 음성에는 인터넷 연결이 필요할 수 있습니다.", "Usa voces del dispositivo o modelos locales; algunas voces del sistema pueden necesitar conexión.", "Utilise les voix de l’appareil ou des modèles locaux ; certaines voix système nécessitent Internet.", "Verwendet Gerätestimmen oder lokale Modelle; einige Systemstimmen benötigen eine Netzwerkverbindung."],
+
   ["speech.automatic", "自动选择", "Automatic", "自動選擇", "自動", "자동", "Automático", "Automatique", "Automatisch"],
   ["speech.resource", "语音资源 ID", "Speech resource ID", "語音資源 ID", "音声リソース ID", "음성 리소스 ID", "ID de recurso de voz", "ID de ressource vocale", "Sprachressourcen-ID"],
   ["speech.picker", "选择与试听音色", "Choose and preview voices", "選擇與試聽音色", "声の選択と試聴", "음성 선택 및 미리 듣기", "Elegir y probar voces", "Choisir et tester les voix", "Stimmen wählen und testen"],

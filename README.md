@@ -171,3 +171,5 @@ Bundled dependencies retain their licenses: DOMPurify (Apache-2.0 OR MPL-2.0), m
 Use the speaker button in an article, or select text and choose Read aloud. Pause, resume, skip sentences, change speed and follow the highlighted paragraph. Each displayed original/rewrite/translation keeps its own position. Open speech settings to choose a provider, follow key application links, refresh account voices or configure local models.
 
 Qiaomu Audio is optional. Both plugins can read independently; when installed together they pause each other on playback. Copy preferences explicitly once and reuse downloaded local models without coupling plugin installation. Mac system speech automatically finds installed enhanced voices; auditioning preserves your reading sentence.
+
+Online speech sends the spoken text to the provider you choose; paid services bill your account by usage. Native Mac speech and local models synthesize on the device. Browser system voices may require a network connection.
