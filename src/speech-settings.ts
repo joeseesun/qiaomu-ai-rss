@@ -8,7 +8,7 @@ export class SpeechSettingsModal extends Modal {
   private cleanups: Array<() => void> = [];
   private revision = 0;
   constructor(private plugin: QiaomuRssPlugin) { super(plugin.app); }
-  onOpen() { this.setTitle(t('speech.title')); this.contentEl.addClass('qrs-speech-settings'); this.render(); }
+  onOpen() { this.setTitle(t('speech.title')); this.contentEl.addClass('qaudio-modal', 'qrs-speech-settings'); this.render(); }
   onClose() { this.revision++; this.cleanup(); this.contentEl.empty(); }
   private cleanup() { this.plugin.speech.stopPreview(); for (const cleanup of this.cleanups) cleanup(); this.cleanups = []; }
   private async changed() { await this.plugin.persist(); this.plugin.speech.restart(); this.render(); }
