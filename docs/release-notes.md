@@ -1,3 +1,5 @@
-Voice service, model and search now have consistent spacing. Speech setup controls wrap on narrow panels, long voice labels remain readable, and the floating reading bar fits its available width.
+Read along with the article: the current sentence, spoken text and current word are highlighted without changing article markup or text selection. Long paragraphs follow the current line; manual scrolling pauses follow mode.
 
-The shared speech dependency is pinned to the verified Qiaomu Audio spacing update. RSS remains independently usable; existing accounts, speech choices, subscriptions and reading progress are retained.
+Voices with word timestamps use their reported timing. Other audio voices use estimated timing based on audio duration; system voices without boundary events retain sentence highlighting. Selected-text reading keeps the paragraph fallback. Existing speech settings, subscriptions, favorites and reading progress are retained.
+
+Mobile hardware and paid cloud playback remain unverified.
