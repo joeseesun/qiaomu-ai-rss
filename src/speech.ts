@@ -4,6 +4,7 @@ import type { LocalManager, SpeechOwner, SpeechSettings, VoiceCatalog } from '@q
 import type QiaomuRssPlugin from './main';
 import type { ReaderView } from './view';
 import { t, locale, type MessageKey } from './i18n';
+import { applyHighlightAppearance } from './speech-highlight';
 import { articleSpeechSource, type ArticleSpeechItem } from './speech-source';
 export interface SpeechContext { id: string; mode: string; prose: HTMLElement | null; loading: boolean }
 export function speechError(error: unknown): string {
@@ -53,6 +54,10 @@ export class RssSpeech {
     this.unsubscribe = this.speech.subscribe(() => { this.checkpoint(); this.session?.render?.(); this.renderActions(); });
   }
   get settings(): { tts: SpeechSettings } { return this.plugin.state.settings; }
+  updateHighlightAppearance() {
+    const prose = this.session?.view.speechContext()?.prose;
+    if (prose) applyHighlightAppearance(prose, this.plugin.state.settings.speechHighlight);
+  }
   saveSettings() { return this.plugin.persist(); }
   local() {
     if (!this.manager) { const path = (this.app.vault.adapter as { getBasePath?: () => string }).getBasePath?.(); this.manager = createLocalTtsManager({ vaultPaths: path ? [path] : [] }); }
@@ -120,7 +125,13 @@ export class RssSpeech {
       const range = entry.range(word.start, word.end);
       if (session.follow && range) this.reveal(session, range);
     } };
-    this.session = session; this.mount(session);
+    this.session = session; this.updateHighlightAppearance(); this.mount(session);
+    const Observer = (win as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver;
+    const observer = new Observer(() => this.updateHighlightAppearance());
+    observer.observe(context.prose.ownerDocument.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    observer.observe(view.contentEl, { attributes: true, attributeFilter: ['data-qrs-theme'] });
+    const unwatch = session.unwatch;
+    session.unwatch = () => { unwatch?.(); observer.disconnect(); };
     this.speech.controller.makeAudio = () => new (win as unknown as { Audio: typeof Audio }).Audio();
     this.speech.controller.start(session.owner, items, profile, { index, rate: this.settings.tts.rate });
   }

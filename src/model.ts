@@ -1,3 +1,4 @@
+import { speechHighlightSchema, DEFAULT_HIGHLIGHT } from './speech-highlight';
 import { migrateLibrary } from './personal-library';
 import { z } from 'zod';
 import { t } from './i18n';
@@ -61,6 +62,7 @@ export const stateSchema = z.object({
   collapsedGroups: z.array(z.string()).default([]),
   speechProgress: z.record(z.string(), z.object({ fingerprint: z.string(), offset: z.number().int().nonnegative(), ended: z.boolean(), at: z.number() })).catch({}).default({}),
   settings: z.object({
+    speechHighlight: speechHighlightSchema,
     tts: z.object({ provider: z.string(), profiles: z.record(z.string(), z.object({ voice: z.string().optional(), model: z.string().optional(), baseUrl: z.string().optional(), region: z.string().optional(), resourceId: z.string().optional() })), rate: z.number(), welcomed: z.boolean() }).catch({ provider: 'edge', profiles: {}, rate: 1, welcomed: false }).default({ provider: 'edge', profiles: {}, rate: 1, welcomed: false }),
     labCollection: z.boolean().default(false), labInviteVerified: z.boolean().default(false), labInviteCode: z.string().max(200).default(''),
     baseUrl: z.string().default('https://rss.qiaomu.ai'), folder: z.string().default('Qiaomu RSS'),
@@ -71,7 +73,7 @@ export const stateSchema = z.object({
     selectionPopup: z.boolean().default(true), markdownFolders: z.array(z.string()).default([]), followedPodcasts: z.array(z.string()).default([]), podcastNames: z.record(z.string(), z.string()).default({}),
     pickedSourceIds: z.array(z.string().max(120)).max(300).nullable().default(null),
     lastSource: z.string().max(300).default(''), articleFolder: z.string().default('Qiaomu RSS/文章'), pdfDirectory: z.string().default(''),
-  }).default({ tts: { provider: 'edge', profiles: {}, rate: 1, welcomed: false }, labCollection: false, labInviteVerified: false, labInviteCode: '', baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', articleFolder: 'Qiaomu RSS/文章', pdfDirectory: '', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
+  }).default({ speechHighlight: DEFAULT_HIGHLIGHT, tts: { provider: 'edge', profiles: {}, rate: 1, welcomed: false }, labCollection: false, labInviteVerified: false, labInviteCode: '', baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', articleFolder: 'Qiaomu RSS/文章', pdfDirectory: '', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
     readingTheme: 'auto', fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [], followedPodcasts: [], podcastNames: {}, pickedSourceIds: null }),
   collectionIdentity: z.object({ id: z.string(), key: z.string() }).nullable().default(null),
   collectionAdminSession: z.object({ token: z.string(), expiresAt: z.number(), name: z.string(), baseUrl: z.string() }).nullable().default(null),

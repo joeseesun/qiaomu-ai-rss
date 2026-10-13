@@ -36,6 +36,17 @@ export const M = [
   ["speech.enhanced", "增强", "Enhanced", "增強", "拡張", "향상됨", "Mejorada", "Améliorée", "Erweitert"],
   ["speech.displayName", "阅读器显示名", "Reader display name", "閱讀器顯示名稱", "リーダー表示名", "리더 표시 이름", "Nombre del lector", "Nom dans le lecteur", "Anzeigename im Reader"],
 
+  ["speech.highlight", "跟读高亮", "Read-along highlighting", "跟讀高亮", "読み上げハイライト", "읽기 강조", "Resaltado de lectura", "Surlignage de lecture", "Lesehervorhebung"],
+  ["speech.highlightStyle", "高亮风格", "Highlight style", "高亮風格", "ハイライトのスタイル", "강조 스타일", "Estilo de resaltado", "Style de surlignage", "Hervorhebungsstil"],
+  ["speech.highlight.background", "柔和底色", "Soft background", "柔和底色", "淡い背景", "부드러운 배경", "Fondo suave", "Fond doux", "Sanfter Hintergrund"],
+  ["speech.highlight.underline", "下划线", "Underline", "底線", "下線", "밑줄", "Subrayado", "Soulignement", "Unterstrichen"],
+  ["speech.highlight.sentence", "仅高亮当前句", "Current sentence only", "僅高亮目前句子", "現在の文のみ", "현재 문장만", "Solo la frase actual", "Phrase actuelle uniquement", "Nur aktueller Satz"],
+  ["speech.highlightColor", "高亮颜色", "Highlight color", "高亮顏色", "ハイライトの色", "강조 색상", "Color de resaltado", "Couleur de surlignage", "Hervorhebungsfarbe"],
+  ["speech.highlightReset", "恢复默认", "Reset to default", "恢復預設", "既定に戻す", "기본값 복원", "Restablecer", "Rétablir", "Zurücksetzen"],
+  ["speech.highlightPreview", "高亮预览", "Highlight preview", "高亮預覽", "ハイライトのプレビュー", "강조 미리 보기", "Vista previa", "Aperçu du surlignage", "Hervorhebungsvorschau"],
+  ["speech.highlightWord", "当前", "Current", "目前", "現在", "현재", "Actual", "Actuel", "Aktuell"],
+  ["speech.highlightSample", "正在朗读的文字，保持清晰易读。", " words being read remain clear and legible.", "正在朗讀的文字，保持清晰易讀。", "の読み上げテキストは読みやすく表示されます。", " 읽는 텍스트가 선명하게 보입니다.", ": el texto leído permanece claro.", " : le texte lu reste lisible.", " vorgelesener Text bleibt gut lesbar."],
+
   ["speech.read", "朗读", "Read aloud", "朗讀", "読み上げ", "읽어 주기", "Leer en voz alta", "Lire à voix haute", "Vorlesen"],
   ["speech.selection", "朗读选中文字", "Read selection", "朗讀選取文字", "選択範囲を読み上げ", "선택 영역 읽기", "Leer selección", "Lire la sélection", "Auswahl vorlesen"],
   ["speech.title", "朗读设置", "Speech settings", "朗讀設定", "読み上げ設定", "읽기 설정", "Ajustes de voz", "Réglages vocaux", "Spracheinstellungen"],

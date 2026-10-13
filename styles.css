@@ -766,11 +766,22 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 .qrs-speech-message { max-width: 310px; font-size: var(--font-ui-smaller); color: var(--text-muted); padding: 0 4px; }
 .qrs-speech-message:empty { display: none; }
 .qrs-speech-message.is-error, .qrs-speech-settings .is-error { color: var(--text-error); }
-.qrs-article .qrs-speaking { background: var(--text-highlight-bg); border-radius: 3px; }
-/* Read-along: sentence under a soft wash, spoken text dimmed, current word marked. */
-::highlight(qrs-sentence) { background-color: var(--background-modifier-hover); }
-::highlight(qrs-spoken) { color: var(--text-muted); }
-::highlight(qrs-word) { background-color: var(--text-highlight-bg); color: var(--text-normal); }
+/* Read-along preserves legibility and article markup. Underlines locate the current word. */
+[data-qrs-speech-style]::highlight(qrs-sentence), .qrs-speech-preview-sentence, [data-qrs-speech-style] .qrs-speaking {
+  background-color: var(--qrs-speech-sentence); color: var(--qrs-speech-ink);
+}
+[data-qrs-speech-style]::highlight(qrs-word), .qrs-speech-preview-word {
+  background-color: var(--qrs-speech-word); color: var(--qrs-speech-ink);
+  text-decoration: underline; text-decoration-color: var(--qrs-speech-line); text-decoration-thickness: 2px;
+}
+[data-qrs-speech-style=underline]::highlight(qrs-sentence), [data-qrs-speech-style=underline] .qrs-speech-preview-sentence,
+[data-qrs-speech-style=underline]::highlight(qrs-word), [data-qrs-speech-style=underline] .qrs-speech-preview-word { background-color: transparent; }
+[data-qrs-speech-style=sentence]::highlight(qrs-sentence), [data-qrs-speech-style=sentence] .qrs-speech-preview-sentence,
+[data-qrs-speech-style] .qrs-speaking {
+  text-decoration: underline; text-decoration-color: var(--qrs-speech-line); text-decoration-thickness: 2px;
+}
+[data-qrs-speech-style=sentence]::highlight(qrs-word), [data-qrs-speech-style=sentence] .qrs-speech-preview-word { background-color: var(--qrs-speech-sentence); text-decoration: inherit; }
+.qrs-speech-highlight-preview { margin: 8px 0 16px; padding: 12px 16px; line-height: 1.8; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 6px; }
 .qrs-speech-settings { max-width: 640px; }
 .qrs-speech-hint { margin: 0 0 12px; color: var(--text-muted); font-size: var(--font-ui-small); }
 .qrs-speech-details summary { cursor: pointer; color: var(--text-muted); padding: 10px 0; }
