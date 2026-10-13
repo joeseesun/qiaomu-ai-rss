@@ -201,12 +201,14 @@ export class ReaderView extends ItemView {
       ];
       // Only when Qiaomu Agent is installed and enabled; checked each time the popup opens.
       const snapshot = agentAvailable(this.app) ? this.agentSnapshot() : null;
+      actions.push({ label: t('speech.selection'), icon: 'volume-2', save: async text => { this.plugin.speech.start(this, text); } });
       if (snapshot) actions.push({ label: t('capture.askAi'), icon: 'sparkles', save: text => askAgent(this.app, snapshot, text) });
       return actions;
     });
     return Promise.resolve();
   }
   onClose(): Promise<void> {
+    this.plugin.speech?.detach(this);
     stopMedia(this.reader); this.audioDock?.stop();
     this.saveChannel(); this.channelPicker?.close(false); this.stopRestoring();
     if (this.checkpointTimer) window.clearTimeout(this.checkpointTimer);
@@ -1010,7 +1012,7 @@ export class ReaderView extends ItemView {
     const restoreFocus = active !== this.reader && this.reader.contains(active);
     const scroll = this.reader.scrollTop;
     const previous = keepContent ? this.reader.querySelector('.qrs-article') : null;
-    if (!previous) { stopMedia(this.reader); this.clearImages(); }
+    if (!previous) { this.plugin.speech?.detach(this); stopMedia(this.reader); this.clearImages(); }
     // An episode the listener has started keeps playing while they browse; otherwise follow the shown article.
     const dock = this.audioDock;
     if (dock && dock.entry?.id !== this.bundle?.entry.id && !dock.started()) { if (this.bundle) dock.open(this.bundle.entry); else dock.stop(); }
@@ -1054,6 +1056,7 @@ export class ReaderView extends ItemView {
     this.addIconButton(nav, 'chevron-up', t('reader.prevArticle'), () => this.navigate(-1));
     this.addIconButton(nav, 'chevron-down', t('reader.nextArticle'), () => this.navigate(1));
     const actions = toolbar.createDiv('qrs-actions');
+    this.plugin.speech.attach(this, actions);
     const favoriteId = this.relatedContentIds(bundle.entry).find(id => this.plugin.state.favorites[id]);
     const favorite = !!favoriteId;
     const bookmark = this.addIconButton(actions, 'bookmark', favorite ? t('reader.unfavorite') : t('reader.favorite'), () => this.run(async () => {
@@ -1168,6 +1171,10 @@ export class ReaderView extends ItemView {
     notifyContextChanged(this.app, this.plugin.manifest.id);
   }
   /** The article as Qiaomu Agent should see it, or null when nothing is open. */
+  speechContext() {
+    if (!this.bundle || this.closed) return null;
+    return { id: this.bundle.entry.id, mode: this.mode, prose: this.reader?.querySelector<HTMLElement>('.qrs-prose') ?? null, loading: this.articleLoading };
+  }
   agentSnapshot(): ContextSnapshot | null {
     if (!this.bundle || this.closed) return null;
     return articleSnapshot(this.plugin.manifest.id, { bundle: this.bundle, mode: this.mode, prose: this.reader?.querySelector<HTMLElement>('.qrs-prose') ?? null });

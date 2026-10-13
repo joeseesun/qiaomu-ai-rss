@@ -165,3 +165,11 @@ Bundled dependencies retain their licenses: DOMPurify (Apache-2.0 OR MPL-2.0), m
 此功能默认关闭。只有主动提交的链接会发送给所配置的 RSS 服务；服务器抓取正文并生成公开收录的改写。邀请码及随机客户端访问密钥保存在插件数据中。
 
 在「关于」页底部点击盾牌图标，直接打开高级管理登录弹窗。实验室中的高级管理未登录时隐藏，有效登录后直接显示。使用 RSS 网站管理员邮箱和密码验证后，入口直接显示，并可通过「我的订阅 → 用户转写」查看全部申请。管理员令牌保存在插件数据中，最长有效 365 天；密码不保存。退出管理会清除本地令牌并撤销服务器会话。
+
+## Read aloud
+
+Use the speaker button in an article, or select text and choose Read aloud. Pause, resume, skip sentences, change speed and follow the highlighted paragraph. Each displayed original/rewrite/translation keeps its own position. Open speech settings to choose a provider, follow key application links, refresh account voices or configure local models.
+
+Qiaomu Audio is optional. Both plugins can read independently; when installed together they pause each other on playback. Copy preferences explicitly once and reuse downloaded local models without coupling plugin installation. Mac system speech automatically finds installed enhanced voices; auditioning preserves your reading sentence.
+
+Online speech sends the spoken text to the provider you choose; paid services bill your account by usage. Native Mac speech and local models synthesize on the device. Browser system voices may require a network connection.

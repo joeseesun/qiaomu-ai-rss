@@ -1,6 +1,6 @@
 {
   "name": "qiaomu-ai-rss",
-  "version": "0.27.4",
+  "version": "0.28.0",
   "description": "Read Qiaomu and personal RSS feeds, then add article links to your Daily Note.",
   "license": "GPL-3.0-only",
   "private": true,
@@ -9,12 +9,14 @@
     "build": "tsc --noEmit && node esbuild.config.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run && node --test server/*.check.cjs",
+    "test": "vitest run && node --test server/*.check.cjs && node --test scripts/i18n-bundle.check.mjs",
     "check": "npm run lint && npm run test && npm run build",
     "test:live": "node scripts/live-api.mjs"
   },
   "dependencies": {
+    "@qiaomu/speech": "github:joeseesun/qiaomu-audio#e2781672bf49899d727fea7138bdcbe53682aa5e",
     "dompurify": "^3.4.16",
+    "lz-string": "1.5.0",
     "marked": "^18.0.11",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2",

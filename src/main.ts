@@ -1,4 +1,6 @@
 import { SaveQueue } from './save-queue';
+import { RssSpeech } from './speech';
+import { SpeechSettingsModal } from './speech-settings';
 import { CuratedSourcePicker } from './curated-source-picker';
 import { applyCuratedPicks } from './curated-sources';
 import { watchPaneDividers } from "./pane-dividers";
@@ -34,6 +36,9 @@ function formatBytes(bytes: number): string {
 }
 
 export default class QiaomuRssPlugin extends Plugin {
+  speech!: RssSpeech;
+  private speechSettings?: SpeechSettingsModal;
+  openSpeechSettings() { this.speechSettings?.close(); this.speechSettings = new SpeechSettingsModal(this); this.speechSettings.open(); }
   fonts = new ReadingFonts();
   vaultSources = new VaultSources(this.app);
   state: State = initialState(null);
@@ -66,6 +71,7 @@ export default class QiaomuRssPlugin extends Plugin {
     const data: unknown = await this.loadData();
     try { this.state = initialState(data); }
     catch { new Notice(t('notice.dataUnreadable')); throw new Error('Incompatible RSS data'); }
+    this.speech = new RssSpeech(this);
     applyCuratedPicks(this.state);
     await this.loadContentCache();
     this.adminSession = this.state.collectionAdminSession ?? undefined;
@@ -79,6 +85,11 @@ export default class QiaomuRssPlugin extends Plugin {
     this.subscriptions = new Subscriptions(() => this.state, () => this.persist().then(() => { this.refreshDiscovery(); this.refreshPersonalViews(); }), undefined, () => this.markBodiesDirty());
     this.addCommand({ id: 'manage-subscriptions', name: t('cmd.manageSubscriptions'), callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
+    for (const [id, name, run] of [
+      ['read-aloud', t('speech.read'), (view: ReaderView) => this.speech.start(view)],
+      ['read-from-start', t('speech.fromStart'), (view: ReaderView) => this.speech.start(view, undefined, true)],
+      ['read-selection', t('speech.selection'), (view: ReaderView) => { const selected = view.contentEl.ownerDocument.getSelection(); const prose = view.speechContext()?.prose; if (prose && selected && prose.contains(selected.anchorNode) && prose.contains(selected.focusNode)) this.speech.start(view, selected.toString()); }],
+    ] as const) this.addCommand({ id, name, checkCallback: checking => { const view = this.app.workspace.getActiveViewOfType(ReaderView); if (!view) return false; if (!checking) run(view); return true; } });
     for (const type of RETIRED_VIEW_TYPES) this.registerView(type, leaf => new RetiredView(leaf, type));
     const retire = () => { for (const type of RETIRED_VIEW_TYPES) for (const leaf of this.app.workspace.getLeavesOfType(type)) leaf.detach(); };
     this.app.workspace.onLayoutReady(() => { retire(); window.setTimeout(retire, 500); });
@@ -143,7 +154,7 @@ export default class QiaomuRssPlugin extends Plugin {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice(t('notice.localCopyMissingShort')));
     });
   }
-  onunload() { this.apiClient?.dispose(); this.images?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
+  onunload() { this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
   api(): RssApi {
     const base = this.state.settings.baseUrl;
     if (this.apiClient && this.apiBase === base) return this.apiClient;
@@ -717,7 +728,7 @@ class RssSettings extends PluginSettingTab {
     const excerpt = reading.items!.shift()!;
     reading.heading = t('settings.tab.reading');
     const buckets: Record<string, SettingDefinitionItem[]> = {
-      reading: [reading, definitions[4], definitions[5]],
+      reading: [reading, { name: t('speech.title'), desc: t('speech.description'), aliases: ['TTS', 'read aloud', '朗读'], render: setting => { setting.addButton(button => button.setButtonText(t('speech.title')).onClick(() => this.plugin.openSpeechSettings())); } }, definitions[4], definitions[5]],
       sources: [{ name: t('pick.title'), desc: t('pick.description'), render: setting => {
         setting.addButton(button => button.setButtonText(t('pick.open')).onClick(() => { (this.app as App & { setting: { close(): void } }).setting.close(); this.plugin.pickCuratedSources(); }));
       } }, definitions[2], definitions[1]],
