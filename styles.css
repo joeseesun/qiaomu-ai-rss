@@ -757,36 +757,71 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 
 /* Standalone article speech. Scoped so Audio and other readers retain their own controls. */
 .qrs-speech-bar { position: absolute; bottom: 18px; right: 24px; z-index: 12; max-width: calc(100% - 32px); padding: 5px 8px; background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: 12px; box-shadow: 0 4px 16px rgb(0 0 0 / 8%); }
-.qrs-speech-row { display: flex; align-items: center; gap: 2px; }
+.qrs-speech-row { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; }
+.qrs-speech-row > button { flex-shrink: 0; }
 .qrs-speech-button { display: inline-flex; justify-content: center; align-items: center; padding: 6px; min-width: 30px; height: 32px; border: 0; box-shadow: none; background: transparent; color: var(--text-muted); cursor: pointer; }
 .qrs-speech-button svg { width: 17px; height: 17px; }
 .qrs-speech-button:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
-.qrs-speech-button:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.qrs-speech-button:focus-visible { outline: 1px solid var(--text-normal); outline-offset: 2px; }
 .qrs-speech-message { max-width: 310px; font-size: var(--font-ui-smaller); color: var(--text-muted); padding: 0 4px; }
 .qrs-speech-message:empty { display: none; }
 .qrs-speech-message.is-error, .qrs-speech-settings .is-error { color: var(--text-error); }
 .qrs-article .qrs-speaking { background: var(--text-highlight-bg); border-radius: 3px; }
 .qrs-speech-settings { max-width: 640px; }
-.qrs-speech-hint { color: var(--text-muted); font-size: var(--font-ui-small); }
+.qrs-speech-hint { margin: 0 0 12px; color: var(--text-muted); font-size: var(--font-ui-small); }
 .qrs-speech-details summary { cursor: pointer; color: var(--text-muted); padding: 10px 0; }
 .qrs-speech-local { padding: 10px 0; }
 .qrs-speech-local progress { width: 100%; margin-top: 8px; }
 .qrs-speech-local-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .qrs-speech-local [hidden], .qrs-speech-row [hidden] { display: none; }
 @media (max-width: 600px) { .qrs-speech-bar { right: 12px; bottom: 12px; } .qrs-speech-settings .setting-item { flex-wrap: wrap; gap: 8px; } .qrs-speech-settings .setting-item-control { width: 100%; } }
-/* Shared voice picker, scoped identically in the two independent bundles. */
-.qaudio-voice-picker { max-width: 560px; }
-.qaudio-voice-picker input[type=search] { width: 100%; margin-bottom: 10px; }
+/* Shared voice picker, kept consistent with the pinned Audio speech dependency. */
+.qaudio-modal { --qaudio-ink: var(--text-normal); --qaudio-paper: var(--background-primary); --qaudio-line: color-mix(in srgb, var(--text-normal) 10%, transparent); --qaudio-weak: color-mix(in srgb, var(--text-normal) 6%, transparent); }
+.qaudio-modal { container-type: inline-size; max-width: 100%; box-sizing: border-box; }
+.qaudio-modal .setting-item { gap: 12px; padding: 12px 0; margin: 0; }
+.qaudio-modal .setting-item-info { min-width: 0; }
+.qaudio-modal .setting-item-control { min-width: 0; gap: 8px; flex-wrap: wrap; }
+.qaudio-modal .setting-item-control :is(input, select) { min-width: 0; max-width: 100%; }
+.qaudio-modal :is(button, select, input, summary, a):focus-visible { outline: 2px solid var(--qaudio-ink); outline-offset: 2px; box-shadow: none; }
+.qaudio-modal input:focus { border-color: var(--text-muted); box-shadow: none; }
+.qaudio-modal button.mod-cta { background: var(--qaudio-ink); color: var(--qaudio-paper); }
+.qaudio-modal button.mod-cta:hover { background: var(--qaudio-ink); opacity: 0.86; }
+.qaudio-modal .setting-item-control button:not(.mod-cta, .mod-warning) { background: transparent; color: var(--qaudio-ink); box-shadow: 0 0 0 1px var(--qaudio-line); }
+.qaudio-modal .setting-item-control button:not(.mod-cta, .mod-warning):hover { background: var(--qaudio-weak); }
+.qaudio-modal .qaudio-setting-note { margin: 0; padding: 0 0 12px; }
+.qaudio-modal .qaudio-details { padding: 8px 0; }
+.qaudio-modal .qaudio-advanced > summary { display: flex; align-items: center; gap: 4px; list-style: none; }
+.qaudio-modal .qaudio-advanced > summary::-webkit-details-marker { display: none; }
+.qaudio-modal .qaudio-details > .qaudio-card { padding: 0 16px; }
+.qaudio-modal .qaudio-status-line { margin: 12px 0; overflow-wrap: anywhere; }
+.qaudio-modal .qaudio-status-line:empty { display: none; }
+.qaudio-modal .qaudio-modal-footer { justify-content: flex-end; margin-top: 16px; padding-top: 16px; }
+.qaudio-modal-footer .setting-item-info:empty { display: none; }
+.qaudio-voice-picker { display: flex; flex-direction: column; gap: 16px; max-width: 560px; }
+.qaudio-voice-picker .setting-item { padding: 0; border: 0; }
+.qaudio-voice-models { display: flex; flex-direction: column; gap: 12px; }
+.qaudio-voice-models:empty { display: none; }
+.qaudio-voice-search { display: block; }
+.qaudio-voice-picker input[type=search] { width: 100%; margin: 0; }
 .qaudio-voice-list { max-height: 50vh; overflow-y: auto; overscroll-behavior: contain; }
 .qaudio-voice-row { display: flex; align-items: center; gap: 6px; border-radius: 6px; padding: 2px; }
 .qaudio-voice-row .qaudio-button:first-child { flex: 1; justify-content: flex-start; text-align: left; min-width: 0; }
 .qaudio-voice-row .qaudio-button-text { white-space: normal; }
 .qaudio-choices .setting-item-control { flex-wrap: wrap; }
-.qaudio-voice-picker .qaudio-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 32px; padding: 6px 8px; border: 0; box-shadow: none; background: transparent; color: var(--text-normal); }
+.qaudio-voice-picker .qaudio-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: auto; min-height: 36px; padding: 8px; border: 0; box-shadow: none; background: transparent; color: var(--text-normal); }
+.qaudio-voice-row > .qaudio-button:last-child { flex: none; align-self: center; }
 .qaudio-voice-picker .qaudio-button:hover { background: var(--background-modifier-hover); }
-.qaudio-voice-picker .qaudio-button:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.qaudio-voice-picker .qaudio-button:focus-visible { outline: 2px solid var(--qaudio-ink); outline-offset: 2px; }
 .qaudio-voice-picker .qaudio-icon svg { width: 17px; height: 17px; }
 .qaudio-voice-picker .qaudio-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@container (max-width: 420px) {
+  .qaudio-modal .setting-item { flex-wrap: wrap; }
+  .qaudio-modal .setting-item-control { flex: 1 1 100%; justify-content: flex-end; }
+  .qaudio-modal .setting-item-control :is(input, select) { max-width: 100%; }
+}
+@media (pointer: coarse) {
+  .qaudio-modal :is(button, input, select), .qaudio-voice-row .qaudio-button { min-height: 44px; }
+}
 
 .qrs-actions .qrs-speech-button { color: var(--text-muted); }
 .qrs-actions .qrs-speech-button.is-playing { color: var(--text-normal); }
