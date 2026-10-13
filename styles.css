@@ -767,17 +767,17 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 .qrs-speech-message:empty { display: none; }
 .qrs-speech-message.is-error, .qrs-speech-settings .is-error { color: var(--text-error); }
 /* Read-along preserves legibility and article markup. Underlines locate the current word. */
-[data-qrs-speech-style]::highlight(qrs-sentence), .qrs-speech-preview-sentence, [data-qrs-speech-style] .qrs-speaking {
+[data-qrs-speech-style]::highlight(qrs-sentence), .qrs-speech-preview-sentence, .qrs-speaking {
   background-color: var(--qrs-speech-sentence); color: var(--qrs-speech-ink);
 }
 [data-qrs-speech-style]::highlight(qrs-word), .qrs-speech-preview-word {
   background-color: var(--qrs-speech-word); color: var(--qrs-speech-ink);
   text-decoration: underline; text-decoration-color: var(--qrs-speech-line); text-decoration-thickness: 2px;
 }
-[data-qrs-speech-style=underline]::highlight(qrs-sentence), [data-qrs-speech-style=underline] .qrs-speaking, [data-qrs-speech-style=underline] .qrs-speech-preview-sentence,
+[data-qrs-speech-style=underline]::highlight(qrs-sentence), [data-qrs-speech-style=underline] .qrs-speaking, [data-qrs-speech-style=underline].qrs-speaking, [data-qrs-speech-style=underline] .qrs-speech-preview-sentence,
 [data-qrs-speech-style=underline]::highlight(qrs-word), [data-qrs-speech-style=underline] .qrs-speech-preview-word { background-color: transparent; }
 [data-qrs-speech-style=sentence]::highlight(qrs-sentence), [data-qrs-speech-style=sentence] .qrs-speech-preview-sentence,
-[data-qrs-speech-style] .qrs-speaking {
+.qrs-speaking {
   text-decoration: underline; text-decoration-color: var(--qrs-speech-line); text-decoration-thickness: 2px;
 }
 [data-qrs-speech-style=sentence]::highlight(qrs-word), [data-qrs-speech-style=sentence] .qrs-speech-preview-word { background-color: var(--qrs-speech-sentence); text-decoration: inherit; }
