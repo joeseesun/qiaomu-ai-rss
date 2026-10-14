@@ -11,7 +11,7 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
   if (fs.existsSync(file)) {
     jobs = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!Array.isArray(jobs)) throw new Error('Invalid lab collection journal');
-    for (const job of jobs) if (job.status === 'running') job.status = 'queued';
+    for (const job of jobs) if (job.status === 'running') { job.status = 'queued'; job.stage = 'queued'; }
   }
   const digest = value => crypto.createHash('sha256').update(value).digest('hex');
   const save = () => {
@@ -66,7 +66,7 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
     const found = after ? ordered.findIndex(job => job.id === after) : -1;
     const start = found + 1, selected = ordered.slice(start, start + 100);
     const hasMore = start + selected.length < ordered.length;
-    return { jobs: selected.map(job => ({ ...publicJob(job), ...(admin ? { submitter: clients[job.clientId]?.label || '旧版用户' } : {}) })), hasMore, nextCursor: hasMore ? selected.at(-1).id : '' };
+    return { jobs: selected.map(job => ({ ...publicJob(job), ...(admin ? { submitter: job.adminName || clients[job.clientId]?.label || '旧版用户' } : {}) })), hasMore, nextCursor: hasMore ? selected.at(-1).id : '' };
   };
   app.get('/api/lab/collection-jobs', auth, (req, res) => clientAuth(req, res, () => res.json(page(req, jobs.filter(job => job.clientId === req.labClient)))));
   const adminAttempts = new Map();
@@ -103,13 +103,19 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
         if (!job || stopped) break;
         job.status = 'running'; save();
         try {
-          const result = await processLink(job.url);
+          job.startedAt = Date.now();
+          const result = await processLink(job.url, stage => {
+            if (!['fetch', 'translation', 'rewrite'].includes(stage)) return;
+            job.stage = stage; job.updatedAt = Date.now(); save();
+          });
           if (!result.entryId) throw new Error('No result');
           job.title = String(result.title || '').slice(0, 300);
           job.originalTitle = String(result.originalTitle || result.title || '').slice(0, 300);
           job.entryId = result.entryId;
           job.status = 'complete';
+          job.stage = 'complete';
         } catch { job.status = 'failed'; }
+        job.updatedAt = Date.now();
         save();
       }
     } finally { active = false; }
@@ -126,7 +132,7 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
     }
     const now = Date.now();
     const recent = jobs.filter(job => job.createdAt > now - 86400000);
-    if (recent.length >= 60 || recent.filter(job => job.owner === req.labOwner).length >= 20 || recent.filter(job => job.owner === req.labOwner && job.createdAt > now - 3600000).length >= 6 || jobs.filter(job => ['queued', 'running'].includes(job.status)).length >= 30) return res.status(429).json({ error: 'rate_limited' });
+    if (full() || recent.filter(job => job.owner === req.labOwner).length >= 20 || recent.filter(job => job.owner === req.labOwner && job.createdAt > now - 3600000).length >= 6) return res.status(429).json({ error: 'rate_limited' });
     const job = { id, url, owner: req.labOwner, clientId: req.labClient, status: 'queued', title: '', createdAt: now };
     jobs.push(job);
     try { save(); } catch { jobs.pop(); return res.status(503).json({ error: 'journal_unavailable' }); }
@@ -137,6 +143,72 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
     const job = jobs.find(job => job.id === req.params.id && job.clientId === req.labClient);
     return job ? res.json(view(job)) : res.status(404).json({ error: 'not_found' });
   }));
+  // Website authentication is set by QMReader's session-cookie middleware. It
+  // does not use the shared invitation or issue another administrative session.
+  const websiteAdmin = (req, res, next) => {
+    if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: '需要管理员登录' });
+    if (req.method === 'POST') {
+      const origin = req.get('origin');
+      if (origin) {
+        try { if (new URL(origin).host !== req.get('host')) throw Error('cross-site'); }
+        catch { return res.status(403).json({ error: '拒绝跨站操作' }); }
+      }
+    }
+    res.setHeader('Cache-Control', 'no-store'); return next();
+  };
+  const webJob = job => ({ ...publicJob(job), stage: job.stage || job.status,
+    submitter: job.adminName || clients[job.clientId]?.label || '旧版用户',
+    updatedAt: job.updatedAt || job.createdAt,
+    ...(job.status === 'failed' ? { error: ({ fetch: '网页抓取失败', translation: '翻译未完成', rewrite: '中文改写未完成' })[job.stage] || '处理未完成' } : {}),
+    retries: job.queueAttempts?.length ? job.queueAttempts.length - 1 : 0 });
+  const deleted = job => Boolean(job.entryId && adminAuth?.isEntryDeleted?.(job.entryId));
+  const full = () => {
+    const now = Date.now();
+    const attempts = jobs.flatMap(j => j.queueAttempts || [j.createdAt]);
+    return stopped || jobs.filter(j => ['queued', 'running'].includes(j.status)).length >= 30 || attempts.filter(t => t > now - 86400000).length >= 60;
+  };
+  const startDrain = () => { void drain().catch(() => { stopped = true; }); };
+  app.get('/api/admin/collection-jobs', websiteAdmin, (req, res) => {
+    const result = page(req, jobs, true);
+    const byId = new Map(jobs.map(job => [job.id, job]));
+    result.jobs = result.jobs.map(job => webJob(byId.get(job.id)));
+    res.json(result);
+  });
+  app.get('/api/admin/collection-jobs/:id', websiteAdmin, (req, res) => {
+    const job = jobs.find(j => j.id === req.params.id);
+    return job && !deleted(job) ? res.json({ job: webJob(job) }) : res.status(404).json({ error: '任务不存在' });
+  });
+  app.post('/api/admin/collection-jobs', websiteAdmin, (req, res) => {
+    let url;
+    try { url = validateUrl(String(req.body?.url || '')); }
+    catch { return res.status(400).json({ error: '请使用公开网页的 HTTP/HTTPS 链接' }); }
+    const id = String(req.body?.id || crypto.randomUUID());
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)) return res.status(400).json({ error: '无效请求标识' });
+    const sameId = jobs.find(j => j.id === id);
+    if (sameId && sameId.url !== url) return res.status(409).json({ error: '请求标识已用于其他链接' });
+    if (jobs.some(j => j.url === url && deleted(j))) return res.status(403).json({ error: '这个链接已被管理员移除' });
+    const existing = sameId || [...jobs].reverse().find(j => j.url === url);
+    if (existing) return res.json({ job: webJob(existing), duplicate: true });
+    if (full()) return res.status(stopped ? 503 : 429).json({ error: stopped ? '队列暂不可用，请稍后重试' : '队列已满或达到每日额度，请稍后重试' });
+    const now = Date.now();
+    const job = { id, url, owner: 'web-admin:' + req.user.id, adminName: String(req.user.displayName || '管理员').slice(0, 80),
+      status: 'queued', stage: 'queued', title: String(req.body?.title || '').slice(0, 300), createdAt: now, queueAttempts: [now] };
+    jobs.push(job);
+    try { save(); } catch { jobs.pop(); return res.status(503).json({ error: '任务保存失败，请稍后重试' }); }
+    res.status(202).json({ job: webJob(job) }); startDrain();
+  });
+  app.post('/api/admin/collection-jobs/:id/retry', websiteAdmin, (req, res) => {
+    const job = jobs.find(j => j.id === req.params.id);
+    if (!job || deleted(job)) return res.status(404).json({ error: '任务不存在' });
+    if (job.status !== 'failed') return res.json({ job: webJob(job), duplicate: true });
+    if (stopped) return res.status(503).json({ error: '队列暂不可用，请稍后重试' });
+    if (full() || (job.queueAttempts?.length || 1) >= 6) return res.status(429).json({ error: '重试达到额度，请稍后再试' });
+    const previous = { ...job };
+    job.status = 'queued'; job.stage = 'queued'; job.updatedAt = Date.now();
+    job.queueAttempts = [...(job.queueAttempts || [job.createdAt]), Date.now()];
+    try { save(); } catch { for (const key of Object.keys(job)) if (!(key in previous)) delete job[key]; Object.assign(job, previous); return res.status(503).json({ error: '任务保存失败，请稍后重试' }); }
+    res.status(202).json({ job: webJob(job) }); startDrain();
+  });
   // Interrupted jobs are retried after restart, using existing collected entries and cached rewrites.
   void drain().catch(() => { stopped = true; });
   return { stop: () => { stopped = true; } };

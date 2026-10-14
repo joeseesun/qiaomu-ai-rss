@@ -1,0 +1,20 @@
+.web-collection-box { width: min(680px, calc(100vw - 32px)); max-height: min(760px, calc(100dvh - 40px)); display: flex; flex-direction: column; overflow: hidden; background: var(--surface, var(--bg-1)); }
+#article-link-menu { max-height: calc(100dvh - 20px); overflow-y: auto; background: var(--surface, var(--bg-1)); }
+.web-collection-box header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.web-collection-box header h2 { margin: 0; font-size: 18px; }
+.web-collection-box header p { margin: 6px 0 0; color: var(--text-2); font-size: 12px; line-height: 1.6; }
+.web-collection-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 20px 6px; font-size: 12px; color: var(--text-2); }
+.web-collection-toolbar .ghost-btn { flex: none; width: auto; min-height: 32px; padding-inline: 14px; }
+#web-collection-list { overflow-y: auto; min-height: 0; padding: 0 20px 16px; overscroll-behavior: contain; }
+.web-collection-row { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.web-collection-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.web-collection-copy strong { color: var(--text-0); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.web-collection-url { color: var(--text-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.web-collection-state { color: var(--text-1); font-size: 12px; }
+.web-collection-copy small { color: var(--text-2); font-size: 11px; }
+.web-collection-row .ghost-btn { flex: none; min-height: 34px; }
+.web-collection-empty { padding: 24px 0; color: var(--text-2); text-align: center; }
+.web-collection-entry { margin-block: 10px; }
+#web-collection-more { flex: none; align-self: center; margin: 12px 0 20px; }
+#article-link-menu button:focus-visible, .web-collection-box button:focus-visible { outline: 1px solid var(--text-2); outline-offset: 1px; }
+@media (max-width: 480px) { .web-collection-box header { padding-inline: 16px; } .web-collection-toolbar { margin-inline: 16px; } #web-collection-list { padding-inline: 16px; } .web-collection-row { gap: 10px; } }
