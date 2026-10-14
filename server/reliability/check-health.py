@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Independent business-health watchdog; journal transitions, persist alert state."""
-import json, time, urllib.request, urllib.error, subprocess
+import json, os, time, urllib.request, urllib.error, subprocess
 from pathlib import Path
-state_file = Path('/var/lib/qiaomu-rss-health/state.json')
+state_file = Path(os.environ.get('RSS_HEALTH_STATE', '/var/lib/qiaomu-rss-health/state.json'))
 try:
-    with urllib.request.urlopen('http://127.0.0.1:3088/api/health', timeout=10) as response:
+    with urllib.request.urlopen(os.environ.get('RSS_HEALTH_URL', 'http://127.0.0.1:3088/api/health'), timeout=10) as response:
         health = json.load(response)
 except urllib.error.HTTPError as error:
     try: health = json.load(error)
     except Exception: health = {'status': 'critical', 'error': 'reader_unavailable'}
 except Exception:
     health = {'status': 'critical', 'error': 'reader_unavailable'}
+if not isinstance(health, dict) or health.get('status') not in ('ok', 'degraded', 'critical'):
+    health = {'status': 'critical', 'error': 'invalid_health_response'}
 try: previous = json.loads(state_file.read_text())
 except Exception: previous = {}
 now = int(time.time() * 1000)

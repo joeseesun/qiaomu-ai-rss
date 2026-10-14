@@ -18,4 +18,5 @@ jobs:
         with:
           python-version: '3.12'
       - run: node --test server/reliability/reliability.check.cjs
+      - run: python3 -m unittest discover -s server/reliability -p 'test_*.py'
       - run: python3 -m compileall -q server/reliability
