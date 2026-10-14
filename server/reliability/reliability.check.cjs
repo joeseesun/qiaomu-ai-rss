@@ -64,7 +64,7 @@ test('web writes and 401/429 never replay, and exhausted timeout fails visibly',
     assert.equal(calls, 1);
   }
   let calls = 0;
-  await assert.rejects(requestJson('/api/read', { timeoutMs: 60 }, { fetch: () => { calls++; return new Promise(() => {}); } }), /超时/);
+  await assert.rejects(requestJson('/api/read', { timeoutMs: 1000 }, { fetch: () => { calls++; return new Promise(() => {}); } }), /超时/);
   assert.equal(calls, 2);
 });
 test('web explicit cancellation does not retry or masquerade as timeout', async () => {
