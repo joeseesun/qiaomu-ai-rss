@@ -1,0 +1,24 @@
+name: RSS website link queue
+on:
+  push:
+    paths: ['server/web-collection/**', 'server/*collection*.check.cjs', 'server/lab-collection.js', '.github/workflows/rss-web-collection.yml']
+  pull_request:
+    paths: ['server/web-collection/**', 'server/*collection*.check.cjs', 'server/lab-collection.js', '.github/workflows/rss-web-collection.yml']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: node --test server/admin-link-queue.check.cjs server/web-collection.check.cjs server/lab-collection.check.cjs
+      - run: python3 -m unittest discover -s server/web-collection -p 'test_*.py'
+      - run: python3 server/web-collection/package.py --output /tmp/queue-release
