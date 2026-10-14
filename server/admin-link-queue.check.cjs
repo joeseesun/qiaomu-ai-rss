@@ -92,6 +92,7 @@ test('failure reasons distinguish timeout, quota and incomplete output without e
     [Object.assign(new Error('provider response sk-private'), { statusCode: 429 }), 'quota'],
     [new Error('translation coverage check failed sk-private'), 'incomplete'],
     [new Error('request failed: 401 sk-private'), 'credentials'],
+    [new TypeError('fetch failed sk-private'), 'network'],
   ];
   for (const [error, expected] of cases) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rss-web-queue-'));
