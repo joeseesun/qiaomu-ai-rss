@@ -3,6 +3,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+// Return fixed categories only; provider response bodies may contain credentials.
+function failureCode(error) {
+  const message = String(error?.message || '');
+  const status = Number(error?.statusCode || error?.status || 0);
+  if (/timeout|timed out|超时/i.test(message) || ['TimeoutError', 'AbortError'].includes(error?.name)) return 'timeout';
+  if (status === 429 || /rate.?limit|quota|额度|request failed: 429/i.test(message)) return 'quota';
+  if ([401, 403].includes(status) || /not configured|api.?key|unauthorized|authentication|request failed: (401|403)/i.test(message)) return 'credentials';
+  if (/coverage|preserv|structure|empty|not ready|incomplete|truncat|max.?tokens|输出.*(?:截断|中断)/i.test(message)) return 'incomplete';
+  if (status >= 500 || error?.name === 'TypeError' || /fetch failed|network|ECONN|ENOTFOUND/i.test(message)) return 'network';
+  return 'unknown';
+}
+
 function mountLabCollection(app, { directory, processLink, validateUrl, codes = () => process.env.QIAOMU_LAB_INVITE_CODES || '', adminAuth }) {
   const file = path.join(directory, 'lab-collection-jobs.json');
   const clientsFile = path.join(directory, 'lab-collection-clients.json');
@@ -114,7 +126,11 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
           job.entryId = result.entryId;
           job.status = 'complete';
           job.stage = 'complete';
-        } catch { job.status = 'failed'; }
+          delete job.failure;
+        } catch (error) {
+          job.status = 'failed'; job.failure = failureCode(error);
+          console.warn('[rss-link-queue]', JSON.stringify({ id: job.id, stage: job.stage || 'processing', failure: job.failure }));
+        }
         job.updatedAt = Date.now();
         save();
       }
@@ -159,7 +175,7 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
   const webJob = job => ({ ...publicJob(job), stage: job.stage || job.status,
     submitter: job.adminName || clients[job.clientId]?.label || '旧版用户',
     updatedAt: job.updatedAt || job.createdAt,
-    ...(job.status === 'failed' ? { error: ({ fetch: '网页抓取失败', translation: '翻译未完成', rewrite: '中文改写未完成' })[job.stage] || '处理未完成' } : {}),
+    ...(job.status === 'failed' ? { failure: job.failure || 'unknown', error: (({ fetch: '网页抓取失败', translation: '翻译未完成', rewrite: '中文改写未完成' })[job.stage] || '处理未完成') + '：' + (({ timeout: '请求超时，请重试', quota: '服务额度或频率受限，请稍后重试', credentials: '服务凭据不可用，请检查配置', incomplete: '生成结果不完整，请重试', network: '服务连接失败，请稍后重试' })[job.failure] || '请重试') } : {}),
     retries: job.queueAttempts?.length ? job.queueAttempts.length - 1 : 0 });
   const deleted = job => Boolean(job.entryId && adminAuth?.isEntryDeleted?.(job.entryId));
   const full = () => {
@@ -205,6 +221,7 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
     if (full() || (job.queueAttempts?.length || 1) >= 6) return res.status(429).json({ error: '重试达到额度，请稍后再试' });
     const previous = { ...job };
     job.status = 'queued'; job.stage = 'queued'; job.updatedAt = Date.now();
+    delete job.failure;
     job.queueAttempts = [...(job.queueAttempts || [job.createdAt]), Date.now()];
     try { save(); } catch { for (const key of Object.keys(job)) if (!(key in previous)) delete job[key]; Object.assign(job, previous); return res.status(503).json({ error: '任务保存失败，请稍后重试' }); }
     res.status(202).json({ job: webJob(job) }); startDrain();

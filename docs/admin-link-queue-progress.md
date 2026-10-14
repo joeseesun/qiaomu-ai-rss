@@ -10,4 +10,10 @@
 
 真实浏览器采用生产 HTML/app.js/CSS 的隔离站点与模拟模型结果：物理右键嵌套链接、点击入队、重复 URL 仅一条任务、失败重试、浅色/深色/390px 窄屏已验证。菜单为不透明背景；队列内容 20px 内边距，窄屏 16px，刷新按钮不受全局 flex 拉伸。窄屏弹窗 358px 宽，左右各 16px，页面无横向溢出。模拟结果不代表真实 AI 完成。
 
-发布包：qiaomu-rss-web-collection-1.0.0.tar.gz（只升级服务器/网站模块，插件版本维持 0.28.5）。生产部署与真实 API 验证待完成。
+发布包：qiaomu-rss-web-collection-1.0.0.tar.gz（只升级服务器/网站模块，插件版本维持 0.28.5）。
+
+生产已安装；原模块备份在 `.deploy-backups/web-collection-1791999460637372670`，错误分类补充备份在 `.deploy-backups/web-collection-1792000193153464805`。线上 JS/CSS SHA256 与源码一致，匿名首页真实加载 40 篇文章且隐藏管理员操作，health 返回 200，75 个来源无过期、队列无排队。
+
+生产鉴权：临时真实管理员会话（验证后已撤销）；匿名 GET 403、跨站 POST 403、内网 URL 400、有效 URL POST 202、同 URL 带片段再次 POST 200 且同一任务。实际任务 `6a5f3f7e-78c6-419f-bff3-37a7fd83792b` 经 translation/rewrite 到 complete，文章 `b470fd9b62bb2f61ee56cc5611e001bc` 返回 49 个翻译段落、5689 字中文改写，未新增公开文章。
+
+首次长篇验证任务 `81b98406-3b41-439e-ad63-81b543f64b73` 在翻译阶段失败（正文 HTML 约 151KB，现有缓存与新正文不匹配），保持 failed 并可手动重试，没有冒充完成。原模块吞掉具体错误；现补固定错误类别 timeout/quota/credentials/incomplete/network/unknown，写入状态及不含 provider 原文的日志。五类分支与凭据不外泄回归通过；不能将一次普通文章完成宣称全部长篇翻译均成功。
