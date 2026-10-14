@@ -86,3 +86,24 @@ test('website jobs interrupted during translation resume after restart', async (
   try { await tick(); assert.equal(f.call('GET', '/' + id).data.job.status, 'complete'); assert.equal(f.call('GET', '/' + id).data.job.entryId, 'restored'); }
   finally { f.control.stop(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
+test('failure reasons distinguish timeout, quota and incomplete output without echoing provider secrets', async () => {
+  const cases = [
+    [Object.assign(new Error('request timed out sk-private'), { name: 'TimeoutError' }), 'timeout'],
+    [Object.assign(new Error('provider response sk-private'), { statusCode: 429 }), 'quota'],
+    [new Error('translation coverage check failed sk-private'), 'incomplete'],
+    [new Error('request failed: 401 sk-private'), 'credentials'],
+    [new TypeError('fetch failed sk-private'), 'network'],
+  ];
+  for (const [error, expected] of cases) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rss-web-queue-'));
+    const f = fixture(dir, async (url, progress) => { progress('translation'); throw error; });
+    try {
+      const id = f.call('POST', '', { url: 'https://example.com/failure' }).data.job.id;
+      await tick();
+      const result = f.call('GET', '/' + id).data.job;
+      assert.equal(result.failure, expected); assert.equal(result.status, 'failed');
+      assert.ok(!JSON.stringify(result).includes('sk-private'));
+      assert.ok(!fs.readFileSync(path.join(dir, 'lab-collection-jobs.json'), 'utf8').includes('sk-private'));
+    } finally { f.control.stop(); fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
