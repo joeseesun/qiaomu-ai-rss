@@ -1,0 +1,7 @@
+[Unit]
+Description=Qiaomu RSS update freshness and stuck scheduler recovery
+After=qmreader.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/qiaomu-apps/qiaomu-rss-reliability/check-health.py
+TimeoutStartSec=45

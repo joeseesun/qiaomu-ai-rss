@@ -1,0 +1,22 @@
+name: RSS fetch reliability
+on:
+  push:
+    paths: ['server/reliability/**', '.github/workflows/rss-reliability.yml']
+  pull_request:
+    paths: ['server/reliability/**', '.github/workflows/rss-reliability.yml']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: node --test server/reliability/reliability.check.cjs
+      - run: python3 -m unittest discover -s server/reliability -p 'test_*.py'
+      - run: python3 -m compileall -q server/reliability

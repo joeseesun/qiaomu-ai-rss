@@ -1,0 +1,28 @@
+[Unit]
+Description=Qiaomu RSS independent standby fetch agent
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+User=rss-fetch
+Group=rss-fetch
+WorkingDirectory=/opt/qiaomu-apps/qiaomu-rss-fetch
+RuntimeDirectory=qiaomu-rss-fetch
+StateDirectory=qiaomu-rss-fetch
+Environment=RSS_APP_DIR=/opt/qiaomu-apps/qiaomu-rss-fetch/runtime
+Environment=RSS_AGENT_DATA=/var/lib/qiaomu-rss-fetch
+Environment=QMREADER_DATA_DIR=/var/lib/qiaomu-rss-fetch/cache
+Environment=QMREADER_DB_FILE=/var/lib/qiaomu-rss-fetch/cache/fetch.sqlite
+ExecStart=/opt/qiaomu-apps/qiaomu-rss-fetch/bin/node /opt/qiaomu-apps/qiaomu-rss-fetch/reliability/agent.cjs
+Restart=always
+RestartSec=10
+MemoryMax=512M
+CPUQuota=35%
+TasksMax=48
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0077
+[Install]
+WantedBy=multi-user.target
