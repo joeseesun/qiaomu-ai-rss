@@ -37,6 +37,16 @@ class RecoveryTest(unittest.TestCase):
                 self.assertIn('[rss-alert]', run())
                 self.assertEqual(marker.read_text(), 'restart\n')
                 self.assertEqual(json.loads((root / 'state.json').read_text())['status'], 'ok')
+                # An unready/invalid endpoint during deployment must not provoke a
+                # second restart on its first observation; confirm twice instead.
+                (root / 'state.json').unlink()
+                payload.clear()
+                run()
+                self.assertEqual(marker.read_text(), 'restart\n')
+                run()
+                self.assertEqual(marker.read_text(), 'restart\nrestart\n')
+                run()
+                self.assertEqual(marker.read_text(), 'restart\nrestart\n')
         finally:
             server.shutdown(); server.server_close(); thread.join()
 
