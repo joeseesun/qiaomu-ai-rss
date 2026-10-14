@@ -42,9 +42,13 @@ test('HTTP 200 with no new successful fetch is critical; unselected sources do n
 });
 test('web JSON body stall is bounded and a GET retries once', async () => {
   let calls = 0;
-  const result = await requestJson('/api/entries', { timeoutMs: 80 }, { fetch: async () => {
-    calls++; if (calls === 1) return { ok: true, headers: new Headers(), text: () => new Promise(() => {}) };
-    return new Response(JSON.stringify({ entries: [1] }));
+  // Warm the native HTTP types before starting the request clock; cold loading on CI
+  // must not consume the intentionally reduced test deadline.
+  const ready = new Response(JSON.stringify({ entries: [1] }));
+  const headers = new Headers();
+  const result = await requestJson('/api/entries', { timeoutMs: 1000 }, { fetch: async () => {
+    calls++; if (calls === 1) return { ok: true, headers, text: () => new Promise(() => {}) };
+    return ready;
   } });
   assert.deepEqual(result, { entries: [1] }); assert.equal(calls, 2);
 });
@@ -52,6 +56,11 @@ test('web writes and 401/429 never replay, and exhausted timeout fails visibly',
   for (const status of [401, 429, 503]) {
     let calls = 0;
     await assert.rejects(requestJson('/api/write', { method: 'POST', timeoutMs: 80 }, { fetch: async () => { calls++; return new Response('{"error":"denied"}', { status }); } }));
+    assert.equal(calls, 1);
+  }
+  for (const status of [401, 429]) {
+    let calls = 0;
+    await assert.rejects(requestJson('/api/read', { timeoutMs: 1000 }, { fetch: async () => { calls++; return new Response('{"error":"denied"}', { status }); } }));
     assert.equal(calls, 1);
   }
   let calls = 0;
