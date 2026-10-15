@@ -31,7 +31,9 @@ export class CuratedSourcePicker extends Modal {
     const lead = this.contentEl.createDiv('qrs-pick-lead');
     lead.createEl('p', { text: t('pick.description') });
     lead.createEl('p', { cls: 'qrs-pick-note', text: t('pick.note') });
-    const search = this.contentEl.createEl('input', { cls: 'qrs-pick-search', type: 'search', attr: { placeholder: t('pick.search'), 'aria-label': t('pick.search') } });
+    const searchId = `qrs-pick-search-${crypto.randomUUID()}`;
+    this.contentEl.createEl('label', { cls: 'qrs-visually-hidden', text: t('pick.search'), attr: { for: searchId } });
+    const search = this.contentEl.createEl('input', { cls: 'qrs-pick-search', type: 'search', attr: { id: searchId, placeholder: t('pick.search') } });
     search.addEventListener('input', () => { this.query = search.value.trim().toLocaleLowerCase(); this.renderList(); });
     this.facets = this.contentEl.createDiv({ cls: 'qrs-pick-facets', attr: { role: 'group', 'aria-label': t('pick.title') } });
     this.list = this.contentEl.createDiv('qrs-pick-list');

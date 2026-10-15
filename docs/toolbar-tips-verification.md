@@ -16,3 +16,12 @@ Design reference: [WAI tooltip pattern](https://www.w3.org/WAI/ARIA/apg/patterns
 - Unit/lifecycle coverage is distinct from hardware QA. Touch exclusion is synthetic; mobile hardware and fresh audio-provider playback were not tested. Existing playback start/pause implementation is unchanged.
 
 The ordinary workspace's preexisting untracked administrator/lab notes and videos were not included. Development used an attached managed worktree and preserved prior server-only changes on main. This document describes candidate validation; official preview, release and native update evidence is recorded separately under `artifacts/release-0.29.1/`.
+
+
+## Curated-source picker follow-up
+
+The source picker is available through unguarded reader/settings/command entries to every plugin user. It persists `pickedSourceIds` in the current vault; `applyCuratedPicks` filters the local curated cache, exempting personal RSS, vault notes and explicitly followed podcasts. It does not mutate the server catalog. UI copy now explains scope and recovery in all eight languages instead of exposing request thresholds and page sizes.
+
+The original native modal reproduced a 15px rendered search height despite its 36px CSS height, a 3px host focus shadow, and footer bounds outside the modal. The fix prevents controls shrinking, bounds the modal, scrolls the source list, wraps long URLs, uses a single neutral border and provides a native label without a host tooltip attribute.
+
+Native 100-source fixture: 16 assertions passed across light/dark 1200×800, narrow 440×800 and short 700×500 windows. Search remained 36px; focus shadow was none; footer remained visible; no horizontal overflow; actual typing filtered sources, clearing restored them, Tab reached facets and Escape closed the modal. Screenshots inspected and retained with `picker-qa.json` in ignored artifacts. This is desktop native QA, not mobile hardware verification. Final full `npm run check` passed with unchanged preexisting lint warnings.
