@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only API parity, real replica fault probes and concurrent reads."""
-import concurrent.futures,json,os,time,urllib.request
+import concurrent.futures,copy,json,os,sys,time,urllib.request
 from pathlib import Path
 origin_key=Path('/etc/rss-dr/origin-key').read_text().strip();control_key=Path('/etc/rss-dr/control-key').read_text().strip()
 def call(host,path,body=None):
@@ -18,6 +18,13 @@ paths=['/api/entries?limit=100','/api/sources']
 for entry in entries[:3]:
  for suffix in ['', '/rewrite','/translation']:
   path='/api/entry/'+entry['id']+suffix; a=call('rss-origin.qiaomu.ai',path)[0];b=call('rss-standby.qiaomu.ai',path)[0]
+  if a!=b and '--allow-view-counter-drift' in sys.argv and not suffix:
+   # Snapshots intentionally lag views. Compare all content and all other fields exactly.
+   a=copy.deepcopy(a);b=copy.deepcopy(b)
+   for payload in (a,b):
+    stats=payload.get('entry',{}).get('stats')
+    if isinstance(stats,dict):
+     for key in ('viewCount','lastViewedAt','updatedAt'):stats.pop(key,None)
   if a!=b:print('DIFFERENCE',path,'primary keys',list(a),'standby keys',list(b));raise AssertionError('detail parity mismatch')
   paths.append(path)
 sid=entries[0]['sourceId'];path='/api/sources/'+sid+'/entries?limit=40'
@@ -31,4 +38,4 @@ for mode in ['500','timeout','invalid-json']:
  print(json.dumps({'drill':mode,'origin':headers.get('X-Rss-Origin'),'seconds':round(time.monotonic()-start,2)}))
 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
  results=list(pool.map(lambda p:call('rss-standby.qiaomu.ai',p)[0],paths[:10]))
-print(json.dumps({'parity':True,'sources':len(source['sources']),'concurrency':len(results),'paths':len(paths)}))
+print(json.dumps({'parity':True,'sources':len(source['sources']),'concurrency':len(results),'paths':len(paths),'viewCounterDriftAllowed':'--allow-view-counter-drift' in sys.argv}))
