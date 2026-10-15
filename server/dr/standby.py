@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Read-only public projection; no accounts, schedulers or source database access."""
+import gzip
 import hashlib
 import hmac
 import json
@@ -69,6 +70,15 @@ def query(root, path, params):
             return 200, {kind or 'entry': json.loads(row[{'rewrite': 1, 'translation': 2}.get(kind, 0)])}, meta
         return 404, {'error': 'not_found'}, meta
 
+def encode_response(data, request_path, headers):
+    if headers.get('X-Rss-List') == 'reader-v1' and re.fullmatch(r'/api/(entries|sources/[^/]+/entries)', request_path) and isinstance(data.get('entries'), list):
+        omitted = {'content', 'assets', 'stats', 'signals', 'rewriteReady', 'rewriteStatus'}
+        data = {**data, 'entries': [{k: v for k, v in entry.items() if k not in omitted} for entry in data['entries']]}
+    body = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode()
+    encodings = [part.strip().lower().split(';') for part in headers.get('Accept-Encoding', '').split(',')]
+    use_gzip = any(parts[0] == 'gzip' and not any(re.fullmatch(r'\s*q\s*=\s*0(?:\.0*)?\s*', p) for p in parts[1:]) for parts in encodings)
+    return (gzip.compress(body, compresslevel=3, mtime=0), 'gzip') if use_gzip and len(body) > 1024 else (body, None)
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args): pass
     def do_HEAD(self): self.do_GET()
@@ -94,8 +104,10 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(status, data, meta)
         except (OSError, sqlite3.Error, ValueError, KeyError): self.respond(503, {'error': 'snapshot_unavailable'})
     def respond(self, status, data, meta=None):
-        body = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode()
-        self.send_response(status); self.send_header('Content-Type', 'application/json; charset=utf-8'); self.send_header('Cache-Control', 'no-store'); self.send_header('Content-Length', str(len(body)))
+        body, encoding = encode_response(data, urlsplit(self.path).path, self.headers)
+        self.send_response(status); self.send_header('Vary', 'Accept-Encoding, X-Rss-List')
+        if encoding: self.send_header('Content-Encoding', encoding)
+        self.send_header('Content-Type', 'application/json; charset=utf-8'); self.send_header('Cache-Control', 'no-store'); self.send_header('Content-Length', str(len(body)))
         if meta:
             self.send_header('X-Rss-Snapshot', meta['id']); self.send_header('X-Rss-Revision', str(meta['revision'])); self.send_header('X-Rss-Snapshot-Time', str(meta['createdAt']))
         self.end_headers()

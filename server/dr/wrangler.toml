@@ -24,6 +24,8 @@ STANDBY_ORIGIN = "https://rss-standby.qiaomu.ai"
 PRIMARY_TIMEOUT_MS = "5000"
 STANDBY_TIMEOUT_MS = "4000"
 MAX_SNAPSHOT_AGE_MS = "86400000"
+READ_REPLICA_CONTINENTS = "AS,OC"
+READ_REPLICA_MAX_AGE_MS = "90000"
 
 [[durable_objects.bindings]]
 name = "SAFETY"

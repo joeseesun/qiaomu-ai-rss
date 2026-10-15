@@ -16,3 +16,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: node --test server/dr/*.check.*
+      - run: python3 -m unittest discover -s server/dr -p 'test_*.py'

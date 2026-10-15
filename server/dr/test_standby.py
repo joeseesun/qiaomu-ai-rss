@@ -3,7 +3,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
-from standby import connect, query
+from standby import connect, query, encode_response
 
 class StandbyTests(unittest.TestCase):
     def setUp(self):
@@ -29,6 +29,17 @@ class StandbyTests(unittest.TestCase):
         self.assertEqual(query(self.root,'/api/entry/a0',{})[1]['entry']['content'],'body')
         self.assertIsNone(query(self.root,'/api/entry/a0/rewrite',{})[1]['rewrite'])
         self.assertEqual(query(self.root,'/api/entry/deleted',{})[0],404)
+    def test_compact_transport_preserves_metadata_and_cursor(self):
+        payload={'entries':[{'id':'a','title':'标题','summary':'Keep','assets':{'body':'x'*5000},'stats':{},'content':'body'}], 'nextCursor':'2:a','hasMore':True}
+        body,encoding=encode_response(payload,'/api/entries',{'X-Rss-List':'reader-v1'})
+        value=json.loads(body); self.assertNotIn('assets',value['entries'][0]);self.assertEqual(value['nextCursor'],'2:a');self.assertEqual(value['entries'][0]['summary'],'Keep');self.assertIn('assets',payload['entries'][0])
+    def test_gzip_is_negotiated_and_original_detail_is_never_stripped(self):
+        import gzip
+        payload={'entry':{'id':'a','content':'正文'*3000}}
+        body,encoding=encode_response(payload,'/api/entry/a',{'X-Rss-List':'reader-v1','Accept-Encoding':'gzip'})
+        self.assertEqual(encoding,'gzip');self.assertEqual(json.loads(gzip.decompress(body)),payload)
+        raw,encoding=encode_response(payload,'/api/entry/a',{'Accept-Encoding':'gzip;q=0'})
+        self.assertIsNone(encoding);self.assertEqual(json.loads(raw),payload)
     def test_database_is_really_read_only(self):
         with connect(self.root) as db:
             with self.assertRaises(sqlite3.OperationalError): db.execute('DELETE FROM entries')

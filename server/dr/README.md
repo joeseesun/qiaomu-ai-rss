@@ -55,3 +55,22 @@ QMREADER_MODULES=/path/to/qmreader node --test server/dr/public-read-cache-http.
 ```
 
 Before mounting, back up the current `server.js`, `ensure-gate.py` and any existing cache module. Syntax-check, restart only qmreader, and verify anonymous list/detail routes, compact/legacy variants, authentication bypass and existing standby checks. Roll back by restoring those exact files and removing the new module only if none existed previously, then restart qmreader. Restoring `server.js` alone is insufficient because ExecStartPre remounts the middleware. Never use an old full checkout to overwrite later production edits.
+
+## Prepared lists and replica preference (2026-10-15)
+
+Some newer QMReader handlers call `sendCached(...).end()` directly, bypassing the older `res.json` public-cache interception. Install `server/response-cache.cjs` as the website's `lib/response-cache.js`, and integrate `server/patch-prepared-list.py` with the exact deployed `server.js` after reviewing its guarded replacements. The patch is deliberately not a general deployment script: all expected insertion points must match, it refuses reapplication, and it preserves unrelated production changes. Website source should own the integrated module in its next release.
+
+`X-Rss-List: reader-v1` selects compact metadata for the plugin; cache keys, Vary and validators distinguish this from legacy responses. The prepared cache has a 32 MiB estimated memory budget and observes JSON/SQLite/WAL changes, so external deletions do not wait for TTL. An invalidated asynchronous fill cannot repopulate the cache. Shared HTTP responses use `no-store`; prepared JSON/gzip is cached inside the process. Cookie/authorization handling stays with existing application routes. Do not equate this header with the website's separate `summary=minimal` query protocol.
+
+`READ_REPLICA_CONTINENTS=AS,OC` allows anonymous compact GET lists to prefer the read-only standby when the deletion gate is ready and the snapshot is no more than 90 seconds old. Gate, body transfer and the second gate check share a 1.2-second preference budget. A stale, unavailable, mismatched or invalidated replica falls back to primary. Cookie/authorization requests, writes and explicit HTTP `Cache-Control: no-cache`, `no-store`, `max-age=0` or `Pragma: no-cache` bypass preference. This is a header contract; it does not imply that every client refresh button sends these headers. The existing five-minute-after-completion sync cadence means preference is intermittent. Do not advertise continuous load balancing or zero-lag replicas. Existing outage fallback retains its 24-hour snapshot age bound and deletion gate.
+
+Standby compresses responses only when gzip is accepted and removes heavyweight fields only for compact list responses; article details retain their content. Observe `X-Rss-Origin`, `X-Rss-Route` and `X-Rss-Replica-Age` to distinguish actual replica hits from primary reads. Test routes from multiple networks: a local Fake-IP/TUN proxy timeout can coexist with a healthy origin and edge.
+
+Additional validation:
+
+```
+node --test server/response-cache.check.cjs server/dr/worker.check.mjs
+QMREADER_MODULES=/path/to/qmreader node --test server/prepared-list-http.integration.cjs
+```
+
+`verify.py --allow-view-counter-drift` ignores only the detail's view count, last-view timestamp and statistics update timestamp. It still fails on any list/order/content difference. Ongoing ingestion can legitimately make a live origin newer than the exported snapshot; investigate the added IDs and timestamps instead of declaring strict parity or weakening assertions silently.

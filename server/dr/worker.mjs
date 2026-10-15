@@ -55,6 +55,41 @@ export async function originJson(request, origin, secret, timeout, fetcher = fet
     ]);
   } finally { clearTimeout(timer); }
 }
+// Short-lived public list replicas share traffic; private reads and explicit refreshes remain authoritative.
+function preferReplica(request, env) {
+  const continents = String(env.READ_REPLICA_CONTINENTS || '').split(',');
+  return request.method === 'GET' && request.headers.get('X-Rss-List') === 'reader-v1'
+    && /^\/api\/(entries|sources\/[^/]+\/entries)$/.test(new URL(request.url).pathname)
+    && !/no-cache|no-store|max-age\s*=\s*0/i.test(request.headers.get('Cache-Control') || '')
+    && !/no-cache/i.test(request.headers.get('Pragma') || '')
+    && continents.includes(request.cf?.continent);
+}
+async function bounded(promise, ms) {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(Error('replica_deadline')), ms); })]); }
+  finally { clearTimeout(timer); }
+}
+async function replicaResponse(request, env, fetcher, maxAge, deadlineMs) {
+  const deadline = Date.now() + deadlineMs;
+  const remaining = () => { const ms = deadline - Date.now(); if (ms <= 0) throw Error('replica_deadline'); return ms; };
+  const readState = () => bounded((async () => { const r = await gate(env, 'status'); if (!r.ok) throw Error('gate_unavailable'); return r.json(); })(), remaining());
+  const state = await readState();
+  const age = Date.now() - state.snapshot?.createdAt;
+  if (!state.ready || !state.snapshot || !Number.isFinite(age) || age < -5000 || age > maxAge) throw Error('standby_not_ready');
+  const response = await originJson(new Request(request), env.STANDBY_ORIGIN, env.ORIGIN_KEY, Math.min(remaining(), Number(env.STANDBY_TIMEOUT_MS || 4000)), fetcher);
+  if (response.status !== 200 || response.headers.get('X-Rss-Snapshot') !== state.snapshot.id || Number(response.headers.get('X-Rss-Revision')) !== state.revision) throw Error('standby_generation_mismatch');
+  // Recheck after the complete body: a concurrent deletion invalidates the old snapshot.
+  const latest = await readState();
+  if (!latest.ready || latest.revision !== state.revision || latest.snapshot?.id !== state.snapshot.id || Date.now() - state.snapshot.createdAt > maxAge) throw Error('standby_invalidated');
+  const h = new Headers(response.headers); h.set('X-Rss-Origin', 'standby'); h.set('Cache-Control', 'no-store'); h.set('X-Rss-Replica-Age', String(Math.ceil(Math.max(0, Date.now() - state.snapshot.createdAt) / 1000)));
+  let body = response.body;
+  if (request.method === 'GET' && request.headers.get('X-Rss-List') === 'reader-v1' && /\/entries$/.test(new URL(request.url).pathname)) {
+    const data = await response.json();
+    data.entries = data.entries.map(({content, assets, stats, signals, rewriteReady, rewriteStatus, ...metadata}) => metadata);
+    body = JSON.stringify(data); h.delete('Content-Length'); h.delete('Content-Encoding'); h.delete('ETag'); h.set('Vary', 'Accept-Encoding, X-Rss-List');
+  }
+  return new Response(body, {status:200, headers:h});
+}
 export async function handle(request, env, fetcher = fetch) {
   const u = new URL(request.url);
   if (u.pathname.startsWith('/__dr/')) {
@@ -88,6 +123,12 @@ export async function handle(request, env, fetcher = fetch) {
     const headers = new Headers(request.headers); headers.set('X-Rss-Origin-Key', env.ORIGIN_KEY); headers.set('X-Forwarded-Host', 'rss.qiaomu.ai');
     return fetcher(new Request(target, { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body, duplex: 'half', redirect: 'manual' }));
   }
+  if (preferReplica(request, env)) {
+    try {
+      const response = await replicaResponse(request, env, fetcher, Math.min(90000, Math.max(1, Number(env.READ_REPLICA_MAX_AGE_MS || 90000))), 1200);
+      response.headers.set('X-Rss-Route', 'replica-first'); return response;
+    } catch { /* A stale or slow replica must never prevent a live primary read. */ }
+  }
   let primary;
   try { primary = await originJson(request, env.PRIMARY_ORIGIN, env.ORIGIN_KEY, Number(env.PRIMARY_TIMEOUT_MS || 5000), fetcher); }
   catch { primary = json({ error: 'primary_unavailable' }, 503); }
@@ -96,16 +137,8 @@ export async function handle(request, env, fetcher = fetch) {
     return new Response(primary.body, { status: primary.status, headers: h });
   }
   try {
-    const state = await (await gate(env, 'status')).json();
-    if (!state.ready || !state.snapshot || Date.now() - state.snapshot.createdAt > Number(env.MAX_SNAPSHOT_AGE_MS || 86400000)) throw Error('standby_not_ready');
-    const fallbackRequest = new Request(request);
-    const response = await originJson(fallbackRequest, env.STANDBY_ORIGIN, env.ORIGIN_KEY, Number(env.STANDBY_TIMEOUT_MS || 4000), fetcher);
-    if (response.status !== 200 || response.headers.get('X-Rss-Snapshot') !== state.snapshot.id || Number(response.headers.get('X-Rss-Revision')) !== state.revision) throw Error('standby_generation_mismatch');
-    // Recheck after reading the body: an overlapping deletion must prevent old content escaping.
-    const latest = await (await gate(env, 'status')).json();
-    if (!latest.ready || latest.revision !== state.revision || latest.snapshot.id !== state.snapshot.id) throw Error('standby_invalidated');
-    const h = new Headers(response.headers); h.set('X-Rss-Origin', 'standby'); h.set('Cache-Control', 'no-store');
-    return new Response(response.body, { status: 200, headers: h });
+    const response = await replicaResponse(request, env, fetcher, Number(env.MAX_SNAPSHOT_AGE_MS || 86400000), 5000);
+    response.headers.set('X-Rss-Route', 'failover'); return response;
   } catch { return json({ error: 'service_unavailable' }, 503); }
 }
 export async function retainBackups(env, now=Date.now()) {

@@ -67,3 +67,36 @@ test('retention preserves latest daily and weekly backups and removes old partia
  await retainBackups({BACKUPS:{list:async()=>({objects,truncated:false}),delete:async key=>deleted.push(key)}},now);
  assert(!deleted.includes('hourly/s0/manifest.json'));assert(!deleted.includes('hourly/s13/manifest.json'));assert(deleted.includes('hourly/s99/manifest.json'));assert(deleted.includes('hourly/partial/part.enc'));
 });
+test('fresh Asian compact list reads use standby without touching primary',async()=>{
+ const {env,object}=environment();env.READ_REPLICA_CONTINENTS='AS,OC';env.READ_REPLICA_MAX_AGE_MS='90000';
+ await operation(object,'publish',{revision:0,id:'s1',createdAt:Date.now()});
+ const request=new Request('https://rss.test/api/entries?limit=40',{headers:{'X-Rss-List':'reader-v1'}});Object.defineProperty(request,'cf',{value:{continent:'AS'}});
+ const calls=[];const result=await handle(request,env,async u=>{calls.push(String(u));return response({entries:[{id:'a'}]},200,{'X-Rss-Snapshot':'s1','X-Rss-Revision':'0'});});
+ assert.equal(result.headers.get('X-Rss-Origin'),'standby');assert.equal(calls.length,1);assert.match(calls[0],/standby/);assert.ok(Number(result.headers.get('X-Rss-Replica-Age'))>=0);
+});
+test('replica-first never serves stale, mutated, personalized, or explicit refresh requests',async()=>{
+ for(const kind of ['stale','pending','cookie','refresh','wrong-snapshot']){
+ const {env,object}=environment();env.READ_REPLICA_CONTINENTS='AS,OC';env.READ_REPLICA_MAX_AGE_MS='90000';
+ await operation(object,'publish',{revision:0,id:'s1',createdAt:Date.now()-(kind==='stale'?100000:0)});
+ if(kind==='pending')await operation(object,'start',{id:'mutation'});
+ const headers={'X-Rss-List':'reader-v1'};if(kind==='cookie')headers.Cookie='session=x';if(kind==='refresh')headers['Cache-Control']='no-cache';
+ const request=new Request('https://rss.test/api/entries',{headers});Object.defineProperty(request,'cf',{value:{continent:'AS'}});
+ let primary=0;const result=await handle(request,env,async u=>{if(String(u.url||u).includes('primary')){primary++;return response({entries:[{id:'primary'}]});}return response({entries:[{id:'replica'}]},200,{'X-Rss-Snapshot':'wrong','X-Rss-Revision':'0'});});
+ assert.equal((await result.json()).entries[0].id,'primary',kind);assert.equal(primary,1,kind);
+ }
+});
+test('replica preference has a bounded wait and rechecks concurrent deletion',async()=>{
+ for(const kind of ['slow','deletion']){
+  const {env,object}=environment();env.READ_REPLICA_CONTINENTS='AS';
+  await operation(object,'publish',{revision:0,id:'s1',createdAt:Date.now()});
+  const request=new Request('https://rss.test/api/entries',{headers:{'X-Rss-List':'reader-v1'}});Object.defineProperty(request,'cf',{value:{continent:'AS'}});
+  let primary=0;const started=Date.now();
+  const result=await handle(request,env,async(u,options)=>{
+   if(String(u).includes('primary')){primary++;return response({entries:[{id:'current'}]});}
+   if(kind==='slow')return new Promise((_,reject)=>options.signal.addEventListener('abort',()=>reject(Error('timeout')),{once:true}));
+   await operation(object,'start',{id:'delete'});
+   return response({entries:[{id:'removed'}]},200,{'X-Rss-Snapshot':'s1','X-Rss-Revision':'0'});
+  });
+  assert.equal((await result.json()).entries[0].id,'current');assert.equal(primary,1);assert.ok(Date.now()-started<2000);
+ }
+});
