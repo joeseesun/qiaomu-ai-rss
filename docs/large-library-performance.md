@@ -7,7 +7,7 @@ This release addresses client-side work that scales with subscriptions and artic
 - Variable-height virtual article windows with measured heights, bounded mounted rows, scroll anchors and Tab navigation across window boundaries. Ordinary article lists retain their existing appearance and keyboard actions; the administrator collection list is unchanged.
 - Intersection-controlled thumbnail downloads, view cleanup and bounded actual image transports. A UI timeout does not release a still-running transport slot.
 - Merged source refresh updates and a retained sorted feed index. Source-name/read/duplicate lookups are indexed per render. Large searches debounce for 120 ms and respect composition events.
-- Metadata-only startup and lazy body reads. `bodies-v1` uses 32 shards; only changed shards are written. Legacy migration writes a completion marker last and keeps the old cache as a rollback copy. Unloaded bodies survive ordinary saves; rebuildable bodies are capped at 20 MB independently of protected saved/favorite/recent bodies. Eviction keeps article metadata. Opening an evicted body can fetch its original feed with reserved foreground capacity.
+- Lazy original-body reads instead of eagerly loading the original-body cache at startup. Saved AI rewrites and translations retain their existing inline storage format. `bodies-v1` uses 32 shards; only changed shards are written. Legacy migration writes a completion marker last and keeps the old cache as a rollback copy. Unloaded bodies survive ordinary saves; rebuildable bodies are capped at 20 MB independently of protected saved/favorite/recent bodies. Eviction keeps article metadata. Opening an evicted body can fetch its original feed with reserved foreground capacity.
 - Personal channel refreshes no longer stop at 20 sources. While a reader exists, a 60–75-second local timer checks due sources; source cadence sets a 5–60-minute interval. Background transports reserve foreground capacity, successful 304 checks persist timing and clear backoff, and obsolete queued work is skipped. Closing the reader stops scheduled queue advancement. No diagnostics are transmitted.
 - Personal channel checkpoints no longer duplicate the entire personal article index in data.json. Normal metadata saves skip body-map collection/writes.
 
@@ -19,7 +19,7 @@ This release addresses client-side work that scales with subscriptions and artic
 
 `large-library-host-qa.js`: 12 desktop assertions cover bounded rows, scroll-anchor pixel preservation, retained focus, Tab across virtual boundaries, IME composition, search/clear, actual lazy thumbnail requests, scrolling, offline reading and narrow layout. Light, dark and narrow screenshots were inspected. Hidden Electron windows must be made visible before relying on IntersectionObserver results.
 
-`body-upgrade-host-qa.js`: eight installed-host assertions cover metadata-only startup/restart, settings/favorites/read-state preservation, on-demand legacy reads, migration completion, one-shard lookup and offline article rendering after upgrade. The test explicitly waits for the old instance's save queue before replacing fixture data.
+`body-upgrade-host-qa.js`: eight installed-host assertions cover startup/restart without eager original-body cache reads, settings/favorites/read-state preservation, on-demand legacy reads, migration completion, one-shard lookup and offline article rendering after upgrade. The test explicitly waits for the old instance's save queue before replacing fixture data.
 
 ## Boundaries
 
