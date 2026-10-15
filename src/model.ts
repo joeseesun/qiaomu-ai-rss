@@ -117,10 +117,10 @@ export function titleOf(entry: Entry): string { return entry.titleZh?.trim() || 
 // Content-cache split: entry `content` (~95% of persisted bytes) lives in a rebuildable
 // content-cache.json keyed by entry id, so data.json stays small and every persist is cheap.
 // In-memory entries always carry content; split/attach convert only at the storage boundary.
-export function splitContentCache(state: State): { slim: State; cache: Record<string, string> } {
+export function splitContentCache(state: State, collectBodies = true): { slim: State; cache: Record<string, string> } {
   const cache: Record<string, string> = {};
   const strip = (entry: Entry): Entry => {
-    if (entry.content) { cache[entry.id] = entry.content; return { ...entry, content: undefined }; }
+    if (entry.content) { if (collectBodies) cache[entry.id] = entry.content; return { ...entry, content: undefined }; }
     return entry;
   };
   const mapBundles = (record: Record<string, Bundle>): Record<string, Bundle> =>

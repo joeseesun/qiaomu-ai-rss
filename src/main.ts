@@ -1,3 +1,4 @@
+import { BodyStore } from './body-store';
 import { SaveQueue } from './save-queue';
 import { RssSpeech } from './speech';
 import { SpeechSettingsModal } from './speech-settings';
@@ -12,7 +13,7 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, type App, type SettingDefinitionItem, type SettingGroupItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, attachContentCache, stripFeedBodies, type Bundle, type Entry, type Mode, type State } from './model';
+import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, captureMoment, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { contextProvider } from './agent-bridge';
@@ -73,7 +74,7 @@ export default class QiaomuRssPlugin extends Plugin {
     catch { new Notice(t('notice.dataUnreadable')); throw new Error('Incompatible RSS data'); }
     this.speech = new RssSpeech(this);
     applyCuratedPicks(this.state);
-    await this.loadContentCache();
+
     this.adminSession = this.state.collectionAdminSession ?? undefined;
     if (data && typeof data === 'object' && !('libraryVersion' in data)) {
       const backup = `${this.app.vault.configDir}/plugins/${this.manifest.id}/data-before-library-v1.json`;
@@ -83,6 +84,7 @@ export default class QiaomuRssPlugin extends Plugin {
     this.images = new LocalImages(this.app.vault, `${this.app.vault.configDir}/plugins/${this.manifest.id}/image-cache`);
     registerImageDrops(this);
     this.subscriptions = new Subscriptions(() => this.state, () => this.persist().then(() => { this.refreshDiscovery(); this.refreshPersonalViews(); }), undefined, () => this.markBodiesDirty());
+    this.registerInterval(window.setInterval(() => { void this.syncPersonalBackground(); }, 60000 + Math.floor(Math.random() * 15000)));
     this.addCommand({ id: 'manage-subscriptions', name: t('cmd.manageSubscriptions'), callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
     for (const [id, name, run] of [
@@ -154,7 +156,7 @@ export default class QiaomuRssPlugin extends Plugin {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice(t('notice.localCopyMissingShort')));
     });
   }
-  onunload() { this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
+  onunload() { this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
   api(): RssApi {
     const base = this.state.settings.baseUrl;
     if (this.apiClient && this.apiBase === base) return this.apiClient;
@@ -339,26 +341,56 @@ export default class QiaomuRssPlugin extends Plugin {
     if (this.state.deletedEntries[this.state.settings.baseUrl]?.length) applyDeletedEntries(this.state, [], this.state.settings.baseUrl);
     return this.saves.request();
   }
+  private personalSyncRunning = false;
+  private async syncPersonalBackground() {
+    if (this.personalSyncRunning || this.collectionStopped || !this.app.workspace.getLeavesOfType(VIEW_TYPE).length) return;
+    this.personalSyncRunning = true;
+    let timer: number | undefined;
+    const update = () => { timer = undefined; if (!this.collectionStopped) this.refreshPersonalViews(); };
+    try { await this.subscriptions.refresh(this.state.subscriptions.map(feed => feed.id), this.app.workspace.containerEl.ownerDocument, false, (_done, _total, outcome) => {
+      if (outcome === 'changed' && timer === undefined) timer = window.setTimeout(update, 250);
+    },
+      () => !this.collectionStopped && !!this.app.workspace.getLeavesOfType(VIEW_TYPE).length); }
+    catch { /* Reading remains available; the next scheduled pass retries storage or network failures. */ }
+    finally { if (timer !== undefined) { window.clearTimeout(timer); update(); } this.personalSyncRunning = false; }
+  }
   private cacheRevision = 1;
   private savedCacheRevision = 0;
-  /** Entry bodies live in a rebuildable side file; only a body change may rewrite it. */
+  private bodies?: BodyStore;
+  private bodyStore() { return this.bodies ??= new BodyStore(this.app.vault.adapter, `${this.app.vault.configDir}/plugins/${this.manifest.id}/bodies-v1`, this.cachePath()); }
   markBodiesDirty() { this.cacheRevision++; }
   private cachePath() { return `${this.app.vault.configDir}/plugins/${this.manifest.id}/content-cache.json`; }
-  private async saveSplit(): Promise<void> {
-    // data.json keeps config + metadata; entry bodies go to a rebuildable cache file,
-    // rewritten only when bodies actually changed (scroll checkpoints must not rewrite megabytes).
-    const revision = this.cacheRevision;
-    const { slim, cache } = splitContentCache(this.state);
-    await this.saveData(slim);
-    if (revision === this.savedCacheRevision) return;
-    try { await this.app.vault.adapter.write(this.cachePath(), JSON.stringify(cache)); this.savedCacheRevision = revision; }
-    catch { /* The body cache is rebuildable from feeds; a failed write must not break state save. */ }
+  async hydrateEntry(entry: Entry): Promise<Entry> {
+    if (entry.content) return entry;
+    const content = await this.bodyStore().get(entry.id);
+    return content ? { ...entry, content } : entry;
   }
-  private async loadContentCache(): Promise<void> {
-    try {
-      const parsed: unknown = JSON.parse(await this.app.vault.adapter.read(this.cachePath()));
-      if (parsed && typeof parsed === 'object') attachContentCache(this.state, parsed as Record<string, string>);
-    } catch { /* No cache yet; bodies rehydrate on the next refresh. */ }
+  async localArticle(entry: Entry, doc: Document): Promise<Entry> {
+    const cached = await this.hydrateEntry(entry);
+    if (cached.content) return cached;
+    const feed = this.state.subscriptions.find(feed => feed.id === entry.sourceId);
+    if (!feed) return entry;
+    // Opening an evicted body uses the reserved foreground transport slot.
+    const result = await this.subscriptions.fetch(feed.url, doc);
+    return result.entries.find(item => item.id === entry.id) || entry;
+  }
+  private async saveSplit(): Promise<void> {
+    const revision = this.cacheRevision, dirty = revision !== this.savedCacheRevision;
+    const { slim, cache } = splitContentCache(this.state, dirty);
+    if (dirty) {
+      const entries = [...this.state.entries, ...this.state.subscriptions.flatMap(feed => feed.entries),
+        ...Object.values(this.state.channelStates).flatMap(channel => [...channel.entries, ...(channel.bundle ? [channel.bundle.entry] : [])]),
+        ...[this.state.cache, this.state.favorites, this.state.savedArticles].flatMap(bundles => Object.values(bundles).map(bundle => bundle.entry))];
+      // Write bodies before advertising metadata, preserving offline data if a write fails.
+      const protectedIds = new Set([this.state.cache, this.state.favorites, this.state.savedArticles].flatMap(bundles => Object.values(bundles).map(bundle => bundle.entry.id)));
+      const evicted = new Set(await this.bodyStore().write(cache, new Set(entries.map(entry => entry.id)), protectedIds));
+      for (const feed of this.state.subscriptions) if (feed.entries.some(entry => evicted.has(entry.id))) {
+        feed.entries = feed.entries.map(entry => evicted.has(entry.id) ? { ...entry, content: undefined } : entry);
+
+      }
+      this.savedCacheRevision = revision;
+    }
+    await this.saveData(slim);
   }
   isLater(id: string): boolean { return this.state.readLater.includes(id); }
   async toggleLater(entry: Entry): Promise<boolean> {
@@ -379,14 +411,16 @@ export default class QiaomuRssPlugin extends Plugin {
     const dir = `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
     const sizeOf = async (path: string): Promise<number> => { try { return (await this.app.vault.adapter.stat(path))?.size ?? 0; } catch { return 0; } };
     const [dataJson, cacheJson, images] = await Promise.all([
-      sizeOf(`${dir}/data.json`), sizeOf(this.cachePath()), this.images.usage(),
+      sizeOf(`${dir}/data.json`), this.bodyStore().bytes().catch(() => 0), this.images.usage(),
     ]);
     return { dataJson, cacheJson, images };
   }
   async clearSourceBodies(id: string): Promise<{ freedBytes: number; freedCount: number }> {
     const feed = this.state.subscriptions.find(item => item.id === id);
     if (!feed) return { freedBytes: 0, freedCount: 0 };
-    const result = stripFeedBodies(feed.entries);
+    const loaded = await Promise.all(feed.entries.map(entry => this.hydrateEntry(entry)));
+    this.bodyStore().remove(feed.entries.map(entry => entry.id));
+    const result = stripFeedBodies(loaded);
     feed.entries = result.entries;
     this.markBodiesDirty();
     await this.persist();
@@ -395,7 +429,9 @@ export default class QiaomuRssPlugin extends Plugin {
   async clearAllBodies(): Promise<{ freedBytes: number; freedCount: number }> {
     let freedBytes = 0, freedCount = 0;
     for (const feed of this.state.subscriptions) {
-      const result = stripFeedBodies(feed.entries);
+      const loaded = await Promise.all(feed.entries.map(entry => this.hydrateEntry(entry)));
+      this.bodyStore().remove(feed.entries.map(entry => entry.id));
+      const result = stripFeedBodies(loaded);
       feed.entries = result.entries; freedBytes += result.freedBytes; freedCount += result.freedCount;
     }
     this.markBodiesDirty();
@@ -455,6 +491,7 @@ export default class QiaomuRssPlugin extends Plugin {
     const now = captureMoment();
     let result!: { file: TFile; added: boolean };
     const write = async () => {
+      entry = await this.hydrateEntry(entry);
       const id = `${entry.origin === 'local' ? 'local' : entry.origin === 'vault' ? 'vault' : this.state.settings.baseUrl}|${entry.id}`;
       const bundle = this.state.cache[entry.id] || this.state.favorites[entry.id] || { entry, rewrite: entry.rewrite || null, translation: null, fetchedAt: Date.now() };
       this.state.savedArticles[id] = bundle;

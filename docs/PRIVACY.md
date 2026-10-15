@@ -18,7 +18,7 @@ To remove local reader data, disable the plugin and remove its `data.json` and `
 
 ## Personal subscriptions
 
-Personal RSS/Atom URLs are fetched directly through Obsidian's HTTP(S) API, without a Qiaomu proxy, account or AI generation. Hosts receive normal connection metadata. Adding a source fetches and validates it; selecting a personal channel refreshes caches older than five minutes; the refresh button forces a request. A batch uses up to three workers. No periodic polling is registered. Requests already initiated may finish after a view closes.
+Personal RSS/Atom URLs are fetched directly through Obsidian's HTTP(S) API, without a Qiaomu proxy, account or AI generation. Hosts receive normal connection metadata. Adding a source fetches and validates it; selecting a personal channel refreshes due caches (5–60 minutes based on source cadence); the refresh button checks immediately using HTTP validators. While a reader is open, a local timer checks due subscriptions every 60–75 seconds. Background requests use at most two transport slots, reserving a third for foreground reading. Closing the last reader stops queued background work; requests already initiated may finish. No subscription URLs or performance measurements are uploaded to Qiaomu.
 
 OPML imports are previewed and stored locally without fetching feeds at import time. Exports create an OPML file in the configured vault export folder. URLs, names, groups, cached feed articles, errors and update times are saved in plugin data. Feed URLs with query tokens may grant access to private content; plugin data and OPML exports are unencrypted and should not be shared publicly. URL-embedded usernames/passwords are not accepted.
 
@@ -42,9 +42,11 @@ RSS, followed podcasts and chosen vault paths share local grouping metadata. Gro
 
 The Tidings metadata snapshot is bundled for offline discovery (CC0-1.0) and ships with plugin updates; discovery makes no catalog download of its own. A `tidings-catalog.json` cached by an earlier version is read only while it is newer than the bundled snapshot. Online OPML import requests the user-provided URL. Imports are previewed and selected before being stored; feed bodies are not downloaded by import itself. Searching online WeChat/podcast catalogs sends search terms to the configured Qiaomu service. Selecting Preview requests that feed or podcast's recent entries.
 
-When remote images are enabled, visible source avatars and publisher favicons are fetched and cached by the existing local image service. No third-party favicon lookup service receives the subscription list. Missing icons fall back to text. Automatic batches refresh at most 20 RSS sources with 3 concurrent requests; local folders and remote podcasts are opened explicitly.
+When remote images are enabled, visible source avatars and publisher favicons are fetched and cached by the existing local image service. No third-party favicon lookup service receives the subscription list. Missing icons fall back to text. Refreshes process the selected sources progressively with bounded concurrency; local folders and remote podcasts are opened explicitly.
 
 ## Saving articles (0.20.0)
 
 存为笔记 writes the current article version into the vault folder chosen in settings (default `Qiaomu RSS/文章`) using Obsidian's vault API. Images already shown by the reader are copied from the local image cache into the vault attachment location configured in Obsidian; images that cannot be saved keep their original web link. The plugin stores a local map from article ID and version to the saved note path so the toolbar can open that note; it follows renames and is never sent anywhere. PDF export on desktop uses the system save dialog and remembers the last chosen directory in plugin settings.
 
+
+Article bodies are read on demand from local `bodies-v1` shards. The previous `content-cache.json` is retained as a migration backup. Rebuildable body storage is capped at 20 MB; favorites, saved note-linked articles and the recent article cache are protected. Eviction retains titles and summaries. Local performance samples are bounded in memory and never transmitted.

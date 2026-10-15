@@ -61,3 +61,7 @@ Plugin surfaces use Vercel-like neutral tokens (`--qrs-fg`, `--qrs-muted`, `--qr
 申请转写、用户转写复用普通文章列表的行样式：来源与短日期一行，标题 15/22 最多两行，次要状态 12/18，统一边距、分隔线、悬停与选中背景。完成记录支持整行打开、Enter/Space、j/k 翻阅，刷新保持滚动和焦点。设置移到顶部工具栏，不保留空筛选行。
 
 「关于」的开源许可说明句末使用低调的盾牌图标，鼠标点击或键盘激活后直接打开管理员邮箱、密码弹窗；不依赖多次点击标题。实验室内未登录时隐藏高级管理，有效登录期间直接显示并展开。邮箱、密码采用标签在上、输入框等宽的纵向表单，按钮底部右对齐。入口不代替服务器角色验证。管理员登录有效期 365 天，保存登录令牌而不保存密码，退出清除本地令牌并撤销服务器会话。
+
+## Large libraries (0.29.0)
+
+Article rows now use a measured virtual window rather than accumulating DOM as the reader scrolls. Preserve the existing typography, source/date alignment, selected/read states and responsive modes. Refresh retains the first visible article's pixel offset; Tab navigation can move beyond the mounted window. Thumbnail intersection starts the download itself. Search respects composition and clears without losing focus. Background work must leave capacity for the article the user opens.

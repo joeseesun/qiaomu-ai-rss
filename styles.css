@@ -840,3 +840,7 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 
 .qrs-actions .qrs-speech-button { color: var(--text-muted); }
 .qrs-actions .qrs-speech-button.is-playing { color: var(--text-normal); }
+
+/* The scroll extent is independent of the number of mounted article rows. */
+.qrs-list { overflow-anchor: none; }
+.qrs-window-spacer { height: var(--qrs-window-height, 0px); flex: none; pointer-events: none; }

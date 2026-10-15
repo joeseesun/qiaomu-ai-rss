@@ -124,6 +124,7 @@ export async function parseFeed(xml: string, url: string, doc: Document): Promis
     size += new TextEncoder().encode(JSON.stringify(entry)).byteLength;
     if (size > MAX_STORED_FEED) break;
     entries.push(entry);
+    if (entries.length % 10 === 0) await new Promise<void>(resolve => doc.defaultView!.setTimeout(resolve, 0));
     if (entries.length === 50) break;
   }
   entries.sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0));

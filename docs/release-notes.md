@@ -1,17 +1,19 @@
 ## 中文
 
-新增逐词跟读，长段落跟随当前行，手动滚动后暂停自动跟随。朗读设置可选择柔和底色、下划线或仅高亮当前句，也可自定义颜色、即时预览和恢复默认；修改样式保留播放状态，并自动调整高亮底色以保持文字可读。
+订阅多时更流畅：列表只绘制当前可见文章，缩略图接近屏幕时才下载；刷新合并更新，中文搜索不打断输入法，新增文章保留当前滚动位置。
 
-有词级时间戳的音色按服务提供的时间高亮，其他音频音色按时长估算；不提供边界事件的系统声音与选中文字朗读保留句子或段落高亮。升级保留语音设置、订阅、收藏和阅读进度。
+启动先加载标题摘要，正文按需从分片缓存读取。清理缓存保留文章目录、收藏及已保存内容；升级保留旧缓存备份、阅读状态和设置。
 
-未验证：移动设备实机与付费云端播放。
+阅读器打开期间，个人订阅按更新频率后台检查，预留当前文章的请求容量；手动刷新复用 HTTP 缓存，关闭阅读器停止排队刷新。
+
+隔离桌面测试覆盖 100/500/2000 个订阅、最多 10 万篇文章，以及缓存迁移和重启恢复。具体速度受设备、数据与网络影响。移动设备实机及生产服务端容量未验证；本次未部署服务端变更。
 
 ## English
 
-Read along without changing article markup or selection. Follow the current sentence and word, including the current line in long paragraphs. Manual scrolling pauses automatic following.
+Large libraries stay responsive with a viewport-sized article list, genuinely lazy thumbnails, coalesced updates, IME-aware search and stable scroll anchors.
 
-Speech settings now include soft background, underline and sentence-only highlighting, a custom color, live preview and reset. Adjustments preserve playback and automatically protect text contrast. Already spoken text keeps its original appearance.
+Startup loads metadata first. Article bodies load on demand from local shards; cache eviction preserves article metadata and protects favorites and saved content. Upgrades keep a legacy cache backup, reading state and settings.
 
-Voices with word timestamps use their reported timing; other audio voices estimate timing from audio duration. System voices without boundary events and selected-text reading retain sentence or paragraph highlighting. Existing speech settings, subscriptions, favorites and progress are retained.
+While a reader is open, personal feeds refresh in the background according to their publishing cadence. Foreground reading retains request capacity, manual checks reuse HTTP validators, and closing the reader stops queued refreshes.
 
-Mobile hardware and paid cloud playback remain unverified.
+Tested in an isolated desktop vault with 100/500/2000 feeds, up to 100,000 articles, cache migration and restart recovery. Mobile hardware and production server capacity remain unverified. No server deployment is included.

@@ -1,3 +1,4 @@
+import { TaskPool } from './task-pool';
 import { requestUrl, type Vault } from 'obsidian';
 import { safeUrl } from './model';
 import { t } from './i18n';
@@ -16,6 +17,7 @@ export function imageMime(data: ArrayBuffer): string | null {
   return null;
 }
 export class LocalImages {
+  private network = new TaskPool(3);
   private pending = new Map<string, Promise<Blob>>();
   private queue: Promise<void> = Promise.resolve();
   private ready = new Map<string, Blob>();
@@ -23,7 +25,7 @@ export class LocalImages {
   private queuedWrites = 0;
   private generation = 0;
   flush() { return this.queue; }
-  dispose() { this.generation++; this.ready.clear(); }
+  dispose() { this.network.dispose(); this.generation++; this.ready.clear(); }
   constructor(private vault: Vault, private directory: string) {}
   load(url: string, refresh = false): Promise<Blob> {
     const safe = safeUrl(url);
@@ -44,14 +46,15 @@ export class LocalImages {
     try { if (!refresh && await this.vault.adapter.exists(path)) data = await this.vault.adapter.readBinary(path); } catch { /* Refetch a missing cache file. */ }
     if (data && imageMime(data)) return new Blob([data], { type: imageMime(data) || 'image/png' });
     let timer: number | undefined;
+    let waiting = true;
     try {
       const response = await Promise.race([
-        requestUrl({ url, method: 'GET', throw: false }),
+        this.network.run(() => requestUrl({ url, method: 'GET', throw: false }), () => waiting && generation === this.generation),
         new Promise<never>((_, reject) => { timer = window.setTimeout(() => reject(new Error(t('error.imageTimeout'))), 20000); }),
       ]);
       if (response.status < 200 || response.status >= 300) throw new Error(t('error.imageLoadFailed'));
       data = response.arrayBuffer;
-    } finally { window.clearTimeout(timer); }
+    } finally { waiting = false; window.clearTimeout(timer); }
     if (data.byteLength > MAX_IMAGE) throw new Error(t('error.imageUnsupported'));
     if (!imageMime(data)) data = await svgPng(data);
     const type = data && imageMime(data);
