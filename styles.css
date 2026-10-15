@@ -1,5 +1,5 @@
 /* Monochrome system (Vercel-like): neutral tokens scoped to plugin surfaces; Obsidian's accent never leaks in. */
-:is(.qrs-root,.qrs-discovery,.qrs-modal,.qrs-channel-picker,.qrs-selection-popup,.qrs-settings) {
+:is(.qrs-root,.qrs-discovery,.qrs-modal,.qrs-channel-picker,.qrs-selection-popup,.qrs-settings,.qrs-toolbar-tip) {
   --qrs-fg:#171717; --qrs-muted:#666; --qrs-faint:#8f8f8f; --qrs-bg:#fff; --qrs-subtle:#fafafa; --qrs-hover:#f2f2f2; --qrs-border:#ebebeb; --qrs-border-strong:#d4d4d4; --qrs-ring:rgba(0,0,0,.12); --qrs-error:#e5484d;
   --interactive-accent:var(--qrs-fg); --interactive-accent-hover:#383838; --interactive-accent-hsl:0,0%,9%; --color-accent:var(--qrs-fg); --color-accent-1:var(--qrs-fg); --color-accent-2:#383838; --text-on-accent:#fff; --text-on-accent-inverted:#fff;
   --text-accent:var(--qrs-fg); --text-accent-hover:var(--qrs-fg); --link-color:var(--qrs-fg); --link-color-hover:var(--qrs-fg); --link-external-color:var(--qrs-fg); --link-external-color-hover:var(--qrs-fg); --text-selection:rgba(0,0,0,.1);
@@ -8,7 +8,7 @@
   --input-shadow:inset 0 0 0 1px var(--qrs-border); --input-shadow-hover:inset 0 0 0 1px var(--qrs-border-strong); --button-radius:6px; --input-radius:6px;
   --text-error:var(--qrs-error);
 }
-.theme-dark :is(.qrs-root,.qrs-discovery,.qrs-modal,.qrs-channel-picker,.qrs-selection-popup,.qrs-settings) {
+.theme-dark :is(.qrs-root,.qrs-discovery,.qrs-modal,.qrs-channel-picker,.qrs-selection-popup,.qrs-settings,.qrs-toolbar-tip) {
   --qrs-fg:#ededed; --qrs-muted:#a1a1a1; --qrs-faint:#737373; --qrs-bg:#0a0a0a; --qrs-subtle:#111; --qrs-hover:#1f1f1f; --qrs-border:#262626; --qrs-border-strong:#3d3d3d; --qrs-ring:rgba(255,255,255,.14); --qrs-error:#ff6166;
   --interactive-accent-hover:#fff; --interactive-accent-hsl:0,0%,93%; --color-accent-2:#fff; --text-on-accent:#0a0a0a; --text-on-accent-inverted:#0a0a0a; --text-selection:rgba(255,255,255,.16);
   --interactive-normal:var(--background-primary); --checkbox-color-hover:#fff;
@@ -844,3 +844,7 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 /* The scroll extent is independent of the number of mounted article rows. */
 .qrs-list { overflow-anchor: none; }
 .qrs-window-spacer { height: var(--qrs-window-height, 0px); flex: none; pointer-events: none; }
+
+/* User-requested reader tips share the neutral popup palette, never the host tooltip. */
+.qrs-toolbar-tip { position:fixed; z-index:var(--layer-tooltip,1000); max-width:min(240px,calc(100vw - 16px)); padding:7px 10px; border-radius:6px; background:var(--qrs-bg); color:var(--qrs-fg); box-shadow:0 0 0 1px var(--qrs-border),0 4px 12px rgba(0,0,0,.10); font-family:var(--font-interface); font-size:12px; font-weight:400; line-height:1.45; overflow-wrap:anywhere; pointer-events:auto; user-select:none; }
+.qrs-root .qrs-reader-toolbar button:focus-visible { outline:1px solid var(--qrs-muted); outline-offset:2px; box-shadow:none; }

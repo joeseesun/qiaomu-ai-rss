@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.29.1
+
+- Move duplicate article save/open controls into More while keeping the Daily Note shortcut.
+- Add custom accessible hover/focus tips for read aloud, favorite, read/unread and Daily Note; reflect current action states.
+
 ## 0.27.2
 
 - Share API clients and coalesce concurrent identical reads across reader views; failures and timeouts remain retryable.

@@ -65,3 +65,7 @@ Plugin surfaces use Vercel-like neutral tokens (`--qrs-fg`, `--qrs-muted`, `--qr
 ## Large libraries (0.29.0)
 
 Article rows now use a measured virtual window rather than accumulating DOM as the reader scrolls. Preserve the existing typography, source/date alignment, selected/read states and responsive modes. Refresh retains the first visible article's pixel offset; Tab navigation can move beyond the mounted window. Thumbnail intersection starts the download itself. Search respects composition and clears without losing focus. Background work must leave capacity for the article the user opens.
+
+## Reader toolbar tips (0.29.1)
+
+Keep read aloud, favorite, read/unread and Daily Note as direct actions. Save/open article notes live in More, preserving saved-note and alternate-location actions. These four icon actions explicitly opt in to custom neutral tips; other controls retain their existing behavior. Mouse hover waits 450 ms, keyboard focus shows immediately, Escape/click/scroll/blur dismiss, and the popup remains hoverable. Tips have role=tooltip/aria-describedby and use the existing hidden accessible names, never title/aria-label or host setTooltip. Labels describe the next action and track favorite/read/speech state. Touch does not create sticky hover tips. Popouts use the owner document and view disposal removes tips/listeners.

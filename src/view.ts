@@ -1,6 +1,7 @@
 import { FeedIndex } from './feed-index';
 import { ListWindow } from './list-window';
 import { LazyThumbnails } from './lazy-thumbnails';
+import { ToolbarTips } from './toolbar-tips';
 import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCuratedPages, filterCuratedEntries, keepCuratedEntry, pickedSources } from './curated-sources';
 import type { RssApi } from './api';
 import type { CollectionItem } from './collection';
@@ -33,6 +34,7 @@ import { fontName } from './fonts';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites' | 'later';
 export class ReaderView extends ItemView {
+  private toolbarTips?: ToolbarTips;
   private channelPicker?: ChannelPicker;
   private restoreObserver?: ResizeObserver;
   private pendingScroll?: { listTop: number; readerTop: number };
@@ -156,6 +158,7 @@ export class ReaderView extends ItemView {
   getIcon() { return 'rss'; }
   onOpen(): Promise<void> {
     this.reset();
+    this.toolbarTips = new ToolbarTips(this.contentEl);
     this.registerDomEvent(this.contentEl.ownerDocument, 'pointerdown', event => {
       const target = event.target as HTMLElement;
       if (!this.appearanceOpen || target.closest?.('.qrs-reading-settings')) return;
@@ -219,6 +222,7 @@ export class ReaderView extends ItemView {
     return Promise.resolve();
   }
   onClose(): Promise<void> {
+    this.toolbarTips?.dispose();
     this.plugin.speech?.detach(this);
     stopMedia(this.reader); this.audioDock?.stop();
     this.saveChannel(); this.channelPicker?.close(false); this.stopRestoring();
@@ -230,6 +234,7 @@ export class ReaderView extends ItemView {
     return this.plugin.persist().catch(() => undefined);
   }
   reset() {
+    this.toolbarTips?.hide();
     if (this.reader) stopMedia(this.reader);
     this.audioDock?.stop();
     this.channelPicker?.close(false); this.stopRestoring();
@@ -1072,8 +1077,10 @@ export class ReaderView extends ItemView {
     }
   }
   private renderReader(keepContent = false) {
+    this.toolbarTips?.hide();
     this.selectionCapture?.clear();
     const active = this.contentEl.ownerDocument.activeElement;
+    const focusedAction = this.reader.contains(active) ? active?.getAttribute('data-qrs-tip') : null;
     const restoreFocus = active !== this.reader && this.reader.contains(active);
     const scroll = this.reader.scrollTop;
     const previous = keepContent ? this.reader.querySelector('.qrs-article') : null;
@@ -1130,6 +1137,7 @@ export class ReaderView extends ItemView {
       await this.plugin.persist(); this.renderReader(true); this.renderList();
     }));
     bookmark.setAttribute('aria-pressed', String(favorite)); bookmark.toggleClass('is-bookmarked', favorite);
+    bookmark.dataset.qrsTip = 'favorite';
     const relatedIds = this.relatedContentIds(bundle.entry);
     const read = relatedIds.some(id => this.plugin.state.readIds.includes(id));
     const readButton = this.addIconButton(actions, read ? 'circle-check' : 'circle', read ? t('reader.markUnread') : t('reader.markRead'), () => this.run(async () => {
@@ -1138,13 +1146,10 @@ export class ReaderView extends ItemView {
       await this.plugin.persist(); this.renderReader(true); this.renderList();
     }));
     readButton.setAttribute('aria-pressed', String(read));
-    // Saving the article as a note is the frequent write action, so it gets a toolbar slot; once saved, the same slot opens that note.
+    readButton.dataset.qrsTip = 'read';
+    // Article-file actions live in More; the toolbar has one unambiguous Daily Note action.
     const mode = this.mode, savedNote = this.savedNote(bundle, mode);
-    const noteButton = this.addIconButton(actions, savedNote ? 'file-check' : 'file-plus', savedNote ? t('reader.openSavedNote') : t('reader.saveNote'), () => {
-      if (savedNote) void this.app.workspace.getLeaf('tab').openFile(savedNote); else this.saveNote(bundle, mode);
-    });
-    noteButton.setAttribute('aria-pressed', String(!!savedNote));
-    this.addIconButton(actions, 'notebook-pen', t('reader.noteToDaily'), () => this.noteCurrent());
+    this.addIconButton(actions, 'notebook-pen', t('reader.noteToDaily'), () => this.noteCurrent()).dataset.qrsTip = 'daily-note';
     const more = this.addIconButton(actions, 'ellipsis', t('reader.moreActions'), () => {
       const menu = new Menu().setUseNativeMenu(false); const link = safeUrl(bundle.entry.link || '');
       menu.addItem(item => item.setTitle(t('reader.readingSettingsMenu')).setIcon('type').onClick(() => { this.appearanceOpen = true; this.renderReader(true); }));
@@ -1161,6 +1166,9 @@ export class ReaderView extends ItemView {
       })));
       if (this.plugin.canDeleteArticle(bundle.entry)) menu.addSeparator().addItem(item => item.setTitle(t('moderation.delete')).setIcon('trash-2').onClick(() => this.plugin.confirmDeleteArticle(bundle.entry)));
       menu.addSeparator();
+      menu.addItem(item => item.setTitle(savedNote ? t('reader.openSavedNote') : t('reader.saveNote')).setIcon(savedNote ? 'file-check' : 'file-plus').onClick(() => {
+        if (savedNote) void this.app.workspace.getLeaf('tab').openFile(savedNote); else this.saveNote(bundle, mode);
+      }));
       if (savedNote) menu.addItem(item => item.setTitle(t('reader.saveAnotherNote')).setIcon('file-plus').onClick(() => this.saveNote(bundle, mode)));
       menu.addItem(item => item.setTitle(t('reader.saveNoteTo')).setIcon('folder').onClick(() => {
         new NoteLocationModal(this.app, this.plugin.state.settings.articleFolder, exportBaseName(bundle, mode),
@@ -1179,6 +1187,7 @@ export class ReaderView extends ItemView {
       menu.addItem(item => item.setTitle(t('reader.pickChannel')).setIcon('rss').onClick(() => this.pickChannel()));
       const rect = more.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });
+    if (focusedAction) Array.from(actions.querySelectorAll<HTMLElement>('[data-qrs-tip]')).find(button => button.dataset.qrsTip === focusedAction)?.focus({ preventScroll: true });
     if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
     if (previous) {
       previous.querySelector('.qrs-feedback')?.remove();

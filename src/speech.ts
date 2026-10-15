@@ -78,6 +78,7 @@ export class RssSpeech {
       selection = '';
     });
     read.button.addClass('qrs-icon');
+    read.button.dataset.qrsTip = 'speech';
     if (!this.actions.has(view)) view.register(() => this.actions.delete(view));
     this.actions.set(view, read.button); this.renderActions();
     read.button.onpointerdown = () => {
@@ -88,7 +89,13 @@ export class RssSpeech {
   }
   private renderActions() {
     const c = this.speech.controller;
-    for (const [view, button] of this.actions) { const active = this.session?.view === view && c.owner === this.session.owner && c.state === 'playing'; button.toggleClass('is-playing', active); button.setAttribute('aria-pressed', String(active)); }
+    for (const [view, button] of this.actions) {
+      const current = this.session?.view === view && c.owner === this.session.owner;
+      const active = current && c.state === 'playing';
+      button.toggleClass('is-playing', active); button.setAttribute('aria-pressed', String(active));
+      const label = active ? t('speech.pause') : current && c.state === 'paused' ? t('speech.play') : t('speech.read');
+      const text = button.querySelector('.qrs-visually-hidden'); if (text?.textContent !== label) text?.setText(label);
+    }
   }
   start(view: ReaderView, selectedText?: string, fromStart = false) {
     const context = view.speechContext();
