@@ -211,7 +211,7 @@ describe('smart sync', () => {
     expect(summary.unchanged).toBe(1); expect(summary.bodiesChanged).toBe(false);
     expect(feed.entries).toHaveLength(1);
     expect(transport).toHaveBeenLastCalledWith('https://example.com/feed', expect.objectContaining({ 'If-None-Match': '"v1"', 'If-Modified-Since': 'Mon, 07 Sep 2026 00:00:00 GMT' }));
-    expect(progress).toHaveBeenCalledWith(1, 1);
+    expect(progress).toHaveBeenCalledWith(1, 1, 'unchanged');
   });
   it('failed feeds back off exponentially (5m → 1h cap) and are skipped until the window passes', async () => {
     expect(refreshBackoffMs(1)).toBe(300000); expect(refreshBackoffMs(2)).toBe(600000); expect(refreshBackoffMs(3)).toBe(1200000); expect(refreshBackoffMs(9)).toBe(3600000);

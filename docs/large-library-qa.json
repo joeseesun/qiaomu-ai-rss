@@ -1,0 +1,213 @@
+{
+  "baseline": {
+    "version": "0.28.5",
+    "results": [
+      {
+        "feeds": 100,
+        "articles": 5000,
+        "firstMs": 13.699999988079071,
+        "repeatedMs": 1.1199999928474427,
+        "searchMs": 4,
+        "firstRows": 100,
+        "deepRows": 2000
+      },
+      {
+        "feeds": 500,
+        "articles": 25000,
+        "firstMs": 23.69999998807907,
+        "repeatedMs": 1.7200000047683717,
+        "searchMs": 24.19999998807907,
+        "firstRows": 100,
+        "deepRows": 2000
+      },
+      {
+        "feeds": 2000,
+        "articles": 100000,
+        "firstMs": 47.39999997615814,
+        "repeatedMs": 8.079999995231628,
+        "searchMs": 182.20000004768372,
+        "firstRows": 100,
+        "deepRows": 2000
+      }
+    ]
+  },
+  "optimized": {
+    "version": "0.29.0",
+    "results": [
+      {
+        "feeds": 100,
+        "articles": 5000,
+        "firstMs": 4.699999988079071,
+        "repeatedMs": 0.9,
+        "searchMs": 2.100000023841858,
+        "firstRows": 12,
+        "deepRows": 12
+      },
+      {
+        "feeds": 500,
+        "articles": 25000,
+        "firstMs": 11,
+        "repeatedMs": 2.439999997615814,
+        "searchMs": 7.300000011920929,
+        "firstRows": 12,
+        "deepRows": 12
+      },
+      {
+        "feeds": 2000,
+        "articles": 100000,
+        "firstMs": 55,
+        "repeatedMs": 8.240000009536743,
+        "searchMs": 23.900000035762787,
+        "firstRows": 12,
+        "deepRows": 12
+      }
+    ]
+  },
+  "host": {
+    "checks": [
+      {
+        "name": "first viewport is bounded",
+        "pass": true,
+        "rows": 12
+      },
+      {
+        "name": "refresh preserves article and pixel offset",
+        "pass": true,
+        "anchor": "qa-271-1",
+        "delta": 4,
+        "now": 4
+      },
+      {
+        "name": "deep scroll recycles rows",
+        "pass": true,
+        "rows": 19
+      },
+      {
+        "name": "unchanged row retains focus",
+        "pass": true
+      },
+      {
+        "name": "Tab crosses virtual window boundary",
+        "pass": true
+      },
+      {
+        "name": "IME does not filter unfinished composition",
+        "pass": true
+      },
+      {
+        "name": "search finds offscreen article",
+        "pass": true
+      },
+      {
+        "name": "clear search restores viewport",
+        "pass": true
+      },
+      {
+        "name": "thumbnails load only near viewport",
+        "pass": true,
+        "loads": 8,
+        "rows": 13
+      },
+      {
+        "name": "scroll starts newly visible images",
+        "pass": true
+      },
+      {
+        "name": "local article remains readable",
+        "pass": true
+      },
+      {
+        "name": "narrow reader has no horizontal overflow",
+        "pass": true,
+        "width": 396,
+        "scroll": 396
+      }
+    ],
+    "samples": [
+      {
+        "ms": 8.700000047683716,
+        "articles": 25001,
+        "rows": 13,
+        "scroll": false
+      },
+      {
+        "ms": 8.199999988079071,
+        "articles": 25001,
+        "rows": 18,
+        "scroll": true
+      },
+      {
+        "ms": 1.300000011920929,
+        "articles": 25001,
+        "rows": 19,
+        "scroll": true
+      },
+      {
+        "ms": 7.299999952316284,
+        "articles": 25001,
+        "rows": 13,
+        "scroll": false
+      },
+      {
+        "ms": 2.799999952316284,
+        "articles": 51,
+        "rows": 12,
+        "scroll": false
+      },
+      {
+        "ms": 0.7000000476837158,
+        "articles": 51,
+        "rows": 13,
+        "scroll": false
+      },
+      {
+        "ms": 0.5,
+        "articles": 51,
+        "rows": 13,
+        "scroll": true
+      },
+      {
+        "ms": 0.9000000357627869,
+        "articles": 51,
+        "rows": 12,
+        "scroll": true
+      }
+    ]
+  },
+  "upgrade": {
+    "checks": [
+      {
+        "name": "startup does not read any body cache",
+        "pass": true
+      },
+      {
+        "name": "settings favorites and read markers preserved",
+        "pass": true
+      },
+      {
+        "name": "legacy body loads on demand",
+        "pass": true
+      },
+      {
+        "name": "migration completion marker exists",
+        "pass": true
+      },
+      {
+        "name": "restart still loads metadata only",
+        "pass": true
+      },
+      {
+        "name": "sharded offline body survives restart",
+        "pass": true
+      },
+      {
+        "name": "body lookup reads one shard",
+        "pass": true
+      },
+      {
+        "name": "offline article renders after upgrade",
+        "pass": true
+      }
+    ]
+  }
+}
