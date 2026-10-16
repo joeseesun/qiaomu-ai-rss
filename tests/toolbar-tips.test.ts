@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 afterEach(() => { tips?.dispose(); document.body.replaceChildren(); vi.restoreAllMocks(); vi.useRealTimers(); });
 function fixture() {
-  const root = document.createElement('section'); root.innerHTML = '<div class="qrs-reader-toolbar"><button data-qrs-tip="read"><span class="qrs-visually-hidden">标为未读</span></button></div>';
+  const root = document.createElement('section'); root.innerHTML = '<div class="qrs-reader-toolbar qrs-reader-head"><button data-qrs-tip="read"><span class="qrs-visually-hidden">标为未读</span></button></div>';
   document.body.append(root); tips = new ToolbarTips(root); return {root, button: root.querySelector('button')!};
 }
 function point(button: HTMLElement, type = 'pointerover', pointerType = 'mouse') {

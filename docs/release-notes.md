@@ -1,13 +1,13 @@
 ## 中文
 
-- 阅读工具栏更简洁：保存文章、打开已保存笔记统一放进「更多」菜单。
-- 朗读、收藏、已读/未读、记到今日日记支持自绘悬停提示，也支持键盘聚焦和 Esc 关闭；提示随操作状态更新。
-- 修复精选来源筛选框被长列表挤矮、焦点边框过重和窄窗保存按钮溢出；说明筛选仅影响当前库。
-- 保留订阅、收藏、阅读进度和设置。移动真机尚未验证。
+- 朗读控制融入文章顶部，宽屏显示播放/暂停、倍速、更多和结束，窄屏只显示播放与更多；播放键圆环显示进度，移除句数与上一句/下一句按钮。
+- 选段朗读严格限定到选中文字；暂停或结束后重新选文，播放按钮会读取新选区，避免重复播放旧片段。更多菜单支持从头或从选中位置读到文末。
+- 声音设置采用分步配置。Mac 新用户优先推荐当前语言已安装的增强/高品质音色，首次试听成功后即可开始；保留已有音色选择与暂停状态。
+- Mac 增强音色和完整选段已在真实 Obsidian 中验证；移动真机及付费云语音服务未验证。
 
 ## English
 
-- Simplify the reading toolbar: save/open article-note actions now live in More.
-- Add custom hover and keyboard-focus tips for speech, bookmarks, read state and Daily Note, with state-aware labels and Escape dismissal.
-- Keep the curated-source search field at full height with a quiet focus border, scroll the list within the modal and keep footer actions visible in narrow windows. Clarify that source choices apply only to the current vault.
-- Preserve subscriptions, favorites, reading progress and settings. Mobile hardware is not verified.
+- Expand speech controls in place with circular progress; narrow readers show only Play and More.
+- Read and highlight exactly the selected passage. After pausing or completion, Play adopts a new selection instead of replaying the previous excerpt. More supports restarting and reading from a selected position to the end.
+- Introduce progressive voice setup, prefer installed enhanced/premium Mac voices in the current language for new users, and require a successful first audition. Preserve existing voice choices and playback state.
+- Verified native Mac enhanced speech and complete multi-sentence selection playback in Obsidian. Mobile hardware and paid cloud speech services are not verified.

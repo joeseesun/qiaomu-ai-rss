@@ -56,7 +56,7 @@ describe('selection capture dismissal', () => {
     select(); const button = popup()!.querySelector('button')!;
     expect(button.classList.contains('clickable-icon')).toBe(true); expect(button.getAttribute('aria-label')).toBe('Capture');
     button.dispatchEvent(new Event('pointerdown', { bubbles: true, cancelable: true })); button.dispatchEvent(new Event('pointerup', { bubbles: true })); button.click();
-    expect(save).toHaveBeenCalledExactlyOnceWith('fixture'); expect(popup()).toBeNull();
+    expect(save).toHaveBeenCalledExactlyOnceWith('fixture', expect.any(Range)); expect(popup()).toBeNull();
   });
   it('removes dismissal listeners and pending updates on dispose', () => {
     select(); capture.dispose(); select(15); expect(popup()).toBeNull();
