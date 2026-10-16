@@ -1,6 +1,6 @@
 import { setIcon } from 'obsidian';
 import { markdownText } from './daily-note';
-export interface CaptureAction { label: string; icon: string; disabled?: boolean; save: (text: string) => Promise<void> }
+export interface CaptureAction { label: string; icon: string; disabled?: boolean; save: (text: string, range: Range) => Promise<void> }
 /** A selection action, shown only after an explicit text selection. */
 export class SelectionCapture {
   private popup?: HTMLElement;
@@ -31,7 +31,7 @@ export class SelectionCapture {
     this.dismiss();
     // Leave taps and selection-handle gestures to the host. Only clear the
     // native selection when the user moves outside the article altogether.
-    if (!this.reader().querySelector('.qrs-prose')?.contains(event.target as Node)) this.doc.getSelection()?.removeAllRanges();
+    if (!this.reader().querySelector('.qrs-prose')?.contains(event.target as Node) && !this.reader().querySelector('.qrs-reader-head')?.contains(event.target as Node)) this.doc.getSelection()?.removeAllRanges();
   };
   private dragStart = (event: DragEvent) => {
     const selection = this.doc.getSelection(), prose = this.reader().querySelector('.qrs-prose');
@@ -73,7 +73,7 @@ export class SelectionCapture {
       button.createSpan({ cls: 'qrs-visually-hidden', text: action.label });
       button.disabled = !!action.disabled;
       button.onpointerdown = event => event.preventDefault();
-      button.onclick = () => { this.clear(); void action.save(text); };
+      button.onclick = () => { this.clear(); void action.save(text, range.cloneRange()); };
     }
     popup.setCssProps({ '--qrs-popup-x': `${Math.max(8, Math.min(rect.left + rect.width / 2 - popup.offsetWidth / 2, viewport.clientWidth - popup.offsetWidth - 8))}px`,
       '--qrs-popup-y': `${Math.max(8, Math.min(rect.bottom + 8, viewport.clientHeight - popup.offsetHeight - 8))}px` });

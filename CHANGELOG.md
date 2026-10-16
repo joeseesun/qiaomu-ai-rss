@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.2
+
+- Expand narration controls in place with circular progress; narrow readers show only Play and More.
+- Preserve exact selection boundaries and adopt new selections when resuming or replaying.
+- Add progressive voice setup and prefer installed enhanced/premium Mac voices for new users, with successful first-audition gating.
+
 ## 0.29.1
 
 - Move duplicate article save/open controls into More while keeping the Daily Note shortcut.

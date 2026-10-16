@@ -14,6 +14,8 @@ import { Component, MarkdownRenderer, ItemView, Menu, Notice, Platform, setIcon,
 import type QiaomuRssPlugin from './main';
 import { vaultSourceId } from './vault-source';
 import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
+import { articleSelection } from './speech-source';
+import type { CaptureAction } from './selection';
 import { SelectionCapture } from './selection';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
@@ -34,6 +36,7 @@ import { fontName } from './fonts';
 export const VIEW_TYPE = 'qiaomu-ai-rss-reader';
 type Filter = 'all' | 'unread' | 'favorites' | 'later';
 export class ReaderView extends ItemView {
+  openArticleActions?: (anchor: HTMLElement) => void;
   private toolbarTips?: ToolbarTips;
   private channelPicker?: ChannelPicker;
   private restoreObserver?: ResizeObserver;
@@ -192,6 +195,8 @@ export class ReaderView extends ItemView {
         menu.addSeparator().addItem(item => item.setTitle(t('capture.copyLink')).setIcon('copy').onClick(async () => { try { await this.contentEl.ownerDocument.defaultView!.navigator.clipboard.writeText(link); } catch { new Notice(t('capture.copyFailed')); } }));
         if (this.plugin.state.settings.labCollection) menu.addItem(item => item.setTitle(t('lab.apply')).setIcon('file-audio').onClick(() => this.plugin.submitCollection(link)));
       }
+      const speechRange = articleSelection(prose as HTMLElement | null);
+      if (speechRange) menu.addSeparator().addItem(item => item.setTitle(t('speech.selection')).setIcon('volume-2').onClick(() => this.plugin.speech.start(this, speechRange)));
       const snapshot = this.agentSnapshot();
       if (snapshot && agentAvailable(this.app)) menu.addSeparator().addItem(item => item.setTitle(t('capture.askAi')).setIcon('sparkles').onClick(() => { void askAgent(this.app, snapshot, excerpt); }));
       menu.showAtMouseEvent(event);
@@ -209,13 +214,13 @@ export class ReaderView extends ItemView {
           new Notice(result.added ? t('notice.excerptAddedTo', { name: result.file.basename }) : t('notice.excerptAlready'));
         } catch (error) { new Notice(error instanceof Error ? error.message : t('notice.excerptFailed')); }
       };
-      const actions = [
+      const actions: CaptureAction[] = [
         { label: t('capture.appendDaily'), icon: 'calendar-plus', save: (text: string) => capture(text, false) },
         { label: note ? t('capture.appendCurrent', { name: note.basename }) : t('capture.appendCurrentEmpty'), icon: 'file-pen-line', disabled: !note, save: (text: string) => capture(text, true) },
       ];
       // Only when Qiaomu Agent is installed and enabled; checked each time the popup opens.
       const snapshot = agentAvailable(this.app) ? this.agentSnapshot() : null;
-      actions.push({ label: t('speech.selection'), icon: 'volume-2', save: async text => { this.plugin.speech.start(this, text); } });
+      actions.push({ label: t('speech.selection'), icon: 'volume-2', save: async (_text, range) => { this.plugin.speech.start(this, range); } });
       if (snapshot) actions.push({ label: t('capture.askAi'), icon: 'sparkles', save: text => askAgent(this.app, snapshot, text) });
       return actions;
     });
@@ -1115,7 +1120,8 @@ export class ReaderView extends ItemView {
       }
       return;
     }
-    const toolbar = this.reader.createDiv('qrs-reader-toolbar');
+    const head = this.reader.createDiv('qrs-reader-head');
+    const toolbar = head.createDiv('qrs-reader-toolbar');
     this.addIconButton(toolbar, this.focused ? 'panel-left-open' : 'panel-left-close', t('reader.toggleList'), () => this.toggleFocus());
     const modeId = `${this.appearanceId}-mode`; toolbar.createEl('label', { cls: 'qrs-visually-hidden', text: t('reader.readingVersion'), attr: { for: modeId } });
     const select = toolbar.createEl('select', { cls: 'qrs-mode-select', attr: { id: modeId, 'data-qrs-field': t('reader.readingVersion') } });
@@ -1150,7 +1156,13 @@ export class ReaderView extends ItemView {
     // Article-file actions live in More; the toolbar has one unambiguous Daily Note action.
     const mode = this.mode, savedNote = this.savedNote(bundle, mode);
     this.addIconButton(actions, 'notebook-pen', t('reader.noteToDaily'), () => this.noteCurrent()).dataset.qrsTip = 'daily-note';
+    let moreSelection: Range | undefined;
     const more = this.addIconButton(actions, 'ellipsis', t('reader.moreActions'), () => {
+      if (this.contentEl.win.getComputedStyle(actions).getPropertyValue('--qrs-actions-compact').trim() === '1') this.plugin.speech.openCompactMenu(this, more, moreSelection);
+      else this.openArticleActions?.(more);
+      moreSelection = undefined;
+    });
+    this.openArticleActions = anchor => {
       const menu = new Menu().setUseNativeMenu(false); const link = safeUrl(bundle.entry.link || '');
       menu.addItem(item => item.setTitle(t('reader.readingSettingsMenu')).setIcon('type').onClick(() => { this.appearanceOpen = true; this.renderReader(true); }));
       menu.addSeparator();
@@ -1185,8 +1197,10 @@ export class ReaderView extends ItemView {
         })));
       }
       menu.addItem(item => item.setTitle(t('reader.pickChannel')).setIcon('rss').onClick(() => this.pickChannel()));
-      const rect = more.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
-    });
+      const rect = anchor.getBoundingClientRect(); menu.showAtPosition({ x: rect.left, y: rect.bottom });
+    };
+    more.dataset.qrsArticleMore = 'true';
+    more.onpointerdown = () => { moreSelection = articleSelection(this.speechContext()?.prose); };
     if (focusedAction) Array.from(actions.querySelectorAll<HTMLElement>('[data-qrs-tip]')).find(button => button.dataset.qrsTip === focusedAction)?.focus({ preventScroll: true });
     if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
     if (previous) {

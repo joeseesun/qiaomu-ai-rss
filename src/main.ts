@@ -1,3 +1,4 @@
+import { articleSelection } from './speech-source';
 import { BodyStore } from './body-store';
 import { SaveQueue } from './save-queue';
 import { RssSpeech } from './speech';
@@ -39,7 +40,7 @@ function formatBytes(bytes: number): string {
 export default class QiaomuRssPlugin extends Plugin {
   speech!: RssSpeech;
   private speechSettings?: SpeechSettingsModal;
-  openSpeechSettings() { this.speechSettings?.close(); this.speechSettings = new SpeechSettingsModal(this); this.speechSettings.open(); }
+  openSpeechSettings(onReady?: () => void) { this.speechSettings?.close(); this.speechSettings = new SpeechSettingsModal(this, onReady); this.speechSettings.open(); }
   fonts = new ReadingFonts();
   vaultSources = new VaultSources(this.app);
   state: State = initialState(null);
@@ -90,7 +91,7 @@ export default class QiaomuRssPlugin extends Plugin {
     for (const [id, name, run] of [
       ['read-aloud', t('speech.read'), (view: ReaderView) => this.speech.start(view)],
       ['read-from-start', t('speech.fromStart'), (view: ReaderView) => this.speech.start(view, undefined, true)],
-      ['read-selection', t('speech.selection'), (view: ReaderView) => { const selected = view.contentEl.ownerDocument.getSelection(); const prose = view.speechContext()?.prose; if (prose && selected && prose.contains(selected.anchorNode) && prose.contains(selected.focusNode)) this.speech.start(view, selected.toString()); }],
+      ['read-selection', t('speech.selection'), (view: ReaderView) => { const selected = articleSelection(view.speechContext()?.prose); if (selected) this.speech.start(view, selected); }],
     ] as const) this.addCommand({ id, name, checkCallback: checking => { const view = this.app.workspace.getActiveViewOfType(ReaderView); if (!view) return false; if (!checking) run(view); return true; } });
     for (const type of RETIRED_VIEW_TYPES) this.registerView(type, leaf => new RetiredView(leaf, type));
     const retire = () => { for (const type of RETIRED_VIEW_TYPES) for (const leaf of this.app.workspace.getLeavesOfType(type)) leaf.detach(); };

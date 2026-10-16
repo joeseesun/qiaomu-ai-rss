@@ -17,6 +17,23 @@ export function locale(): Locale {
 // Columns: key, 简体中文, English, 繁體中文, 日本語, 한국어, Español, Français, Deutsch
 // Exported so tests can assert that every message has all eight translations.
 export const M = [
+  ["speech.playOptions", "播放选项", "Playback options", "播放選項", "再生オプション", "재생 옵션", "Opciones de reproducción", "Options de lecture", "Wiedergabeoptionen"],
+  ["speech.position", "播放位置", "Reading position", "播放位置", "読み上げ位置", "읽기 위치", "Posición de lectura", "Position de lecture", "Leseposition"],
+  ["speech.articleActions", "文章操作", "Article actions", "文章操作", "記事の操作", "글 작업", "Acciones del artículo", "Actions sur l’article", "Artikelaktionen"],
+  ["speech.more", "更多朗读操作", "More speech actions", "更多朗讀操作", "読み上げ操作", "읽기 작업 더보기", "Más acciones de lectura", "Autres actions de lecture", "Weitere Leseaktionen"],
+  ["speech.fromHere", "从选中位置读到文末", "Read from selection to end", "從選取位置讀到文末", "選択位置から最後まで読む", "선택 위치부터 끝까지 읽기", "Leer desde la selección hasta el final", "Lire de la sélection à la fin", "Ab Auswahl bis zum Ende lesen"],
+  ["speech.soundSettings", "声音与设置", "Voice and settings", "聲音與設定", "声と設定", "음성 및 설정", "Voz y ajustes", "Voix et réglages", "Stimme und Einstellungen"],
+  ["speech.replay", "重新播放", "Replay", "重新播放", "再生し直す", "다시 재생", "Repetir", "Relire", "Erneut abspielen"],
+  ["speech.selectionMode", "选段朗读", "Reading selection", "選段朗讀", "選択範囲を読み上げ中", "선택 영역 읽기", "Leyendo selección", "Lecture de la sélection", "Auswahl wird vorgelesen"],
+  ["speech.fullMode", "全文朗读", "Reading article", "全文朗讀", "記事を読み上げ中", "글 읽기", "Leyendo artículo", "Lecture de l’article", "Artikel wird vorgelesen"],
+  ["speech.chooseService", "选择语音服务，再设置声音并试听。", "Choose a speech service, then select and test a voice.", "選擇語音服務，再設定聲音並試聽。", "音声サービスを選び、声を設定して試聴します。", "음성 서비스를 선택한 뒤 음성을 설정하고 테스트하세요.", "Elige un servicio y después configura y prueba una voz.", "Choisissez un service, puis configurez et testez une voix.", "Wähle einen Sprachdienst, konfiguriere und teste dann eine Stimme."],
+  ["speech.back", "返回", "Back", "返回", "戻る", "뒤로", "Volver", "Retour", "Zurück"],
+  ["speech.nextStep", "下一步", "Next", "下一步", "次へ", "다음", "Siguiente", "Suivant", "Weiter"],
+  ["speech.serviceModel", "服务与模型", "Service and model", "服務與模型", "サービスとモデル", "서비스 및 모델", "Servicio y modelo", "Service et modèle", "Dienst und Modell"],
+  ["speech.begin", "开始朗读", "Start reading", "開始朗讀", "読み上げ開始", "읽기 시작", "Empezar a leer", "Commencer la lecture", "Vorlesen starten"],
+  ["speech.done", "完成", "Done", "完成", "完了", "완료", "Listo", "Terminé", "Fertig"],
+  ["speech.macQualityHelp", "优先推荐当前语言已安装的增强或高品质音色。可在 macOS 系统设置的辅助功能中下载更多声音，再重新打开此窗口。", "Installed enhanced or premium voices in your language are preferred. Download more voices in macOS Accessibility settings, then reopen this window.", "優先推薦目前語言已安裝的增強或高品質音色。可在 macOS 輔助使用設定下載更多聲音，再重新開啟此視窗。", "現在の言語でインストール済みの拡張・高品質音声を優先します。macOSのアクセシビリティ設定で声を追加し、この画面を開き直してください。", "현재 언어의 설치된 향상 또는 고품질 음성을 우선합니다. macOS 손쉬운 사용 설정에서 음성을 추가한 뒤 이 창을 다시 여세요.", "Se prefieren voces mejoradas o premium instaladas en tu idioma. Descarga más en Accesibilidad de macOS y vuelve a abrir esta ventana.", "Les voix améliorées ou premium installées dans votre langue sont privilégiées. Ajoutez des voix dans Accessibilité de macOS, puis rouvrez cette fenêtre.", "Installierte erweiterte oder Premium-Stimmen in deiner Sprache werden bevorzugt. Lade weitere in den macOS-Bedienungshilfen und öffne dieses Fenster erneut."],
+
   ["speech.cloudHelp", "文字会发送至所选语音服务；付费服务按用量计费。", "Text is sent to the selected speech service; paid services bill by usage.", "文字會傳送至所選語音服務；付費服務按用量計費。", "テキストは選択した音声サービスに送信され、有料サービスは使用量に応じて課金されます。", "텍스트는 선택한 음성 서비스로 전송되며 유료 서비스는 사용량에 따라 과금됩니다.", "El texto se envía al servicio de voz elegido; los servicios de pago cobran por uso.", "Le texte est envoyé au service vocal choisi ; les services payants facturent à l’usage.", "Text wird an den gewählten Sprachdienst gesendet; kostenpflichtige Dienste rechnen nach Nutzung ab."],
   ["speech.deviceHelp", "使用设备声音或本机模型；部分系统音色可能需要联网。", "Uses device voices or local models; some system voices may require a network connection.", "使用裝置聲音或本機模型；部分系統音色可能需要連線。", "デバイスの音声またはローカルモデルを使用します。一部のシステム音声はネット接続が必要です。", "기기 음성이나 로컬 모델을 사용합니다. 일부 시스템 음성에는 인터넷 연결이 필요할 수 있습니다.", "Usa voces del dispositivo o modelos locales; algunas voces del sistema pueden necesitar conexión.", "Utilise les voix de l’appareil ou des modèles locaux ; certaines voix système nécessitent Internet.", "Verwendet Gerätestimmen oder lokale Modelle; einige Systemstimmen benötigen eine Netzwerkverbindung."],
 

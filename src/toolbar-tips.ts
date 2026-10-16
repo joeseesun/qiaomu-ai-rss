@@ -38,7 +38,7 @@ export class ToolbarTips {
     });
   }
   private button(target: EventTarget | null): HTMLElement | undefined {
-    const button = (target as HTMLElement | null)?.closest?.<HTMLElement>('.qrs-reader-toolbar [data-qrs-tip]');
+    const button = (target as HTMLElement | null)?.closest?.<HTMLElement>('.qrs-reader-head [data-qrs-tip]');
     return button && this.root.contains(button) && !button.matches(':disabled') ? button : undefined;
   }
   private clearTimer() { if (this.timer !== undefined) this.win.clearTimeout(this.timer); this.timer = undefined; }
