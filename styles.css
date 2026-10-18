@@ -939,7 +939,7 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 .qrs-source-input .qrs-hidden { display:none; }
 .qrs-source-actions { display:flex; align-items:center; gap:12px; }
 .qrs-source-actions .qrs-library-more { flex-shrink:0; }
-.qrs-source-active .qrs-library-more { display:none; }
+.qrs-source-active .qrs-source-actions .qrs-library-more { display:none; }
 @media(max-width:600px) {
   .qrs-source-input input[type=search], .qrs-source-input .qrs-source-form > button, .qrs-source-input .qrs-source-footer > button { height:44px; min-height:44px; }
   .qrs-source-minor { gap:0 12px; }
