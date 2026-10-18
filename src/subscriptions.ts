@@ -80,7 +80,9 @@ export class Subscriptions {
       if (!current() || this.disposed) fail('source.cancelled');
       if (this.state().subscriptions.some(item => item.url === url)) fail('error.feedDuplicate');
       if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) fail('error.feedLimit', { n: MAX_SUBSCRIPTIONS });
-      this.state().subscriptions.push(feed); registerSource(this.state(), feed.id, feed.group); return feed;
+      this.state().subscriptions.push(feed); registerSource(this.state(), feed.id, feed.group);
+      this.onBodiesChanged(); // Persist the newly downloaded bodies before saving their metadata.
+      return feed;
     });
   }
 

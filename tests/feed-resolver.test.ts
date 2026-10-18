@@ -53,6 +53,12 @@ describe('subscription resolution by content', () => {
   });
 });
 describe('commit and undo verified sources',()=>{
+  it('invalidates body persistence before saving an added feed, but not a rejected duplicate',async()=>{
+    const state=initialState(null), writes:string[]=[], service=new Subscriptions(()=>state,async()=>{writes.push('save');},undefined,()=>{writes.push('bodies');});
+    const resolved=await resolveDocument(rss,'https://example.com/rss',document);if(resolved.kind!=='feed')throw Error('fixture');
+    await service.addResolved(resolved);expect(writes).toEqual(['bodies','save']);
+    await expect(service.addResolved(resolved)).rejects.toThrow();expect(writes).toEqual(['bodies','save']);
+  });
   it('uses the parsed result without a second download and rejects concurrent duplicates',async()=>{
     const state=initialState(null), transport=vi.fn(), service=new Subscriptions(()=>state,async()=>{},transport);
     const resolved=await resolveDocument(rss,'https://example.com/rss',document);if(resolved.kind!=='feed')throw Error('fixture');
