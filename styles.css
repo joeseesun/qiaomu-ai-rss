@@ -902,3 +902,48 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 .qrs-speech-settings select, .qrs-speech-settings input { max-width: 100%; }
 
 .qrs-modal .qrs-speech-settings :is(input,select):focus { outline:1px solid var(--qrs-muted); outline-offset:1px; border-color:var(--qrs-border); box-shadow:none; }
+
+/* Unified subscribe input: persistent capability copy, results in place, one primary action. */
+.qrs-source-input { min-width:0; }
+.qrs-source-form { display:flex; align-items:center; gap:8px; margin:0; }
+.qrs-source-form > .qrs-clearable-search { flex:1; min-width:0; width:0; }
+.qrs-source-input input[type=search] { width:100%; height:40px; min-height:40px; padding:8px 12px; border:1px solid var(--qrs-border); border-radius:6px; box-shadow:none; background:var(--qrs-bg); color:var(--qrs-fg); caret-color:var(--qrs-fg); font:inherit; }
+.qrs-source-input .qrs-clearable-search input { padding-right:38px; }
+.qrs-source-input input[type=search]:hover { border-color:var(--qrs-border-strong); }
+.qrs-source-input input[type=search]:focus { outline:none; border-color:var(--qrs-muted); box-shadow:none; }
+.qrs-source-input .qrs-source-form > button, .qrs-source-input .qrs-source-footer > button { height:40px; min-height:40px; white-space:nowrap; }
+.qrs-source-minor { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:4px 16px; margin:6px 0 18px; color:var(--qrs-muted); font-size:12px; }
+.qrs-source-input .qrs-link-button { min-height:28px; height:auto; padding:4px 0; border:0; box-shadow:none; background:transparent; color:var(--qrs-muted); font-size:12px; text-decoration:underline; text-underline-offset:3px; }
+.qrs-source-input .qrs-link-button:hover { background:transparent; color:var(--qrs-fg); }
+.qrs-source-status { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:16px; color:var(--qrs-muted); font-size:13px; }
+.qrs-source-status:empty { display:none; }
+.qrs-source-results { min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; }
+.qrs-source-heading { font-size:14px; font-weight:600; }
+.qrs-source-detail { display:block; font-size:12px; color:var(--qrs-muted); overflow-wrap:anywhere; }
+.qrs-source-batch-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:4px 0 14px; }
+.qrs-source-batch-head .qrs-source-detail { margin-top:4px; }
+.qrs-source-row { display:flex; align-items:center; gap:12px; padding:16px 0; border-bottom:1px solid var(--qrs-border); }
+.qrs-source-row:last-child { border-bottom:0; }
+.qrs-source-row > input { flex-shrink:0; margin:0; }
+.qrs-source-copy { flex:1; min-width:0; overflow-wrap:anywhere; }
+.qrs-source-copy > .qrs-source-detail { margin-top:4px; }
+.qrs-source-row > button { flex-shrink:0; }
+.qrs-source-select-all { display:flex; align-items:center; gap:8px; padding:12px 0 0; color:var(--qrs-muted); font-size:12px; }
+.qrs-source-footer { display:flex; justify-content:space-between; align-items:center; flex-shrink:0; gap:12px; border-top:1px solid var(--qrs-border); padding:14px 0 0; margin-top:8px; background:var(--qrs-bg); }
+.qrs-source-footer > span { font-size:12px; color:var(--qrs-muted); }
+.qrs-source-active > :not(.qrs-source-input) { display:none; }
+.qrs-center .qrs-discovery-page.qrs-source-active { height:100%; display:flex; flex-direction:column; box-sizing:border-box; }
+.qrs-source-active > .qrs-source-input { display:flex; flex-direction:column; flex:1; min-height:0; }
+.qrs-source-active .qrs-source-form, .qrs-source-minor, .qrs-source-status { flex-shrink:0; }
+.qrs-source-active .qrs-source-results { flex:1; }
+.qrs-source-input .qrs-hidden { display:none; }
+.qrs-source-actions { display:flex; align-items:center; gap:12px; }
+.qrs-source-actions .qrs-library-more { flex-shrink:0; }
+.qrs-source-active .qrs-source-actions .qrs-library-more { display:none; }
+@media(max-width:600px) {
+  .qrs-source-input input[type=search], .qrs-source-input .qrs-source-form > button, .qrs-source-input .qrs-source-footer > button { height:44px; min-height:44px; }
+  .qrs-source-minor { gap:0 12px; }
+  .qrs-source-minor > span { flex-basis:100%; line-height:22px; }
+  .qrs-source-minor .qrs-link-button { min-height:36px; }
+  .qrs-source-row { gap:10px; }
+}

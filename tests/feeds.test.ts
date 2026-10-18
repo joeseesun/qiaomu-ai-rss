@@ -246,7 +246,7 @@ describe('smart sync', () => {
     const service = new Subscriptions(() => state, persist, transport, bodies);
     const a = await service.add('https://example.com/a', '', document);
     const b = await service.add('https://example.com/b', '', document);
-    persist.mockClear();
+    persist.mockClear(); bodies.mockClear();
     const summary = await service.refresh([a.id, b.id], document, true);
     expect(summary).toMatchObject({ refreshed: 2, changed: 2, failed: 0, skipped: 0 });
     expect(persist).toHaveBeenCalledTimes(1); expect(bodies).toHaveBeenCalledTimes(1);

@@ -1,8 +1,6 @@
 import { Menu, Modal, Notice, Setting, setIcon } from 'obsidian';
 import type QiaomuRssPlugin from './main';
-import { MAX_SUBSCRIPTIONS, parseOpml, type FeedInput } from './feeds';
 import { ensureGroup, groupsInOrder } from './personal-library';
-import { readImportUrl } from './import-source';
 import { VaultFilePicker, VaultFolderPicker } from './vault-source';
 import { fail, t } from './i18n';
 
@@ -47,41 +45,4 @@ export class GroupChoice extends Modal {
 export class ConfirmAction extends Modal {
   constructor(plugin: QiaomuRssPlugin, private title: string, private description: string, private action: () => Promise<void>) { super(plugin.app); }
   onOpen() { this.modalEl.addClass('qrs-modal'); this.setTitle(this.title); this.contentEl.createEl('p', { text: this.description }); new Setting(this.contentEl).addButton(b => b.setButtonText(t('common.cancel')).onClick(() => this.close())).addButton(b => b.setButtonText(t('common.confirm')).setDestructive().onClick(async () => { b.setDisabled(true); try { await this.action(); this.close(); } catch { new Notice(t('common.saveFailedRetry')); b.setDisabled(false); } })); }
-}
-export class OpmlImport extends Modal {
-  private serial = 0;
-  constructor(private plugin: QiaomuRssPlugin, private changed: () => void = () => plugin.refreshDiscovery(), private initial = '') { super(plugin.app); }
-  onClose() { this.serial++; this.contentEl.empty(); }
-  onOpen() {
-    this.setTitle(t('modal.importOpml')); this.modalEl.addClass('qrs-subscription-modal', 'qrs-modal');
-    const field = (label: string, type: string, placeholder = '') => { const id = crypto.randomUUID(); this.contentEl.createEl('label', { text: label, attr: { for: id } }); return this.contentEl.createEl('input', { type, placeholder, attr: { id } }); };
-    const file = field(t('modal.chooseFile'), 'file'); file.accept = '.opml,.xml';
-    const url = field(t('modal.onlineUrl'), 'url', 'https://…/subscriptions.opml');
-    const fetch = this.contentEl.createEl('button', { text: t('modal.fetchUrl') });
-    const details = this.contentEl.createEl('details'); details.createEl('summary', { text: t('modal.pasteOpml') });
-    const area = details.createEl('textarea', { cls: 'qrs-opml-text', attr: { 'aria-labelledby': this.titleEl.id || (this.titleEl.id = crypto.randomUUID()) } });
-    const status = this.contentEl.createDiv({ attr: { role: 'status' } });
-    const query = field(t('modal.filterImport'), 'search', t('modal.filterPlaceholder'));
-    const actions = this.contentEl.createDiv('qrs-subscription-tools');
-    const selectAll = actions.createEl('button', { text: t('modal.selectFiltered') }), none = actions.createEl('button', { text: t('modal.clearSelection') });
-    const list = this.contentEl.createDiv('qrs-opml-selection');
-    const submit = this.contentEl.createEl('button', { text: t('modal.import'), cls: 'mod-cta' }); submit.disabled = true;
-    let feeds: FeedInput[] = [], selected = new Set<string>(), limit = 60, busy = false;
-    const filtered = () => feeds.filter(f => `${f.name} ${f.group} ${f.url}`.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase()));
-    const updateSubmit = () => { submit.setText(t('modal.importCount', { n: selected.size })); submit.disabled = busy || !selected.size || selected.size + this.plugin.state.subscriptions.length > MAX_SUBSCRIPTIONS; };
-    const render = () => { list.empty(); const values = filtered(); for (const feed of values.slice(0, limit)) { const row = list.createEl('label', { cls: 'qrs-opml-row' }); const check = row.createEl('input', { type: 'checkbox' }); check.checked = selected.has(feed.url); check.disabled = busy; row.createSpan({ text: `${feed.group || t('common.ungrouped')} / ${feed.name}` }); check.onchange = () => { if (check.checked) selected.add(feed.url); else selected.delete(feed.url); updateSubmit(); }; } if (values.length > limit) list.createEl('button', { text: t('common.showMore') }).onclick = () => { limit += 60; render(); }; updateSubmit(); };
-    const validate = (xml: string) => {
-      feeds = []; selected.clear(); limit = 60;
-      try { const parsed = parseOpml(xml, this.contentEl.ownerDocument), existing = new Set(this.plugin.state.subscriptions.map(f => f.url)); feeds = parsed.feeds.filter(f => !existing.has(f.url));
-        selected = new Set(feeds.map(f => f.url)); status.setText(t('modal.importStatus', { added: feeds.length, skipped: parsed.skipped + parsed.feeds.length - feeds.length }) + (feeds.length + existing.size > MAX_SUBSCRIPTIONS ? t('modal.importOverLimit') : ''));
-      } catch (e) { status.setText(e instanceof Error ? e.message : t('error.opmlInvalid')); } render();
-    };
-    query.oninput = () => { limit = 60; render(); }; selectAll.onclick = () => { for (const f of filtered()) selected.add(f.url); render(); }; none.onclick = () => { selected.clear(); render(); };
-    area.oninput = () => { this.serial++; validate(area.value); };
-    file.onchange = () => { const value = file.files?.[0], serial = ++this.serial; feeds = []; selected.clear(); render(); if (!value) return; if (value.size > 5 * 1024 * 1024) { status.setText(t('modal.fileTooLarge')); return; } void value.text().then(xml => { if (serial === this.serial) validate(xml); }).catch(() => { if (serial === this.serial) status.setText(t('modal.fileReadFailed')); }); };
-    url.oninput = () => { this.serial++; feeds = []; selected.clear(); render(); };
-    fetch.onclick = () => { const serial = ++this.serial; status.setText(t('common.loading')); feeds = []; selected.clear(); render(); void readImportUrl(url.value).then(result => { if (serial === this.serial) validate(result.text); }).catch(e => { if (serial === this.serial) status.setText(e instanceof Error ? e.message : t('discovery.readFailed')); }); };
-    submit.onclick = () => { const chosen = feeds.filter(f => selected.has(f.url)); busy = true; for (const el of [file, url, fetch, area, selectAll, none]) el.disabled = true; render(); void this.plugin.subscriptions.import(chosen).then(count => { new Notice(t('notice.importedFeeds', { n: count })); this.changed(); this.close(); }).catch(() => { status.setText(t('common.saveFailedRetry')); }).finally(() => { busy = false; for (const el of [file, url, fetch, area, selectAll, none]) el.disabled = false; updateSubmit(); }); };
-    if (this.initial) { if (/^https?:/i.test(this.initial)) { url.value = this.initial; fetch.click(); } else validate(this.initial); }
-  }
 }

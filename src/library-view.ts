@@ -3,8 +3,8 @@ import type QiaomuRssPlugin from './main';
 import { exportOpml } from './feeds';
 import { deleteGroup, ensureGroup, groupsInOrder, moveSources, personalSources, renameGroup, type PersonalSource } from './personal-library';
 import { SourceIcons } from './source-icons';
-import { addSearchClear } from './search-clear';
-import { addLocalContent, ConfirmAction, GroupChoice, iconButton, OpmlImport, TextPrompt } from './subscription-ui';
+import { SourceInput } from './source-input';
+import { addLocalContent, ConfirmAction, GroupChoice, iconButton, TextPrompt } from './subscription-ui';
 import { fail, t } from './i18n';
 import { showSubscriptionMenu } from './subscription-menu';
 
@@ -24,7 +24,7 @@ export function updatedLabel(ts: number, now = Date.now()) {
 
 export class LibraryPanel extends Component {
   private icons: SourceIcons;
-  private search!: HTMLInputElement;
+  private entry!: SourceInput;
   private kinds!: HTMLElement;
   private bulk!: HTMLElement;
   private list!: HTMLElement;
@@ -32,31 +32,26 @@ export class LibraryPanel extends Component {
   private query = '';
   private kind: KindFilter = 'all';
   private limit = 100;
-  constructor(private contentEl: HTMLElement, private plugin: QiaomuRssPlugin, private discover: () => void = () => { void plugin.openDiscovery(); }) { super(); this.icons = new SourceIcons(plugin); }
-  focusSearch() { this.search?.focus({ preventScroll: true }); }
+  constructor(private contentEl: HTMLElement, private plugin: QiaomuRssPlugin, private discover: (query?: string) => void = () => { void plugin.openDiscovery(); }) { super(); this.icons = new SourceIcons(plugin); }
+  focusSearch() { this.entry?.focus(); }
+  deactivate() { this.entry.cancelRead(); }
   onload() {
     this.addChild(this.icons); this.contentEl.empty(); this.contentEl.addClass('qrs-discovery', 'qrs-library');
     const page = this.contentEl.createDiv('qrs-discovery-page');
-    const tools = page.createDiv('qrs-library-tools'), id = crypto.randomUUID();
-    tools.createEl('label', { cls: 'qrs-visually-hidden', text: t('library.searchLabel'), attr: { for: id } });
-    this.search = tools.createEl('input', { type: 'search', placeholder: t('library.searchPlaceholder'), attr: { id } }); addSearchClear(this.search);
-    this.search.oninput = () => { this.query = this.search.value; this.limit = 100; this.render(); };
-    // One toolbar row: search, type filter, and a single "add" entry point; library-level actions live in its menu.
-    this.kinds = tools.createDiv({ cls: 'qrs-library-kinds', attr: { role: 'group', 'aria-label': t('library.kindFilter') } });
-    const add = tools.createEl('button', { cls: 'mod-cta qrs-library-add', attr: { 'aria-haspopup': 'menu' } });
-    setIcon(add.createSpan(), 'plus'); add.createSpan({ text: t('library.add') });
-    add.onclick = () => this.addMenu(add);
+    this.entry = this.addChild(new SourceInput(page, this.plugin, query => { this.query = query; this.limit = 100; this.render(); }, query => this.discover(query), t('source.libraryPlaceholder')));
+    const tools = page.createDiv('qrs-library-tools');
+    this.kinds = tools.createDiv({ cls: 'qrs-library-kinds', attr: { role: 'group' } });
+    const more = iconButton(this.entry.actions, 'ellipsis', t('source.libraryActions'), () => this.addMenu(more));
+    more.addClass('qrs-library-more');
     this.list = page.createDiv('qrs-library-list');
-    this.bulk = page.createDiv({ cls: 'qrs-library-bulk', attr: { role: 'toolbar', 'aria-label': t('library.bulkToolbar') } });
+    this.bulk = page.createDiv({ cls: 'qrs-library-bulk', attr: { role: 'toolbar' } });
     this.render();
   }
   private addMenu(anchor: HTMLElement) {
     const menu = new Menu();
-    menu.addItem(i => i.setTitle(t('reader.discover')).setIcon('compass').onClick(() => this.discover()));
     menu.addItem(i => i.setTitle(t('library.addLocal')).setIcon('hard-drive').onClick(() => addLocalContent(this.plugin, anchor)));
     menu.addItem(i => i.setTitle(t('library.newGroup')).setIcon('folder-plus').onClick(() => new TextPrompt(this.plugin, t('library.newGroup'), '', async name => { await this.plugin.editLibrary(() => { if (!name.trim()) fail('error.nameEmpty'); ensureGroup(this.plugin.state, name); }); }).open()));
     menu.addSeparator();
-    menu.addItem(i => i.setTitle(t('library.importOpml')).setIcon('download').onClick(() => new OpmlImport(this.plugin).open()));
     menu.addItem(i => i.setTitle(t('library.exportOpml')).setIcon('upload').onClick(() => this.exportOpml()));
     showSubscriptionMenu(menu, anchor);
   }
@@ -98,7 +93,7 @@ export class LibraryPanel extends Component {
   private renderKinds(all: PersonalSource[]) {
     this.kinds.empty();
     const useful = new Set(all.map(item => item.kind)).size > 1 || all.some(item => !!this.feed(item.id)?.error);
-    this.kinds.toggleClass('qrs-hidden', !useful); if (!useful) { this.kind = 'all'; return; }
+    this.kinds.parentElement?.toggleClass('qrs-hidden', !useful); this.kinds.toggleClass('qrs-hidden', !useful); if (!useful) { this.kind = 'all'; return; }
     for (const kind of ['all', 'rss', 'podcast', 'vault', 'error'] as KindFilter[]) {
       const count = kind === 'all' ? all.length : all.filter(item => kind === 'error' ? !!this.feed(item.id)?.error : item.kind === kind).length;
       if (kind !== 'all' && !count) { if (this.kind === kind) this.kind = 'all'; continue; }
@@ -164,7 +159,9 @@ export class LibraryPanel extends Component {
       const empty = !items.length, collapsed = empty || (!filtering && state.collapsedGroups.includes(group.id));
       const header = section.createDiv('qrs-group-header');
       header.toggleClass('is-empty', empty);
-      const pick = header.createEl('input', { type: 'checkbox', attr: { 'aria-label': t('library.selectGroup', { name: group.name }) } });
+      const pickId = crypto.randomUUID();
+      header.createEl('label', { cls: 'qrs-visually-hidden', text: t('library.selectGroup', { name: group.name }), attr: { for: pickId } });
+      const pick = header.createEl('input', { type: 'checkbox', attr: { id: pickId } });
       pick.checked = !!items.length && items.every(i => this.selected.has(i.id)); pick.indeterminate = !pick.checked && items.some(i => this.selected.has(i.id)); pick.disabled = !items.length;
       pick.dataset.ids = items.map(i => i.id).join('\n');
       pick.onchange = () => { for (const i of items) { if (pick.checked) this.selected.add(i.id); else this.selected.delete(i.id); } this.syncSelection(); };
@@ -184,7 +181,7 @@ export class LibraryPanel extends Component {
         check.onchange = () => { if (check.checked) this.selected.add(item.id); else this.selected.delete(item.id); this.syncSelection(); };
         this.icons.render(row, item);
         const info = row.createDiv('qrs-subscription-info');
-        info.createEl('button', { cls: 'qrs-source-name', text: item.name, attr: { id: labelId, 'aria-label': t('library.readSource', { name: item.name }) } }).onclick = () => { void this.plugin.openPersonalSource(item.id); };
+        info.createEl('button', { cls: 'qrs-source-name', text: item.name, attr: { id: labelId } }).onclick = () => { void this.plugin.openPersonalSource(item.id); };
         info.createDiv({ cls: 'qrs-subscription-detail', text: this.detail(item) }).toggleClass('mod-error', !!this.feed(item.id)?.error);
         this.status(row, item, read);
         // Status rests on the right; on hover or focus the same spot turns into actions.
@@ -197,7 +194,6 @@ export class LibraryPanel extends Component {
     if (!all.length) {
       const empty = this.list.createDiv('qrs-empty'); empty.createEl('p', { text: t('library.empty') });
       empty.createEl('button', { text: t('reader.discover'), cls: 'mod-cta' }).onclick = () => this.discover();
-      empty.createEl('button', { text: t('library.importOpml') }).onclick = () => new OpmlImport(this.plugin).open();
     } else if (!shown && filtering) this.list.createDiv({ cls: 'qrs-empty', text: t('library.noMatch') });
     if (shown > this.limit) this.list.createEl('button', { cls: 'qrs-discovery-more', text: t('library.showMore', { n: shown - this.limit }) }).onclick = () => { this.limit += 100; this.render(); };
   }

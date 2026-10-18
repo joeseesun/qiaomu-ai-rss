@@ -1,3 +1,4 @@
+import type { ResolvedFeed } from './feed-resolver';
 import { TaskPool } from './task-pool';
 import { registerSource, ensureGroup } from './personal-library';
 import { requestUrl } from 'obsidian';
@@ -70,20 +71,29 @@ export class Subscriptions {
     if (this.state().subscriptions.some(feed => feed.url === url)) fail('error.feedDuplicate');
     if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) fail('error.feedLimit', { n: MAX_SUBSCRIPTIONS });
     const parsed = await this.fetch(url, doc);
-    const feed = subscriptionSchema.parse({ id: `local:${await stableId(url)}`, url, name: parsed.name, group: group.trim().slice(0, 100), site: parsed.site, image: parsed.image, entries: parsed.entries, updatedAt: Date.now(), etag: parsed.etag, lastModified: parsed.lastModified });
+    return this.addResolved({ kind: 'feed', url, parsed, etag: parsed.etag, lastModified: parsed.lastModified }, group);
+  }
+  async addResolved(source: ResolvedFeed, group = '', current: () => boolean = () => true): Promise<Subscription> {
+    const url = feedUrl(source.url), parsed = source.parsed;
+    const feed = subscriptionSchema.parse({ id: `local:${await stableId(url)}`, url, name: parsed.name, group: group.trim().slice(0, 100), site: parsed.site, image: parsed.image, entries: parsed.entries, updatedAt: Date.now(), etag: source.etag, lastModified: source.lastModified });
     return this.commit(() => {
+      if (!current() || this.disposed) fail('source.cancelled');
       if (this.state().subscriptions.some(item => item.url === url)) fail('error.feedDuplicate');
       if (this.state().subscriptions.length >= MAX_SUBSCRIPTIONS) fail('error.feedLimit', { n: MAX_SUBSCRIPTIONS });
-      this.state().subscriptions.push(feed); registerSource(this.state(), feed.id, feed.group); return feed;
+      this.state().subscriptions.push(feed); registerSource(this.state(), feed.id, feed.group);
+      this.onBodiesChanged(); // Persist the newly downloaded bodies before saving their metadata.
+      return feed;
     });
   }
 
-  async import(feeds: FeedInput[]): Promise<number> {
+  async import(feeds: FeedInput[]): Promise<number> { return (await this.importAdded(feeds)).length; }
+  async importAdded(feeds: FeedInput[], current: () => boolean = () => true): Promise<Subscription[]> {
     const prepared = await Promise.all(feeds.map(async input => {
       const url = feedUrl(input.url);
       return subscriptionSchema.parse({ ...input, url, id: `local:${await stableId(url)}` });
     }));
     return this.commit(() => {
+      if (!current() || this.disposed) fail('source.cancelled');
       const existing = new Set(this.state().subscriptions.map(feed => feed.url));
       const additions = prepared.filter(feed => { if (existing.has(feed.url)) return false; existing.add(feed.url); return true; });
       if (this.state().subscriptions.length + additions.length > MAX_SUBSCRIPTIONS) fail('error.importLimit', { n: MAX_SUBSCRIPTIONS });
@@ -92,7 +102,21 @@ export class Subscriptions {
         const state = this.state();
         state.collapsedGroups = [...new Set([...state.collapsedGroups, ...additions.map(feed => state.sourceMeta[feed.id].groupId).filter(Boolean)])];
       }
-      return additions.length;
+      return additions;
+    });
+  }
+  /** Receipts refer only to the objects this operation actually inserted. Edited/replaced feeds stay. */
+  receipt(feeds: Subscription[]) {
+    return feeds.map(feed => ({ feed, name: feed.name, group: feed.group, paused: feed.paused, meta: JSON.stringify(this.state().sourceMeta[feed.id]) }));
+  }
+  async undoAdded(receipt: ReturnType<Subscriptions['receipt']>): Promise<number> {
+    return this.commit(() => {
+      const state = this.state();
+      const ids = new Set(receipt.filter(r => state.subscriptions.includes(r.feed) && r.feed.name === r.name && r.feed.group === r.group && r.feed.paused === r.paused && JSON.stringify(state.sourceMeta[r.feed.id]) === r.meta).map(r => r.feed.id));
+      state.subscriptions = state.subscriptions.filter(feed => !ids.has(feed.id));
+      for (const id of ids) delete state.sourceMeta[id];
+      // Saved articles, favorites and notes are deliberately retained, like unsubscribe.
+      return ids.size;
     });
   }
   async edit(id: string, name: string, group: string) {

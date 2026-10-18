@@ -15,7 +15,7 @@ export async function stableId(value: string): Promise<string> {
   const digest = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
-function xmlDocument(value: string, doc: Document): Document {
+export function xmlDocument(value: string, doc: Document): Document {
   if (new TextEncoder().encode(value).byteLength > MAX_XML) fail('error.xmlTooLarge');
   if (/<!DOCTYPE|<!ENTITY/i.test(value)) fail('error.xmlDtdUnsupported');
   const win = doc.defaultView;
