@@ -1,13 +1,15 @@
 ## 中文
 
-- 朗读控制融入文章顶部，宽屏显示播放/暂停、倍速、更多和结束，窄屏只显示播放与更多；播放键圆环显示进度，移除句数与上一句/下一句按钮。
-- 选段朗读严格限定到选中文字；暂停或结束后重新选文，播放按钮会读取新选区，避免重复播放旧片段。更多菜单支持从头或从选中位置读到文末。
-- 声音设置采用分步配置。Mac 新用户优先推荐当前语言已安装的增强/高品质音色，首次试听成功后即可开始；保留已有音色选择与暂停状态。
-- Mac 增强音色和完整选段已在真实 Obsidian 中验证；移动真机及付费云语音服务未验证。
+- 订阅管理与发现订阅共用一个输入框，常驻说明支持网站、RSS/XML 和 OPML 链接；粘贴后按 Enter 或点击添加即可识别。
+- 单个有效 RSS/Atom 来源直接添加，可撤销。网站声明多个来源时原位选择；复用首次解析结果，保存时无需再次下载。
+- OPML 链接、文件、拖入或粘贴内容共用原位清单：保留分组、跳过已订阅项，确认后批量导入。统一输入框高度，窄窗口下列表滚动、导入按钮保持可见。
+- 取消、改地址、关闭窗口会使旧结果失效；读取超过 30 秒明确提示重试。
+- 已在 macOS Obsidian 实测 Lex XML、网站发现、OPML、慢响应取消和 390px 窄窗口。手机和 Windows 未真机验证。
 
 ## English
 
-- Expand speech controls in place with circular progress; narrow readers show only Play and More.
-- Read and highlight exactly the selected passage. After pausing or completion, Play adopts a new selection instead of replaying the previous excerpt. More supports restarting and reading from a selected position to the end.
-- Introduce progressive voice setup, prefer installed enhanced/premium Mac voices in the current language for new users, and require a successful first audition. Preserve existing voice choices and playback state.
-- Verified native Mac enhanced speech and complete multi-sentence selection playback in Obsidian. Mobile hardware and paid cloud speech services are not verified.
+- Use one input in subscription management and discovery, with persistent website, RSS/XML and OPML guidance. Press Enter or Add to resolve a link.
+- Add a verified RSS/Atom feed directly with Undo. Choose among multiple website feeds inline. Reuse the initial parse without downloading again during save.
+- Preview OPML links, files, drops and pasted content inline. Preserve groups and existing subscriptions; confirm once to import. Keep consistent input heights and an accessible footer in narrow windows.
+- Ignore stale results after cancellation, edits or closing. Show a retryable error after 30 seconds.
+- Verified in macOS Obsidian with a live Lex feed, website discovery, OPML, delayed responses and a 390px window. Mobile hardware and Windows are not verified.

@@ -1,20 +1,19 @@
 import { Component, Modal, Notice } from 'obsidian';
 import type QiaomuRssPlugin from './main';
-import { addSearchClear } from './search-clear';
+import { SourceInput } from './source-input';
+import { isSourceInput, type ResolvedFeed } from './feed-resolver';
 import { searchPodcasts, searchWechat } from './source-catalog';
 import { xiaoyuzhouPodcasts } from './discovery';
 import { baseDiscovery, dedupeDiscovery, searchDiscovery, tidingsSnapshot, tidingsSchema, tidingsSource, inCollection, type DiscoverCollection, type DiscoverSource, type TidingsData } from './discovery-library';
 import { collectionLabel, kindLabel, t } from './i18n';
 import { SourceIcons } from './source-icons';
-import { groupSelect, OpmlImport } from './subscription-ui';
-import { readImportUrl } from './import-source';
-import { parseFeed } from './feeds';
+import { groupSelect } from './subscription-ui';
 import { safeUrl, type Entry } from './model';
 import { moveSources } from './personal-library';
 
 class SourcePreview extends Modal {
   private generation = 0;
-  constructor(private plugin: QiaomuRssPlugin, private source: DiscoverSource, private done: () => void, private xml?: string) { super(plugin.app); }
+  constructor(private plugin: QiaomuRssPlugin, private source: DiscoverSource, private done: () => void) { super(plugin.app); }
   onClose() { this.generation++; this.contentEl.empty(); }
   onOpen() {
     const source = this.source, version = ++this.generation; this.modalEl.addClass('qrs-modal', 'qrs-preview-modal');
@@ -36,13 +35,15 @@ class SourcePreview extends Modal {
     const actions = footer.createDiv('qrs-preview-actions');
     actions.createEl('button', { text: t('common.cancel') }).onclick = () => this.close();
     const subscribe = actions.createEl('button', { text: existing ? t('common.read') : t('preview.subscribe'), cls: 'mod-cta' }); subscribe.disabled = true;
+    let resolved: ResolvedFeed | undefined;
     const load = async () => {
       try {
         let entries: Entry[];
         if (source.podcastId) {
           const api = this.plugin.api(); const page = source.podcastId.startsWith('podscribe-') ? await api.podcastEpisodes(source.podcastId) : await api.entries(source.podcastId, '', 3); entries = page.entries;
         } else {
-          const result = this.xml ? await parseFeed(this.xml, source.url!, this.contentEl.ownerDocument) : await this.plugin.subscriptions.fetch(source.url!, this.contentEl.ownerDocument);
+          const result = await this.plugin.subscriptions.fetch(source.url!, this.contentEl.ownerDocument);
+          resolved = { kind: 'feed', url: source.url!, parsed: result, etag: result.etag, lastModified: result.lastModified };
           entries = result.entries; source.name = result.name; source.site = result.site; source.image = result.image;
         }
         if (version !== this.generation) return;
@@ -60,7 +61,7 @@ class SourcePreview extends Modal {
     void load();
     subscribe.onclick = () => { if (existing) { this.close(); void this.plugin.openPersonalSource(existing); return; } subscribe.disabled = true; void (async () => {
       if (source.podcastId) { await this.plugin.followPodcast(source.podcastId, source.name, false); if (groupChanged || groupId) await this.plugin.editLibrary(() => moveSources(this.plugin.state, [source.podcastId!], groupId)); }
-      else { const group = this.plugin.state.subscriptionGroups.find(g => g.id === groupId)?.name || (groupChanged ? '' : source.group); await this.plugin.subscriptions.add(source.url!, group, this.contentEl.ownerDocument); }
+      else { const group = this.plugin.state.subscriptionGroups.find(g => g.id === groupId)?.name || (groupChanged ? '' : source.group); if (resolved) await this.plugin.subscriptions.addResolved(resolved, group, () => version === this.generation); }
       new Notice(t('notice.subscribed')); this.done(); this.close();
     })().catch(e => { if (version === this.generation) { status.setText(e instanceof Error ? e.message : t('notice.subscribeFailed')); subscribe.disabled = false; } }); };
   }
@@ -69,7 +70,7 @@ const catalogDate = (data: TidingsData) => data.generated_at || data.generatedAt
 
 export class DiscoveryPanel extends Component {
   private icons: SourceIcons;
-  private search!: HTMLInputElement;
+  private entry!: SourceInput;
   private cards!: HTMLElement;
   private status!: HTMLElement;
   private count!: HTMLElement;
@@ -88,19 +89,16 @@ export class DiscoveryPanel extends Component {
   private closed = false;
   private sourceLoaded = false;
   constructor(private contentEl: HTMLElement, private plugin: QiaomuRssPlugin, _embedded = false) { super(); this.icons = new SourceIcons(plugin); }
-  focusSearch() { this.search?.focus({ preventScroll: true }); }
+  focusSearch() { this.entry?.focus(); }
+  setQuery(query: string) { this.entry.setQuery(query); }
+  deactivate() { this.entry.cancelRead(); this.serial++; window.clearTimeout(this.timer); }
   private get cachePath() { return `${this.plugin.app.vault.configDir}/plugins/${this.plugin.manifest.id}/tidings-catalog.json`; }
   onload() {
     this.closed = false; this.addChild(this.icons); this.contentEl.empty(); this.contentEl.addClass('qrs-discovery');
     const page = this.contentEl.createDiv('qrs-discovery-page');
-    const form = page.createEl('form', { cls: 'qrs-discover-form' }), id = crypto.randomUUID();
-    form.createEl('label', { cls: 'qrs-visually-hidden', text: t('discovery.searchLabel'), attr: { for: id } });
-    this.search = form.createEl('input', { type: 'search', cls: 'qrs-discovery-search', placeholder: t('discovery.searchPlaceholder'), attr: { id } }); addSearchClear(this.search);
-    form.createEl('button', { text: t('discovery.search'), type: 'submit' });
-    this.search.oninput = () => { this.query = this.search.value; this.limit = 24; this.refresh(); this.scheduleSearch(); };
-    form.onsubmit = event => { event.preventDefault(); this.query = this.search.value.trim(); if (/^https?:\/\//i.test(this.query)) void this.previewLink(this.query); else { this.refresh(); this.scheduleSearch(); } };
+    this.entry = this.addChild(new SourceInput(page, this.plugin, query => { this.query = query; this.limit = 24; this.refresh(); this.scheduleSearch(); }, () => { this.refresh(); this.scheduleSearch(); }, t('source.discoveryPlaceholder')));
     const categories = page.createDiv('qrs-discovery-collections');
-    categories.setAttribute('role', 'group'); categories.setAttribute('aria-label', t('discovery.categories'));
+    categories.setAttribute('role', 'group');
     for (const [kind, label] of [['home', t('discovery.home')], ...(['wechat', 'podcast', 'blogs'] as DiscoverCollection[]).map(c => [c, collectionLabel(c)] as [DiscoverCollection, string])] as ['home' | DiscoverCollection, string][]) {
       const button = categories.createEl('button', { text: label, attr: { 'data-collection': kind, 'aria-pressed': 'false' } });
       button.onclick = () => { this.collection = kind; this.limit = 24; this.refresh(); this.scheduleSearch(); };
@@ -108,28 +106,18 @@ export class DiscoveryPanel extends Component {
     this.status = page.createDiv({ cls: 'qrs-discovery-status', attr: { role: 'status' } });
     const section = page.createDiv('qrs-discovery-section'), titles = section.createDiv('qrs-discovery-titles');
     this.heading = titles.createEl('h2'); this.count = titles.createSpan('qrs-discovery-count');
-    this.back = section.createEl('button', { text: t('discovery.back') }); this.back.onclick = () => { this.collection = 'home'; this.query = ''; this.search.value = ''; this.limit = 24; this.online = []; this.scheduleSearch(); this.refresh(); };
+    this.back = section.createEl('button', { text: t('discovery.back') }); this.back.onclick = () => { this.collection = 'home'; this.query = ''; this.entry.setQuery(''); this.limit = 24; this.online = []; this.scheduleSearch(); this.refresh(); };
     this.cards = page.createDiv('qrs-discovery-grid');
     this.more = page.createEl('button', { cls: 'qrs-discovery-more', text: t('discovery.more') }); this.more.onclick = () => { this.limit += 24; this.refresh(); };
-    const footer = page.createDiv('qrs-discovery-actions'); footer.createSpan({ text: t('discovery.haveList') });
-    footer.createEl('button', { text: t('library.importOpml'), cls: 'qrs-link-button' }).onclick = () => new OpmlImport(this.plugin).open();
     this.note = page.createDiv('qrs-discovery-note');
     this.refresh();
     // Catalogs fetched by the former "更新目录" button stay in use only while newer than the bundled snapshot.
     void this.plugin.app.vault.adapter.read(this.cachePath).then(text => { const parsed = tidingsSchema.safeParse(JSON.parse(text) as unknown); if (!this.closed && parsed.success && parsed.data.feeds.length && catalogDate(parsed.data) > catalogDate(this.data)) { this.data = parsed.data; this.local = baseDiscovery(this.data); this.refresh(); } }).catch(() => undefined);
   }
-  private async previewLink(url: string) {
-    const serial = ++this.serial; this.status.setText(t('discovery.identifying'));
-    try { const result = await readImportUrl(url); if (this.closed || serial !== this.serial) return;
-      if (/<opml[\s>]/i.test(result.text)) { new OpmlImport(this.plugin, () => this.refresh(), result.text).open(); this.status.setText(t('discovery.opmlRecognized')); return; }
-      const parsed = await parseFeed(result.text, result.url, this.contentEl.ownerDocument); if (this.closed || serial !== this.serial) return;
-      new SourcePreview(this.plugin, { id: result.url, name: parsed.name, url: result.url, site: parsed.site, image: parsed.image, kind: 'more', description: '', group: '', language: '', provenance: t('discovery.manualAdd') }, () => this.refresh(), result.text).open(); this.status.setText(t('discovery.rssRecognized'));
-    } catch (e) { if (!this.closed && serial === this.serial) this.status.setText(e instanceof Error ? e.message : t('discovery.readFailed')); }
-  }
   private scheduleSearch() {
     window.clearTimeout(this.timer); const serial = ++this.serial; this.online = [];
     const query = this.query.trim(), collection = this.collection;
-    if (/^https?:\/\//i.test(query)) { this.status.setText(t('discovery.pressEnterUrl')); return; }
+    if (isSourceInput(query)) { this.status.setText(t('discovery.pressEnterUrl')); return; }
     if (!query && collection !== 'wechat' && collection !== 'podcast') { this.status.setText(''); return; }
     this.status.setText(t('discovery.searching'));
     this.timer = window.setTimeout(() => { void (async () => {

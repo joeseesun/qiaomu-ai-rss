@@ -69,3 +69,7 @@ Article rows now use a measured virtual window rather than accumulating DOM as t
 ## Reader toolbar tips (0.29.1)
 
 Keep read aloud, favorite, read/unread and Daily Note as direct actions. Save/open article notes live in More, preserving saved-note and alternate-location actions. These four icon actions explicitly opt in to custom neutral tips; other controls retain their existing behavior. Mouse hover waits 450 ms, keyboard focus shows immediately, Escape/click/scroll/blur dismiss, and the popup remains hoverable. Tips have role=tooltip/aria-describedby and use the existing hidden accessible names, never title/aria-label or host setTooltip. Labels describe the next action and track favorite/read/speech state. Touch does not create sticky hover tips. Popouts use the owner document and view disposal removes tips/listeners.
+
+## Unified subscription input (0.30.0)
+
+This supersedes the URL preview and permanent library action row above. Management and discovery share one input with permanent format guidance and a secondary OPML file action. Names search; URLs resolve on Enter or Add. Single verified feeds are added once with Undo; multiple website feeds and OPML use inline selection. One sticky import button confirms batch additions. Remaining library actions are in More. See [implementation and boundaries](docs/xml-subscription-design.md).

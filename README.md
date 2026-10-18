@@ -84,15 +84,15 @@ GitHub 发布和官方目录审核是独立流程；每个版本的审核结果�
 ### 添加自己的订阅
 
 1. 点击列表顶部 **+**，或运行命令 **Qiaomu AI RSS: 管理我的订阅**。
-2. 粘贴完整的 RSS / Atom 订阅地址，填写可选分组，点击“添加”。名称和文章会从订阅源读取。
+2. 在管理或发现页粘贴网站、RSS/XML（含 Atom）或 OPML 链接，按 Enter 或点击“添加”。单个有效订阅直接加入，显示来源名称与“撤销”；网站找到多个来源时原位选择。名称输入仍用于搜索。
 3. 从探索页添加的订阅会直接成为阅读器当前频道。也可以点击列表顶部的频道名称，在搜索弹窗中选择“我的订阅”、某个分组或具体订阅源；“乔木精选”仍可随时切回。
 4. 订阅管理中的铅笔按钮可修改名称与分组；垃圾桶可取消订阅，已收藏文章和今日日记中的链接会保留。
 
 个人源默认且仅提供原文，复用收藏、已读、搜索、本地图片与今日日记功能，不会调用乔木 AI 接口。部分源只提供摘要，可从文章菜单打开原文。
 
-**OPML**：在订阅管理中选择“导入 OPML”，选择文件或粘贴内容，确认预览后导入；重复地址自动跳过，不覆盖已有名称和分组。嵌套分组合并成路径名称。导入后点击刷新获取文章。“导出 OPML”将当前个人订阅写入设置中的 OPML 导出文件夹，文件名为 `subscriptions-时间戳.opml`。
+**OPML**：直接添加清单链接，或选择“导入 OPML 文件”；也支持拖入文件、在输入框粘贴清单内容。列表原位预览，默认选择新订阅，点击“导入 N 个订阅”才写入；重复地址自动跳过，不覆盖已有名称和分组。嵌套分组合并成路径名称。导入后点击刷新获取文章。管理页更多菜单中的“导出 OPML”将当前个人订阅写入设置中的 OPML 导出文件夹，文件名为 `subscriptions-时间戳.opml`。
 
-最多 100 个个人源，每源保留订阅文件前 200 条中的最多 50 篇（总正文约 1 MB）；单篇超过 100,000 字符会截断并提示打开原文。刷新使用稳定文章 ID，保留已读与收藏；失败时保留旧文章。选择个人频道时，超过 5 分钟的缓存会刷新；刷新按钮强制获取。无定时后台轮询。
+最多 2,000 个个人源，每源保留订阅文件前 200 条中的最多 50 篇（总正文约 1 MB）；单篇超过 100,000 字符会截断并提示打开原文。刷新使用稳定文章 ID，保留已读与收藏；失败时保留旧文章。选择个人频道时，超过 5 分钟的缓存会刷新；刷新按钮强制获取。无定时后台轮询。
 
 ### 阅读与保存
 
@@ -109,7 +109,7 @@ GitHub 发布和官方目录审核是独立流程；每个版本的审核结果�
 - **Discovery.** Featured feeds, ten podcast recommendations, and blog search are local. Opening or searching the WeChat catalog and searching podcasts send requests to the configured Qiaomu Reader service. Podcast episodes and available source transcripts are read from that service; subscribing does not initiate AI rewriting. Clicking Subscribe on a personal RSS feed fetches the chosen feed.
 
 - **Network required for new content.** Opening the reader, selecting a channel/article or refreshing sends anonymous HTTPS GET requests to `https://rss.qiaomu.ai`, or the compatible HTTPS origin you explicitly configure. The service receives normal request metadata such as IP address, request time and requested article/channel IDs. See [Privacy](docs/PRIVACY.md).
-- **Personal feed requests go directly to the URLs you add or import.** These HTTP(S) hosts receive normal request metadata; feed addresses, groups and article bodies are not uploaded to Qiaomu. OPML import itself does not fetch content. Feed URLs may contain private access tokens and are stored unencrypted in plugin data and OPML exports; keep those exports private.
+- **Personal feed requests go directly to the URLs you add or import.** Website discovery also fetches up to eight declared RSS/Atom links in that website’s HTML head; it does not upload your URL to a third-party search directory. These HTTP(S) hosts receive normal request metadata; feed addresses, groups and article bodies are not uploaded to Qiaomu. OPML import itself does not fetch content. Feed URLs may contain private access tokens and are stored unencrypted in plugin data and OPML exports; keep those exports private.
 - **No account, API key or payment is required for the public reading features in this release.** This plugin only reads existing published AI assets. It does not request new AI generation or send data to model providers. Future service availability is controlled by the service operator.
 - **Article images are enabled by default.** The plugin downloads article images and list thumbnails from their hosts and displays local Blob URLs. Images are cached within this plugin’s vault configuration directory (up to 64 MB / 100 files, 8 MB per image). Image hosts receive normal image requests; cached images can be read offline. You can disable images in settings. Clicking article links opens the linked website in your browser.
 - **Media playback is user-initiated.** Podcast audio is fetched from the media URL supplied by the selected entry when played. Opening a YouTube article loads a sandboxed YouTube player preview without autoplay; YouTube may receive normal request metadata and apply its own privacy policy before playback. See [Privacy](docs/PRIVACY.md).
