@@ -1,11 +1,11 @@
 ## 中文
 
-- 修复公众号订阅正文底部“跳转微信打开”无法加载的问题：跳过第三方唤起微信的中转，直接打开公众号 HTTPS 原文，文案统一为“查看公众号原文”。
-- 已缓存文章与导出文章同时生效，无需清空缓存；不影响其他正文链接和图片。
-- 微信仍可能要求用户手动完成访问验证，本更新不自动操作微信。
+- 「乔木频道 → 播客」新增 6 档中文精读播客：Lex Fridman、All-In、No Priors、Cognitive Revolution、Training Data、Unsupervised Learning。每期是完整的中文精读长文，附官方音频，排在小宇宙精选之前。
+- 这些节目的最新一期也会出现在「全部」列表里，和其他频道按时间混排。
+- 刷新频道列表即可看到，无需清空缓存；自定义过显示频道的用户，需要在频道选择里手动勾选。
 
 ## English
 
-- Open WeChat feed article links directly over HTTPS instead of routing through a third-party app-launch redirect. Label the link “View the original WeChat article”.
-- Applies to cached and exported articles without clearing stored content. Other links and images remain intact.
-- WeChat may still require manual access verification.
+- Add six Chinese close-reading podcasts to Qiaomu Channels → Podcasts: Lex Fridman, All-In, No Priors, Cognitive Revolution, Training Data and Unsupervised Learning. Each episode is a full Chinese long-form article with the official audio, listed before the Xiaoyuzhou picks.
+- Their latest episodes also appear in the All feed, sorted by date with other channels.
+- Refresh the channel list to see them; no cache reset needed. If you customized visible channels, tick them in the channel picker.

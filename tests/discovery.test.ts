@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { discoveryFeeds, featuredXiaoyuzhouPodcasts, filterDiscovery, independentBlogs, podcastRecommendations, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuFeaturedEntries, readerChannelSources, wechatFeeds, xiaoyuzhouPodcasts } from '../src/discovery';
+import { discoveryFeeds, featuredPodcasts, featuredXiaoyuzhouPodcasts, filterDiscovery, independentBlogs, podcastRecommendations, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuFeaturedEntries, readerChannelSources, wechatFeeds, xiaoyuzhouPodcasts } from '../src/discovery';
 import { initialState, safeUrl, withServiceOrigin } from '../src/model';
 import { compareChannelNames } from '../src/channel-order';
 
@@ -62,6 +62,22 @@ describe('local discovery catalog', () => {
     expect(mergeFeaturedPodcasts(page, episodes, false).map(item => item.id)).toEqual(['news-24', 'late-23', 'news-22', 'news-21']);
     expect(mergeFeaturedPodcasts(page, episodes, true).map(item => item.id)).toEqual(['news-24', 'late-23', 'news-22', 'news-21', 'zhang-3']);
     expect(qiaomuFeaturedEntries([entry('zhang-3', 'zhangxiaojun', 3), entry('news-24', 'news', 24)]).map(item => item.id)).toEqual(['news-24', 'zhang-3']);
+  });
+  it('shows Qiaomu Chinese close-reading podcasts in the Podcast group, ahead of Xiaoyuzhou picks', () => {
+    const source = (id: string, siteUrl: string, enabled = true) => ({ id, name: id, category: 'podcast', siteUrl, enabled });
+    const sources = [
+      source('zhangxiaojun', 'https://www.xiaoyuzhoufm.com/podcast/zhang'),
+      source('lex-zh', 'https://lex.qiaomu.ai'), source('allin-zh', 'https://allin.qiaomu.ai'),
+      source('nopriors-zh', 'https://nopriors.qiaomu.ai'), source('cogrev-zh', 'https://cogrev.qiaomu.ai'),
+      source('trainingdata-zh', 'https://trainingdata.qiaomu.ai'), source('unsupervised-zh', 'https://unsupervised.qiaomu.ai', false),
+      source('lexfridman', 'https://lexfridman.com'),
+    ];
+    const channels = readerChannelSources(sources).map(item => item.id);
+    expect(channels).toEqual(['zhangxiaojun', 'lex-zh', 'allin-zh', 'nopriors-zh', 'cogrev-zh', 'trainingdata-zh']);
+    expect(channels).not.toContain('unsupervised-zh');
+    expect(channels).not.toContain('lexfridman');
+    expect(sources.filter(item => channels.includes(item.id)).map(qiaomuChannelDivider)).toEqual(Array(6).fill('播客'));
+    expect(featuredPodcasts(sources).map(item => item.id)).toEqual(['lex-zh', 'allin-zh', 'nopriors-zh', 'cogrev-zh', 'trainingdata-zh', 'zhangxiaojun']);
   });
   it('shows selected Xiaoyuzhou shows as Qiaomu channels before subscription', () => {
     const source = (id: string, category: string, siteUrl?: string, enabled = true) => ({ id, name: id, category, siteUrl, enabled });
