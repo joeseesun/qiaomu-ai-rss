@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.2
+
+- Show Qiaomu's six Chinese close-reading podcasts (lex-zh, allin-zh, nopriors-zh, cogrev-zh, trainingdata-zh, unsupervised-zh) under Qiaomu Channels → Podcasts, before Xiaoyuzhou picks, and mix their latest episodes into the All feed.
+
 ## 0.29.2
 
 - Expand narration controls in place with circular progress; narrow readers show only Play and More.

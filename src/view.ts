@@ -27,7 +27,7 @@ import { cleanExcerpt } from './excerpt';
 import { AudioDock, pauseVideos, renderMedia, stopMedia, videoEmbedUrl } from './media';
 import { uniqueRemoteEntries, wechatArticleKey, xiaoyuzhouEpisodeKey } from './wechat-articles';
 import { platformOf, PLATFORMS, type LinkPlatform } from './platform';
-import { featuredXiaoyuzhouPodcasts, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuDividerIcons, qiaomuDividers, qiaomuFeaturedEntries } from './discovery';
+import { featuredPodcasts, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuDividerIcons, qiaomuDividers, qiaomuFeaturedEntries } from './discovery';
 import { articleNoteKey, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
 import { dividerLabel, relativeTime, t } from './i18n';
 import { agentAvailable, articleSnapshot, askAgent } from './agent-bridge';
@@ -639,7 +639,7 @@ export class ReaderView extends ItemView {
       this.cursor = page.nextCursor || ''; this.hasMore = !!page.hasMore && !!this.cursor;
       if (!this.source && !more) {
         this.renderList();
-        const featured = featuredXiaoyuzhouPodcasts(state.sources).filter(source => picked === null || picked.has(source.id));
+        const featured = featuredPodcasts(state.sources).filter(source => picked === null || picked.has(source.id));
         void Promise.allSettled(featured.map(source => api.entries(source.id, '', 1))).then(async latest => {
           if (this.closed || version !== this.listVersion || state !== this.plugin.state) return;
           this.featuredEpisodes = latest.flatMap(result => result.status === 'fulfilled' ? result.value.entries : []);

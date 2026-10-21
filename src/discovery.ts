@@ -81,8 +81,17 @@ export function featuredXiaoyuzhouPodcasts(sources: Source[]): Source[] {
   const available = new Map(xiaoyuzhouPodcasts(sources).map(source => [source.id, source]));
   return featuredXiaoyuzhouIds.map(id => available.get(id)).filter((source): source is Source => !!source);
 }
+// Qiaomu's own podcast sites publish full Chinese close-reading articles (with the
+// official audio) as RSS; Reader registers them as podcast sources with these ids.
+const qiaomuZhPodcastIds = ['lex-zh', 'allin-zh', 'nopriors-zh', 'cogrev-zh', 'trainingdata-zh', 'unsupervised-zh'] as const;
+/** Podcasts shown as Qiaomu channels and mixed into the default feed: Qiaomu close readings first, then Xiaoyuzhou picks. */
+export function featuredPodcasts(sources: Source[]): Source[] {
+  const available = new Map(sources.filter(source => source.category === 'podcast' && source.enabled !== false).map(source => [source.id, source]));
+  const zh = qiaomuZhPodcastIds.map(id => available.get(id)).filter((source): source is Source => !!source);
+  return [...zh, ...featuredXiaoyuzhouPodcasts(sources)];
+}
 export function readerChannelSources(sources: Source[]): Source[] {
-  const featuredIds = new Set(featuredXiaoyuzhouPodcasts(sources).map(source => source.id));
+  const featuredIds = new Set(featuredPodcasts(sources).map(source => source.id));
   return sources.filter(source => source.enabled !== false && !hiddenQiaomuChannelIds.has(source.id) && source.category !== 'community' &&
     (!source.id.startsWith('wechat-') || featuredWechatChannelIds.has(source.id)) &&
     (source.category !== 'podcast' || featuredIds.has(source.id)));
