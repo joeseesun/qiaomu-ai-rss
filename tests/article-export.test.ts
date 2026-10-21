@@ -15,6 +15,14 @@ const bundle: Bundle = {
 };
 
 describe('article Markdown export', () => {
+  it('exports the HTTPS article instead of the feed app-launch proxy', () => {
+    const original = 'https://mp.weixin.qq.com/s/Abc_123-xyz';
+    const proxy = `https://wechat2rss.bestblogs.dev/link-proxy?u=${encodeURIComponent(original)}&r=1`;
+    const cached = { ...bundle, entry: { ...bundle.entry, content: `<a href="${proxy}">跳转到微信打开</a>` } };
+    const markdown = articleExportMarkdown(cached, 'original', articleExportBody(cached, 'original', document, true))!;
+    expect(markdown).toContain(`[查看公众号原文](${original})`);
+    expect(markdown).not.toContain('link-proxy');
+  });
   it('preserves displayed structure, safe links, image references and Chinese-adjacent emphasis', () => {
     const body = articleExportBody(bundle, 'original', document, true);
     const markdown = articleExportMarkdown(bundle, 'original', body)!;

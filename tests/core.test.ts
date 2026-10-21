@@ -10,6 +10,33 @@ const bundle: Bundle = {
   translation: { content: [{ target: '<script>literal text</script>' }, { targetHtml: '<p>中文</p>' }] }, fetchedAt: 1,
 };
 describe('untrusted remote content', () => {
+  it('opens cached WeChat feed launch links as HTTPS articles without the app redirect', () => {
+    const original = 'https://mp.weixin.qq.com/s?__biz=abc%3D%3D&mid=123&idx=1&sn=def';
+    const proxy = `https://wechat2rss.bestblogs.dev/link-proxy/?k=42047b24&r=1&u=${encodeURIComponent(original)}`;
+    const value = structuredClone(bundle);
+    value.entry.content = `<p>Cached article</p><a href="${proxy.replace(/&/g, '&amp;')}">跳转微信打开</a>`;
+    const fragment = articleFragment(value, 'original', document, false)!;
+    const link = fragment.querySelector('a')!;
+    expect(link.getAttribute('href')).toBe(original);
+    expect(link.textContent).toBe('查看公众号原文');
+    expect(link.target).toBe('_blank');
+    expect(value.entry.content).toContain('link-proxy/');
+  });
+  it('leaves unrelated, malformed and unsafe proxy destinations unchanged', () => {
+    const links = [
+      'https://wechat2rss.bestblogs.dev.evil.test/link-proxy/?u=https%3A%2F%2Fmp.weixin.qq.com%2Fs%2Fabc',
+      'https://wechat2rss.bestblogs.dev/img-proxy/?u=https%3A%2F%2Fmp.weixin.qq.com%2Fs%2Fabc',
+      'https://wechat2rss.bestblogs.dev/link-proxy/?u=javascript%3Aalert(1)',
+      'https://wechat2rss.bestblogs.dev/link-proxy/?u=https%3A%2F%2Fmp.weixin.qq.com.evil.test%2Fs%2Fabc',
+      'https://wechat2rss.bestblogs.dev/link-proxy/?u=https%3A%2F%2Fu%3Ap%40mp.weixin.qq.com%2Fs%2Fabc',
+      'https://wechat2rss.bestblogs.dev/link-proxy/?u=%E0%A4%A',
+      'https://wechat2rss.bestblogs.dev/link-proxy/',
+    ];
+    const value = structuredClone(bundle);
+    value.entry.content = links.map(href => `<a href="${href}">source</a>`).join('');
+    const fragment = articleFragment(value, 'original', document, false)!;
+    expect([...fragment.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(links);
+  });
   it('removes executable elements, handlers, CSS, embeds and unsafe URL schemes', () => {
     const value = structuredClone(bundle);
     value.entry.content = '<script>window.pwned=1</script><iframe src="https://evil.com"></iframe><style>body{display:none}</style><p id="app" style="color:red" onclick="evil()">safe</p><a href="javascript:evil()">bad</a><a href="obsidian://open?vault=private">vault</a><img src="https://example.com/tracker" onerror="evil()"><svg onload="evil()"></svg>';

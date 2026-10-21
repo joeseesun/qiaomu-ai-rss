@@ -1,7 +1,8 @@
 import createDOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { safeUrl, type Bundle, type Mode } from './model';
-import { fail } from './i18n';
+import { fail, t } from './i18n';
+import { wechatProxyArticle } from './wechat-articles';
 const tags = ['p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 's', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'div', 'span', 'sup', 'sub'];
 export function articleFragment(bundle: Bundle, mode: Mode, doc: Document, images: boolean): DocumentFragment | null {
   let html: string;
@@ -28,7 +29,14 @@ export function articleFragment(bundle: Bundle, mode: Mode, doc: Document, image
   for (const element of fragment.querySelectorAll('a, img')) {
     const attr = element.tagName === 'A' ? 'href' : 'src';
     const raw = element.getAttribute(attr);
-    const url = raw ? safeUrl(raw, bundle.entry.link || undefined) : null;
+    let url = raw ? safeUrl(raw, bundle.entry.link || undefined) : null;
+    if (url && element.tagName === 'A') {
+      const original = wechatProxyArticle(url);
+      if (original) {
+        url = original;
+        if (/^跳转(?:到)?微信打开$/.test(element.textContent?.trim() || '')) element.textContent = t('reader.wechatOriginal');
+      }
+    }
     if (url) element.setAttribute(attr, url);
     else element.removeAttribute(attr);
     if (element.tagName === 'A') {

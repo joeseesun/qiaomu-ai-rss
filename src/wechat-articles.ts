@@ -1,5 +1,17 @@
 import type { Entry } from './model';
 
+/** The feed's link proxy redirects to weixin://, which cannot load as a web page. */
+export function wechatProxyArticle(link: string): string | null {
+  try {
+    const proxy = new URL(link);
+    if (proxy.origin !== 'https://wechat2rss.bestblogs.dev' || !/^\/link-proxy\/?$/.test(proxy.pathname)) return null;
+    const target = new URL(proxy.searchParams.get('u') || '');
+    if (target.origin !== 'https://mp.weixin.qq.com' || target.username || target.password ||
+      !/^\/s(?:\/[A-Za-z0-9_-]+)?\/?$/.test(target.pathname)) return null;
+    return target.href;
+  } catch { return null; }
+}
+
 /** WeChat's biz/mid/idx tuple identifies an article across feed URLs with different tracking parameters. */
 export function wechatArticleKey(link: string | null | undefined): string | null {
   if (!link) return null;
