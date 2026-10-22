@@ -1,6 +1,6 @@
 # RSS article outline
 
-Updated 2026-10-22 (Asia/Shanghai). Based on main at a5ce40b, retaining the 0.30.2 features. Local candidate; no new public version is claimed.
+Updated 2026-10-22 (Asia/Shanghai). Based on main at a5ce40b, retaining the 0.30.2 features. 0.31.0 release candidate; official preview, public assets and formal review must be verified before reporting publication.
 
 The reader now has an RSS outline in the native right dock (native drawer on mobile). It extracts actual rendered headings, preserves duplicate titles and heading order, jumps below the sticky reading controls, and highlights the current section. Switching articles or original/rewrite/translation versions replaces the outline. Native Markdown completion refreshes it, with guards against late renders. Empty and heading-free articles have explicit states. Closing the reader or outline releases listeners, observers and pending animation frames. Ordinary article scrolling uses cached heading positions and a binary search; positions are refreshed after layout changes.
 
