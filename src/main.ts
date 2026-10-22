@@ -17,6 +17,7 @@ import { RssApi } from './api';
 import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, captureMoment, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
+import { OutlineView, OUTLINE_VIEW_TYPE } from './outline-view';
 import { contextProvider } from './agent-bridge';
 import { createHomeProvider } from './home';
 import { notifyHomeChanged } from './qiaomu-home';
@@ -88,6 +89,13 @@ export default class QiaomuRssPlugin extends Plugin {
     this.registerInterval(window.setInterval(() => { void this.syncPersonalBackground(); }, 60000 + Math.floor(Math.random() * 15000)));
     this.addCommand({ id: 'manage-subscriptions', name: t('cmd.manageSubscriptions'), callback: () => this.manageSubscriptions() });
     this.registerView(VIEW_TYPE, leaf => new ReaderView(leaf, this));
+    this.registerView(OUTLINE_VIEW_TYPE, leaf => new OutlineView(leaf, this));
+    this.registerEvent(this.app.workspace.on('layout-change', () => this.refreshOutlineButtons()));
+    this.addCommand({ id: 'toggle-article-outline', name: t('outline.title'), callback: () => {
+      const recent = this.app.workspace.getMostRecentLeaf()?.view;
+      const reader = recent instanceof ReaderView ? recent : this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
+      if (reader instanceof ReaderView) void this.toggleArticleOutline(reader);
+    } });
     for (const [id, name, run] of [
       ['read-aloud', t('speech.read'), (view: ReaderView) => this.speech.start(view)],
       ['read-from-start', t('speech.fromStart'), (view: ReaderView) => this.speech.start(view, undefined, true)],
@@ -320,6 +328,37 @@ export default class QiaomuRssPlugin extends Plugin {
       await leaf.loadIfDeferred();
       await this.app.workspace.revealLeaf(leaf);
     } catch { new Notice(t('notice.cannotOpenReader')); }
+  }
+  outlineOpen(reader: ReaderView) {
+    return this.app.workspace.getLeavesOfType(OUTLINE_VIEW_TYPE).some(leaf => leaf.view.containerEl.ownerDocument === reader.contentEl.ownerDocument && leaf.view.containerEl.isShown());
+  }
+  refreshOutlineButtons() {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) if (leaf.view instanceof ReaderView) leaf.view.refreshOutlineButton();
+  }
+  refreshArticleOutline(reader: ReaderView) {
+    for (const leaf of this.app.workspace.getLeavesOfType(OUTLINE_VIEW_TYPE)) {
+      if (leaf.view instanceof OutlineView && leaf.view.reader === reader) leaf.view.refresh();
+    }
+  }
+  releaseArticleOutline(reader: ReaderView) {
+    for (const leaf of this.app.workspace.getLeavesOfType(OUTLINE_VIEW_TYPE)) {
+      if (leaf.view instanceof OutlineView && leaf.view.reader === reader) leaf.view.setReader(null);
+    }
+  }
+  async toggleArticleOutline(reader: ReaderView) {
+    const opened = this.app.workspace.getLeavesOfType(OUTLINE_VIEW_TYPE).find(leaf => leaf.view.containerEl.ownerDocument === reader.contentEl.ownerDocument);
+    if (opened) {
+      if (opened.view.containerEl.isShown()) opened.detach();
+      else { if (opened.view instanceof OutlineView) opened.view.setReader(reader); await this.app.workspace.revealLeaf(opened); }
+      this.refreshOutlineButtons(); return;
+    }
+    const leaf = this.app.workspace.getRightLeaf(false);
+    if (!leaf) return;
+    await leaf.setViewState({ type: OUTLINE_VIEW_TYPE, active: true });
+    await leaf.loadIfDeferred();
+    if (leaf.view instanceof OutlineView) leaf.view.setReader(reader);
+    await this.app.workspace.revealLeaf(leaf);
+    this.refreshOutlineButtons();
   }
   pickCuratedSources() { new CuratedSourcePicker(this).open(); }
   async saveCuratedSources(ids: string[] | null, sources = this.state.sources) {

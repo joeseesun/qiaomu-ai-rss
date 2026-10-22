@@ -2,6 +2,7 @@ import { FeedIndex } from './feed-index';
 import { ListWindow } from './list-window';
 import { LazyThumbnails } from './lazy-thumbnails';
 import { ToolbarTips } from './toolbar-tips';
+import type { OutlineContext } from './article-outline';
 import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCuratedPages, filterCuratedEntries, keepCuratedEntry, pickedSources } from './curated-sources';
 import type { RssApi } from './api';
 import type { CollectionItem } from './collection';
@@ -164,7 +165,7 @@ export class ReaderView extends ItemView {
     this.toolbarTips = new ToolbarTips(this.contentEl);
     this.registerDomEvent(this.contentEl.ownerDocument, 'pointerdown', event => {
       const target = event.target as HTMLElement;
-      if (!this.appearanceOpen || target.closest?.('.qrs-reading-settings')) return;
+      if (!this.appearanceOpen || target.closest?.('.qrs-reading-settings,[data-qrs-appearance]')) return;
       this.appearanceOpen = false; this.reader.querySelector('.qrs-reading-settings')?.remove();
       this.reader.querySelector('[aria-controls="' + this.appearanceId + '"]')?.setAttribute('aria-expanded', 'false');
       this.run(() => this.plugin.persist());
@@ -236,6 +237,7 @@ export class ReaderView extends ItemView {
     if (this.windowFrame) this.contentEl.ownerDocument.defaultView?.cancelAnimationFrame(this.windowFrame);
     this.selectionCapture?.dispose();
     this.closed = true; this.listVersion++; this.articleVersion++; this.clearImages(); this.clearThumbnails(); this.contentEl.onkeydown = null;
+    this.plugin.releaseArticleOutline(this);
     return this.plugin.persist().catch(() => undefined);
   }
   reset() {
@@ -1085,7 +1087,7 @@ export class ReaderView extends ItemView {
     this.toolbarTips?.hide();
     this.selectionCapture?.clear();
     const active = this.contentEl.ownerDocument.activeElement;
-    const focusedAction = this.reader.contains(active) ? active?.getAttribute('data-qrs-tip') : null;
+    const focusedAction = this.reader.contains(active) ? active?.getAttribute('data-qrs-action') || active?.getAttribute('data-qrs-tip') : null;
     const restoreFocus = active !== this.reader && this.reader.contains(active);
     const scroll = this.reader.scrollTop;
     const previous = keepContent ? this.reader.querySelector('.qrs-article') : null;
@@ -1118,6 +1120,7 @@ export class ReaderView extends ItemView {
         const keys = empty.createDiv('qrs-welcome-keys');
         for (const [key, label] of [['J / K', t('welcome.key.nextPrev')], ['[', t('welcome.key.collapse')], ['F', t('welcome.key.favorite')], ['M', t('welcome.key.later')], ['/', t('welcome.key.search')]]) { const item = keys.createSpan(); item.createEl('kbd', { text: key }); item.createSpan({ text: label }); }
       }
+      this.plugin.refreshArticleOutline(this);
       return;
     }
     const head = this.reader.createDiv('qrs-reader-head');
@@ -1134,6 +1137,12 @@ export class ReaderView extends ItemView {
     this.addIconButton(nav, 'chevron-up', t('reader.prevArticle'), () => this.navigate(-1));
     this.addIconButton(nav, 'chevron-down', t('reader.nextArticle'), () => this.navigate(1));
     const actions = toolbar.createDiv('qrs-actions');
+    const outlineButton = this.addIconButton(actions, 'list-tree', t('outline.title'), () => this.run(() => this.plugin.toggleArticleOutline(this)));
+    outlineButton.dataset.qrsOutline = ''; outlineButton.dataset.qrsAction = 'outline';
+    this.refreshOutlineButton();
+    const appearance = this.addIconButton(actions, 'type', t('reader.readingSettings'), () => { this.appearanceOpen = !this.appearanceOpen; this.renderReader(true); });
+    appearance.dataset.qrsAppearance = ''; appearance.dataset.qrsAction = 'reading-settings';
+    appearance.setAttribute('aria-controls', this.appearanceId); appearance.setAttribute('aria-expanded', String(this.appearanceOpen));
     this.plugin.speech.attach(this, actions);
     const favoriteId = this.relatedContentIds(bundle.entry).find(id => this.plugin.state.favorites[id]);
     const favorite = !!favoriteId;
@@ -1164,8 +1173,6 @@ export class ReaderView extends ItemView {
     });
     this.openArticleActions = anchor => {
       const menu = new Menu().setUseNativeMenu(false); const link = safeUrl(bundle.entry.link || '');
-      menu.addItem(item => item.setTitle(t('reader.readingSettingsMenu')).setIcon('type').onClick(() => { this.appearanceOpen = true; this.renderReader(true); }));
-      menu.addSeparator();
       if (bundle.entry.origin === 'vault' && bundle.entry.markdownPath) menu.addItem(item => item.setTitle(t('reader.openSourceFile')).setIcon('file-text').onClick(() => {
         void this.app.workspace.openLinkText(bundle.entry.markdownPath!, '', true);
       }));
@@ -1201,7 +1208,7 @@ export class ReaderView extends ItemView {
     };
     more.dataset.qrsArticleMore = 'true';
     more.onpointerdown = () => { moreSelection = articleSelection(this.speechContext()?.prose); };
-    if (focusedAction) Array.from(actions.querySelectorAll<HTMLElement>('[data-qrs-tip]')).find(button => button.dataset.qrsTip === focusedAction)?.focus({ preventScroll: true });
+    if (focusedAction) Array.from(actions.querySelectorAll<HTMLElement>('[data-qrs-action],[data-qrs-tip]')).find(button => (button.dataset.qrsAction || button.dataset.qrsTip) === focusedAction)?.focus({ preventScroll: true });
     if (this.appearanceOpen) this.renderAppearanceSettings(toolbar);
     if (previous) {
       previous.querySelector('.qrs-feedback')?.remove();
@@ -1209,7 +1216,7 @@ export class ReaderView extends ItemView {
         const feedback = this.readerFeedback(previous, bundle);
         previous.querySelector('h1')?.after(feedback);
       }
-      this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); return;
+      this.reader.append(previous); this.reader.scrollTop = scroll; this.restoreOffsets(); this.plugin.refreshArticleOutline(this); return;
     }
     const article = this.reader.createEl('article', { cls: 'qrs-article' });
     const title = article.createEl('h1');
@@ -1247,8 +1254,15 @@ export class ReaderView extends ItemView {
         const prose = article.createDiv('qrs-prose');
         this.markdownComponent = new Component(); this.markdownComponent.load();
         void MarkdownRenderer.render(this.app, bundle.entry.markdown, prose, bundle.entry.markdownPath || '', this.markdownComponent)
-          .then(() => prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || ''))
-          .catch(() => { prose.setText(t('reader.markdownFailed')); });
+          .then(async () => {
+            if (this.closed || !this.reader.contains(prose)) return;
+            await prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || '');
+            if (!this.closed && this.reader.contains(prose)) this.plugin.refreshArticleOutline(this);
+          })
+          .catch(() => {
+            if (this.closed || !this.reader.contains(prose)) return;
+            prose.setText(t('reader.markdownFailed')); this.plugin.refreshArticleOutline(this);
+          });
       } else {
       const fragment = articleFragment(bundle, this.mode, article.ownerDocument, this.plugin.state.settings.remoteImages);
       if (fragment) { this.prepareImages(fragment); article.createDiv('qrs-prose').append(fragment); }
@@ -1256,7 +1270,17 @@ export class ReaderView extends ItemView {
       }
     } catch { article.createDiv({ cls: 'qrs-empty', text: t('reader.renderFailed') }); }
     this.reader.scrollTop = scroll; this.restoreOffsets();
+    this.plugin.refreshArticleOutline(this);
     notifyContextChanged(this.app, this.plugin.manifest.id);
+  }
+  outlineContext(): OutlineContext | null {
+    if (!this.bundle || this.closed) return null;
+    return { title: titleOf(this.bundle.entry), loading: this.articleLoading,
+      prose: this.reader.querySelector<HTMLElement>('.qrs-prose'), scroller: this.reader,
+      beforeJump: () => this.stopRestoring() };
+  }
+  refreshOutlineButton() {
+    this.reader?.querySelector('[data-qrs-outline]')?.setAttribute('aria-pressed', String(this.plugin.outlineOpen(this)));
   }
   /** The article as Qiaomu Agent should see it, or null when nothing is open. */
   speechContext() {

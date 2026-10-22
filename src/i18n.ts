@@ -17,6 +17,10 @@ export function locale(): Locale {
 // Columns: key, 简体中文, English, 繁體中文, 日本語, 한국어, Español, Français, Deutsch
 // Exported so tests can assert that every message has all eight translations.
 export const M = [
+  ["outline.title", "RSS 目录", "RSS outline", "RSS 目錄", "RSS 目次", "RSS 목차", "Índice RSS", "Sommaire RSS", "RSS-Inhaltsverzeichnis"],
+  ["outline.close", "关闭目录", "Close outline", "關閉目錄", "目次を閉じる", "목차 닫기", "Cerrar índice", "Fermer le sommaire", "Inhaltsverzeichnis schließen"],
+  ["outline.noArticle", "打开一篇 RSS 文章查看目录。", "Open an RSS article to view its outline.", "開啟一篇 RSS 文章查看目錄。", "RSS 記事を開くと目次が表示されます。", "RSS 글을 열면 목차가 표시됩니다.", "Abre un artículo RSS para ver su índice.", "Ouvrez un article RSS pour voir son sommaire.", "Öffne einen RSS-Artikel, um sein Inhaltsverzeichnis zu sehen."],
+  ["outline.noHeadings", "这篇文章没有小标题。", "This article has no headings.", "這篇文章沒有小標題。", "この記事には見出しがありません。", "이 글에는 제목이 없습니다.", "Este artículo no tiene encabezados.", "Cet article ne contient aucun titre de section.", "Dieser Artikel hat keine Überschriften."],
   ["source.support", "支持网站、RSS/XML 和 OPML 链接", "Supports website, RSS/XML and OPML links", "支援網站、RSS/XML 和 OPML 連結", "ウェブサイト・RSS/XML・OPML のリンクに対応", "웹사이트, RSS/XML 및 OPML 링크 지원", "Admite enlaces web, RSS/XML y OPML", "Liens de sites, RSS/XML et OPML acceptés", "Unterstützt Website-, RSS/XML- und OPML-Links"],
   ["source.file", "导入 OPML 文件", "Import OPML file", "匯入 OPML 檔案", "OPML ファイルを読み込む", "OPML 파일 가져오기", "Importar archivo OPML", "Importer un fichier OPML", "OPML-Datei importieren"],
   ["source.libraryPlaceholder", "搜索已有订阅，或粘贴链接", "Search subscriptions or paste a link", "搜尋已有訂閱，或貼上連結", "購読を検索、またはリンクを貼り付け", "구독 검색 또는 링크 붙여넣기", "Buscar suscripciones o pegar un enlace", "Rechercher un abonnement ou coller un lien", "Abos suchen oder Link einfügen"],
