@@ -1,11 +1,13 @@
 ## 中文
 
-- 「乔木频道 → 播客」新增 6 档中文精读播客：Lex Fridman、All-In、No Priors、Cognitive Revolution、Training Data、Unsupervised Learning。每期是完整的中文精读长文，附官方音频，排在小宇宙精选之前。
-- 这些节目的最新一期也会出现在「全部」列表里，和其他频道按时间混排。
-- 刷新频道列表即可看到，无需清空缓存；自定义过显示频道的用户，需要在频道选择里手动勾选。
+- 新增文章目录：按小标题层级显示，点击跳转，滚动时标出当前章节；切换文章或阅读版本后同步更新。
+- 阅读工具栏按「目录 → 阅读设置 → 播放」排列，字体与配色设置可以直接打开，图标更柔和，窄屏下保持可用。
+- 中文翻译保留已有标题层级，本地 Markdown 渲染完成后同步目录；打开阅读设置保留正文与阅读位置。
+- 升级保留订阅、收藏、阅读记录和缓存。移动端已适配原生侧栏抽屉，尚未完成实体手机验收。
 
 ## English
 
-- Add six Chinese close-reading podcasts to Qiaomu Channels → Podcasts: Lex Fridman, All-In, No Priors, Cognitive Revolution, Training Data and Unsupervised Learning. Each episode is a full Chinese long-form article with the official audio, listed before the Xiaoyuzhou picks.
-- Their latest episodes also appear in the All feed, sorted by date with other channels.
-- Refresh the channel list to see them; no cache reset needed. If you customized visible channels, tick them in the channel picker.
+- Add an article outline with heading hierarchy, click-to-jump navigation and active-section tracking. It follows article and reading-version changes.
+- Place Outline → Reading settings → Play in the toolbar, with direct font/color controls, quieter icons and narrow-pane layouts.
+- Preserve heading levels in translations, update the outline after local Markdown rendering, and keep the article and reading position when opening settings.
+- Preserve subscriptions, favorites, reading history and caches on upgrade. The native mobile drawer is supported; physical phone testing remains unverified.

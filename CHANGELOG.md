@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.31.0
+
+- Add a rendered-article outline with heading hierarchy, click navigation and scroll tracking across original, rewritten, translated and local Markdown content.
+- Expose reading settings beside the outline and play controls, soften their default colors, and retain accessible controls in narrow panes.
+
 ## 0.30.2
 
 - Show Qiaomu's six Chinese close-reading podcasts (lex-zh, allin-zh, nopriors-zh, cogrev-zh, trainingdata-zh, unsupervised-zh) under Qiaomu Channels → Podcasts, before Xiaoyuzhou picks, and mix their latest episodes into the All feed.
