@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@qiaomu/speech": "github:joeseesun/qiaomu-audio#e5999123f147d1590dd963e38cefe212d6c4f731",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "lz-string": "1.5.0",
     "marked": "^18.0.11",
     "turndown": "^7.2.4",
