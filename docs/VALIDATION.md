@@ -157,3 +157,11 @@ List layout was measured in Obsidian at widths 240, 300 and 380 px: 25 article r
 - `node scripts/navigation-smoke.mjs`: 9 keyboard/loading regressions pass.
 - `node scripts/mobile-sources-smoke.cjs`: 17 existing typography, selection and local-source checks pass with updated picker assertions.
 - 390px CDP simulation: bottom sheet, no autofocus keyboard, 44px touch rows, group expansion, viewport-resize survival, Escape and absence of tooltips checked. Desktop and mobile screenshots inspected. iOS hardware is not tested.
+
+## 0.32.0 personal article deletion (2026-10-23)
+
+- Scope: vault-local deletion tombstones; no server delete calls. Source entries and saved artifacts remain intact. The manager searches metadata and restores one/all records; old records have no cache-expiration limit. Vault Markdown files are excluded.
+- Automated: `npm run check`, 306 Vitest assertions in 45 files, server checks and i18n bundle checks. ESLint has zero errors and ten pre-existing warnings. No dependencies were added.
+- Desktop host: isolated `/tmp/qrs-local-delete-qa`, Obsidian 1.13.7, only this plugin enabled, 200 synthetic personal-feed entries. `scripts/local-deletion-host-qa.js` verifies 22 assertions: all/unread/favorites/later filters, Home search, undo, current-to-next navigation and scroll, durable metadata, preserved note files/favorites/queue, no server mutation, save/restore failures, and manager restore. Reload retains hidden state. Manager checked with 100 deleted records, desktop light/dark and 390×620 / 390×390 emulation; the 36px search and footer remain within bounds. This is not physical-phone or Windows verification.
+- Windows report: user reports idle flickering and broken layout after upgrading Obsidian, installed from the community store. Removing the 0.31.0 stylesheet in a controlled host reproduces broken layout, but did not reproduce idle flickering. Root cause remains unconfirmed; an empty-vault/default-theme/plugin-only comparison has been requested. This release makes no Windows-flicker fix claim.
+- Distribution status is tracked in the current delivery; local tests do not establish official review or public installation.

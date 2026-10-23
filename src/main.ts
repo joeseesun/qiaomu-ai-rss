@@ -1,3 +1,5 @@
+import { localDeletion, localDeletionMatcher } from './local-deletions';
+import { DeletedArticlesModal } from './deleted-articles';
 import { articleSelection } from './speech-source';
 import { BodyStore } from './body-store';
 import { SaveQueue } from './save-queue';
@@ -14,7 +16,7 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, type App, type SettingDefinitionItem, type SettingGroupItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type Mode, type State } from './model';
+import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type LocalDeletion, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, captureMoment, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { OutlineView, OUTLINE_VIEW_TYPE } from './outline-view';
@@ -165,7 +167,7 @@ export default class QiaomuRssPlugin extends Plugin {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice(t('notice.localCopyMissingShort')));
     });
   }
-  onunload() { this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
+  onunload() { this.deletedArticlesModal?.close(); this.deletionNotice?.hide(); this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
   api(): RssApi {
     const base = this.state.settings.baseUrl;
     if (this.apiClient && this.apiBase === base) return this.apiClient;
@@ -219,6 +221,62 @@ export default class QiaomuRssPlugin extends Plugin {
     const baseUrl = this.state.settings.baseUrl, page = await this.collectionClient(baseUrl).list(cursor);
     if (syncCollectionTitles(this.state.collectionJobs, page.jobs, baseUrl)) await this.persist();
     return page;
+  }
+  private localDeletionEdits: Promise<void> = Promise.resolve();
+  private deletionIndex?: { records: LocalDeletion[]; baseUrl: string; hidden: (entry: Entry) => boolean };
+  private deletedArticlesModal?: DeletedArticlesModal;
+  private deletionNotice?: Notice;
+  localArticleDeleted(entry: Entry) {
+    const { localDeletedEntries: records, settings: { baseUrl } } = this.state;
+    if (this.deletionIndex?.records !== records || this.deletionIndex.baseUrl !== baseUrl) this.deletionIndex = { records, baseUrl, hidden: localDeletionMatcher(this.state) };
+    return this.deletionIndex.hidden(entry);
+  }
+  articleHidden(entry: Entry) { return this.articleDeleted(entry) || this.localArticleDeleted(entry); }
+  private editLocalDeletions(change: () => LocalDeletion[], restoredRecords: LocalDeletion[] = []) {
+    const run = this.localDeletionEdits.catch(() => undefined).then(async () => {
+      const state = this.state, previous = state.localDeletedEntries;
+      const restored = restoredRecords.filter(record => record.scope.startsWith('local:') || record.scope === state.settings.baseUrl).map(record => record.entry);
+      const entriesBefore = state.entries, feedsBefore = state.subscriptions.map(feed => ({ feed, entries: feed.entries }));
+      state.localDeletedEntries = change();
+      for (const entry of restored) {
+        if (entry.origin === 'local') {
+          const feed = state.subscriptions.find(feed => feed.id === entry.sourceId);
+          if (feed && !feed.entries.some(item => item.id === entry.id)) feed.entries = [...feed.entries, entry];
+        } else if (!state.entries.some(item => item.id === entry.id)) state.entries = [...state.entries, entry];
+      }
+      const entriesAfter = state.entries, feedsAfter = new Map(state.subscriptions.map(feed => [feed, feed.entries]));
+      try { await this.persist(); }
+      catch (error) {
+        state.localDeletedEntries = previous;
+        if (state.entries === entriesAfter) state.entries = entriesBefore;
+        for (const { feed, entries } of feedsBefore) if (feed.entries === feedsAfter.get(feed)) feed.entries = entries;
+        throw error;
+      }
+      if (state !== this.state || this.collectionStopped) return;
+      for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) if (leaf.view instanceof ReaderView) leaf.view.refreshLocalDeletions(restored);
+      this.deletedArticlesModal?.refresh();
+    });
+    this.localDeletionEdits = run;
+    return run;
+  }
+  async deleteArticleLocally(entry: Entry) {
+    const record = localDeletion(this.state, entry);
+    if (!record || this.localArticleDeleted(entry)) return;
+    await this.editLocalDeletions(() => this.localArticleDeleted(entry) ? this.state.localDeletedEntries : [...this.state.localDeletedEntries, record]);
+    if (this.collectionStopped) return;
+    this.deletionNotice?.hide();
+    const message = createFragment();
+    message.createSpan({ text: t('localDelete.done') + ' ' });
+    const undo = message.createEl('button', { text: t('localDelete.undo') });
+    const notice = this.deletionNotice = new Notice(message, 8000);
+    undo.onclick = () => { undo.disabled = true; void this.restoreLocalArticles([record]).then(() => notice.hide()).catch(() => { undo.disabled = false; new Notice(t('localDelete.failed')); }); };
+  }
+  restoreLocalArticles(records: LocalDeletion[]) {
+    const keys = new Set(records.flatMap(record => record.keys));
+    return this.editLocalDeletions(() => this.state.localDeletedEntries.filter(record => !record.keys.some(key => keys.has(key))), records);
+  }
+  openDeletedArticles() {
+    this.deletedArticlesModal?.close(); this.deletedArticlesModal = new DeletedArticlesModal(this); this.deletedArticlesModal.open();
   }
   collectionLocalItems(): CollectionItem[] { return this.state.collectionJobs.filter(job => job.baseUrl === this.state.settings.baseUrl && (!job.entryId || !(this.state.deletedEntries[job.baseUrl] || []).includes(job.entryId))).map(job => ({ ...job })); }
   articleDeleted(entry: Entry) { return remoteEntry(entry) && (this.state.deletedEntries[this.state.settings.baseUrl] || []).includes(entry.id); }
@@ -808,7 +866,9 @@ class RssSettings extends PluginSettingTab {
       reading: [reading, { name: t('speech.title'), desc: t('speech.description'), aliases: ['TTS', 'read aloud', '朗读'], render: setting => { setting.addButton(button => button.setButtonText(t('speech.title')).onClick(() => this.plugin.openSpeechSettings())); } }, definitions[4], definitions[5]],
       sources: [{ name: t('pick.title'), desc: t('pick.description'), render: setting => {
         setting.addButton(button => button.setButtonText(t('pick.open')).onClick(() => { (this.app as App & { setting: { close(): void } }).setting.close(); this.plugin.pickCuratedSources(); }));
-      } }, definitions[2], definitions[1]],
+      } }, definitions[2], definitions[1], { name: t('localDelete.title'), desc: t('localDelete.description'), render: setting => {
+        setting.addButton(button => button.setButtonText(t('localDelete.manage')).onClick(() => this.plugin.openDeletedArticles()));
+      } }],
       excerpt: [definitions[3], excerpt, definitions[7]],
       lab: [{ name: t('lab.collection'), desc: t('lab.entryDescription'), render: setting => {
         setting.addButton(button => button.setButtonText(t('lab.manage')).onClick(() => this.plugin.openCollectionSettings()));

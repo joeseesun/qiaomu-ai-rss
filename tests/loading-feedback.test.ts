@@ -22,7 +22,7 @@ const entry = { id: 'readable', sourceId: 'simonwillison', title: 'Readable', co
 function fixture() {
   const state = initialState({ sources: [{ id: 'simonwillison', name: 'Simon' }], cache: { [entry.id]: { entry, rewrite: null, translation: null, fetchedAt: 1 } } });
   const api = { sources: vi.fn(async () => ({ sources: state.sources })), entries: vi.fn(async () => ({ entries: [entry], hasMore: false })), article: vi.fn() };
-  const plugin = { state, api: () => api, persist: vi.fn(async () => {}), syncDeletedArticles: vi.fn(async () => {}), articleDeleted: () => false, isLater: () => false, remember: vi.fn() };
+  const plugin = { state, api: () => api, persist: vi.fn(async () => {}), syncDeletedArticles: vi.fn(async () => {}), articleDeleted: () => false, articleHidden: () => false, localArticleDeleted: () => false, isLater: () => false, remember: vi.fn() };
   const view = Object.assign(Object.create(ReaderView.prototype), {
     plugin, closed: false, source: 'simonwillison', listVersion: 0, articleVersion: 0, entries: [entry], loading: false,
     status: element(), reader: element(), contentEl: element(), refreshButton: element('button'),

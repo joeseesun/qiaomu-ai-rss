@@ -17,6 +17,18 @@ export function locale(): Locale {
 // Columns: key, 简体中文, English, 繁體中文, 日本語, 한국어, Español, Français, Deutsch
 // Exported so tests can assert that every message has all eight translations.
 export const M = [
+  ["localDelete.action", "从本地删除", "Delete locally", "從本機刪除", "ローカルから削除", "로컬에서 삭제", "Eliminar localmente", "Supprimer localement", "Lokal löschen"],
+  ["localDelete.done", "已从本地删除", "Deleted locally", "已從本機刪除", "ローカルから削除しました", "로컬에서 삭제됨", "Eliminado localmente", "Supprimé localement", "Lokal gelöscht"],
+  ["localDelete.undo", "撤销", "Undo", "復原", "元に戻す", "실행 취소", "Deshacer", "Annuler", "Rückgängig"],
+  ["localDelete.title", "已删除文章", "Deleted articles", "已刪除文章", "削除した記事", "삭제한 글", "Artículos eliminados", "Articles supprimés", "Gelöschte Artikel"],
+  ["localDelete.description", "仅从当前库的阅读列表隐藏，可随时恢复。保留收藏、阅读记录和已保存的笔记。", "Hidden only from this vault’s reading lists. Restore anytime; favorites, reading history and saved notes are kept.", "僅從目前庫的閱讀清單隱藏，可隨時還原。保留收藏、閱讀紀錄與已儲存的筆記。", "この保管庫の一覧からのみ非表示にします。お気に入り、履歴、保存したノートは保持され、いつでも復元できます。", "이 보관함의 읽기 목록에서만 숨깁니다. 즐겨찾기, 읽기 기록, 저장한 노트는 유지되며 언제든 복원할 수 있습니다.", "Solo se ocultan de las listas de esta bóveda. Se pueden restaurar; se conservan favoritos, historial y notas.", "Masqués uniquement dans les listes de ce coffre. Restauration possible ; favoris, historique et notes sont conservés.", "Nur in den Leselisten dieses Vaults ausgeblendet. Jederzeit wiederherstellbar; Favoriten, Verlauf und Notizen bleiben erhalten."],
+  ["localDelete.manage", "管理已删除文章", "Manage deleted articles", "管理已刪除文章", "削除した記事を管理", "삭제한 글 관리", "Gestionar artículos eliminados", "Gérer les articles supprimés", "Gelöschte Artikel verwalten"],
+  ["localDelete.search", "搜索标题、来源或链接", "Search titles, sources or links", "搜尋標題、來源或連結", "タイトル・ソース・リンクを検索", "제목, 출처 또는 링크 검색", "Buscar títulos, fuentes o enlaces", "Rechercher titre, source ou lien", "Titel, Quellen oder Links suchen"],
+  ["localDelete.restore", "恢复", "Restore", "還原", "復元", "복원", "Restaurar", "Restaurer", "Wiederherstellen"],
+  ["localDelete.restoreAll", "恢复全部", "Restore all", "全部還原", "すべて復元", "모두 복원", "Restaurar todo", "Tout restaurer", "Alle wiederherstellen"],
+  ["localDelete.empty", "没有匹配的已删除文章", "No matching deleted articles", "沒有符合的已刪除文章", "該当する削除記事はありません", "일치하는 삭제한 글이 없습니다", "No hay artículos eliminados coincidentes", "Aucun article supprimé correspondant", "Keine passenden gelöschten Artikel"],
+  ["localDelete.failed", "未能保存更改，请重试。", "Could not save changes. Please retry.", "無法儲存變更，請重試。", "変更を保存できませんでした。再試行してください。", "변경 사항을 저장하지 못했습니다. 다시 시도하세요.", "No se pudieron guardar los cambios. Reinténtalo.", "Impossible d’enregistrer. Réessayez.", "Änderungen konnten nicht gespeichert werden. Bitte erneut versuchen."],
+
   ["outline.title", "RSS 目录", "RSS outline", "RSS 目錄", "RSS 目次", "RSS 목차", "Índice RSS", "Sommaire RSS", "RSS-Inhaltsverzeichnis"],
   ["outline.close", "关闭目录", "Close outline", "關閉目錄", "目次を閉じる", "목차 닫기", "Cerrar índice", "Fermer le sommaire", "Inhaltsverzeichnis schließen"],
   ["outline.noArticle", "打开一篇 RSS 文章查看目录。", "Open an RSS article to view its outline.", "開啟一篇 RSS 文章查看目錄。", "RSS 記事を開くと目次が表示されます。", "RSS 글을 열면 목차가 표시됩니다.", "Abre un artículo RSS para ver su índice.", "Ouvrez un article RSS pour voir son sommaire.", "Öffne einen RSS-Artikel, um sein Inhaltsverzeichnis zu sehen."],

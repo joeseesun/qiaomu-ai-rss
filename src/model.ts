@@ -29,6 +29,11 @@ export const entrySchema = z.object({
   rewrite: rewriteSchema.nullish(),
 });
 export type Entry = z.infer<typeof entrySchema>;
+export const localDeletionSchema = z.object({
+  scope: z.string(), keys: z.array(z.string()), deletedAt: z.number(),
+  entry: entrySchema.pick({ id: true, sourceId: true, origin: true, title: true, titleZh: true, sourceName: true, link: true, podcastSlug: true, episodeSlug: true, publishedTs: true }),
+});
+export type LocalDeletion = z.infer<typeof localDeletionSchema>;
 export const sourceSchema = z.object({ id: z.string(), name: z.string(), category: optionalText, siteUrl: optionalText, enabled: z.boolean().optional() });
 export type Source = z.infer<typeof sourceSchema>;
 export function podcastDefaultMode(entry: Entry, sources: Source[], followedPodcasts: string[]): Mode | null {
@@ -80,6 +85,7 @@ export const stateSchema = z.object({
   collectionAdminSession: z.object({ token: z.string(), expiresAt: z.number(), name: z.string(), baseUrl: z.string() }).nullable().default(null),
   collectionJobs: z.array(collectionJobSchema).default([]),
   deletedEntries: z.record(z.string(), z.array(z.string())).default({}),
+  localDeletedEntries: z.array(localDeletionSchema).default([]),
   readIds: z.array(z.string()).default([]), favorites: z.record(z.string(), bundleSchema).default({}),
   readLater: z.array(z.string()).default([]), readAt: z.record(z.string(), z.number()).catch({}).default({}),
   entries: z.array(entrySchema).default([]), sources: z.array(sourceSchema).default([]),
@@ -189,7 +195,7 @@ export function renameArticleNotes(notes: Record<string, string>, oldPath: strin
   return changed;
 }
 export function withServiceOrigin(state: State, baseUrl: string): State {
-  return initialState({ deletedEntries: state.deletedEntries, collectionIdentity: state.collectionIdentity, collectionJobs: state.collectionJobs, savedArticles: state.savedArticles, articleNotes: state.articleNotes, settings: { ...state.settings, baseUrl: serviceUrl(baseUrl) }, subscriptions: state.subscriptions,
+  return initialState({ deletedEntries: state.deletedEntries, localDeletedEntries: state.localDeletedEntries, collectionIdentity: state.collectionIdentity, collectionJobs: state.collectionJobs, savedArticles: state.savedArticles, articleNotes: state.articleNotes, settings: { ...state.settings, baseUrl: serviceUrl(baseUrl) }, subscriptions: state.subscriptions,
     favorites: Object.fromEntries(Object.entries(state.favorites).filter(([, bundle]) => bundle.entry.origin === 'local' || bundle.entry.origin === 'vault')),
     cache: Object.fromEntries(Object.entries(state.cache).filter(([, bundle]) => bundle.entry.origin === 'local' || bundle.entry.origin === 'vault')),
     readIds: state.readIds.filter(id => id.startsWith('local-') || id.startsWith('vault:')) });
