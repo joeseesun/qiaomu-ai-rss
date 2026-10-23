@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.1
+
+- Recover standalone HTTP(S) image references with unbalanced alt-text brackets in cached AI rewrites; keep normal Markdown, code examples and remote-image preferences unchanged.
+
 ## 0.31.0
 
 - Add a rendered-article outline with heading hierarchy, click navigation and scroll tracking across original, rewritten, translated and local Markdown content.
