@@ -25,7 +25,7 @@ function localEntries(plugin: QiaomuRssPlugin): Entry[] {
   const state = plugin.state;
   const seen = new Set<string>();
   const all = [...filterCuratedEntries(state, state.entries), ...state.subscriptions.flatMap(feed => feed.entries)];
-  return all.filter(entry => !seen.has(entry.id) && seen.add(entry.id)).sort((a, b) => when(b) - when(a));
+  return all.filter(entry => !plugin.articleHidden(entry) && !seen.has(entry.id) && seen.add(entry.id)).sort((a, b) => when(b) - when(a));
 }
 
 async function openEntry(plugin: QiaomuRssPlugin, entry: Entry): Promise<void> {
@@ -69,7 +69,7 @@ export function createHomeProvider(plugin: QiaomuRssPlugin): HomeProvider {
       const saved = [...Object.values(plugin.state.favorites), ...Object.values(plugin.state.savedArticles)].map(bundle => bundle.entry);
       const seen = new Set<string>();
       return [...saved, ...localEntries(plugin)]
-        .filter(entry => !seen.has(entry.id) && seen.add(entry.id))
+        .filter(entry => !plugin.articleHidden(entry) && !seen.has(entry.id) && seen.add(entry.id))
         .filter(entry => titleOf(entry).toLowerCase().includes(q) || entry.title.toLowerCase().includes(q) || (entry.sourceName ?? '').toLowerCase().includes(q))
         .slice(0, limit)
         .map(entry => item(plugin, entry));

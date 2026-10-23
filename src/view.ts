@@ -81,7 +81,7 @@ export class ReaderView extends ItemView {
     };
     const savedBundle = saved.bundle ? { ...saved.bundle, entry: hydrate(saved.bundle.entry) } : null;
     this.entries = this.personalScope() ? this.localEntries() : filterCuratedEntries(this.plugin.state, this.source || this.plugin.state.settings.pickedSourceIds !== null ? saved.entries.map(hydrate) : qiaomuFeaturedEntries(saved.entries.map(hydrate)));
-    this.bundle = savedBundle && (!keepCuratedEntry(this.plugin.state, savedBundle.entry) || !this.source && this.plugin.state.settings.pickedSourceIds === null && !qiaomuFeaturedEntries([savedBundle.entry]).length) ? null : savedBundle;
+    this.bundle = savedBundle && (this.plugin.articleHidden(savedBundle.entry) || !keepCuratedEntry(this.plugin.state, savedBundle.entry) || !this.source && this.plugin.state.settings.pickedSourceIds === null && !qiaomuFeaturedEntries([savedBundle.entry]).length) ? null : savedBundle;
     this.expandWindowTo(savedBundle?.entry.id);
     this.mode = saved.mode;
     this.filter = saved.filter; this.query = saved.query; this.unreadSession = new Set(saved.unread);
@@ -450,6 +450,26 @@ export class ReaderView extends ItemView {
     }
     this.renderList();
   }
+  refreshLocalDeletions(restored: Entry[] = []) {
+    if (this.closed || !this.list) return;
+    const previous = this.windowEntries;
+    for (const entry of restored) if (!this.entries.some(item => item.id === entry.id)) this.entries.push(entry);
+    if (this.bundle && this.plugin.localArticleDeleted(this.bundle.entry)) {
+      const index = previous.findIndex(entry => entry.id === this.bundle?.entry.id);
+      const next = index >= 0 ? previous.slice(index + 1).find(entry => !this.plugin.articleHidden(entry)) : undefined;
+      this.plugin.speech.detach(this); stopMedia(this.reader); this.audioDock?.stop(); this.stopRestoring();
+      ++this.articleVersion; this.bundle = null; this.articleLoading = false; this.message = '';
+      this.contentEl.removeClass('qrs-has-article'); this.reader.setAttribute('aria-busy', 'false');
+      this.renderReader(); this.renderList(); this.saveChannel();
+      if (next) { const top = this.list.scrollTop; void this.openArticle(next).finally(() => { if (!this.closed) this.list.scrollTop = top; }); }
+    } else this.renderList();
+  }
+  private deleteLocal(entry: Entry) {
+    this.run(() => this.plugin.deleteArticleLocally(entry));
+  }
+  private collectionEntry(job: CollectionItem): Entry {
+    return { id: job.entryId!, sourceId: 'user-submitted', origin: 'qiaomu', title: job.title || job.url, link: job.url };
+  }
   private vaultScope() { return this.source.startsWith('@vault:'); }
   private qiaomuGroupIds(source = this.source) {
     const divider = source.startsWith('@qiaomu:') ? source.slice(8) : '';
@@ -570,7 +590,7 @@ export class ReaderView extends ItemView {
   }
   private navigate(direction: number) {
     const query = this.query.trim().toLocaleLowerCase();
-    const entries = this.collectionScope() ? this.collectionItems.filter(job => job.status === 'complete' && job.entryId && `${job.title} ${job.url} ${job.submitter || ''}`.toLocaleLowerCase().includes(query)).map(job => ({ id: job.entryId!, sourceId: 'user-submitted', origin: 'qiaomu' as const, title: job.title || job.url, link: job.url })) : this.visibleEntries(); const index = entries.findIndex(entry => entry.id === this.bundle?.entry.id);
+    const entries = this.collectionScope() ? this.collectionItems.filter(job => (!job.entryId || !this.plugin.articleHidden(this.collectionEntry(job))) && job.status === 'complete' && job.entryId && `${job.title} ${job.url} ${job.submitter || ''}`.toLocaleLowerCase().includes(query)).map(job => ({ id: job.entryId!, sourceId: 'user-submitted', origin: 'qiaomu' as const, title: job.title || job.url, link: job.url })) : this.visibleEntries(); const index = entries.findIndex(entry => entry.id === this.bundle?.entry.id);
     const next = entries[index + direction]; if (next) void this.openArticle(next);
   }
   private async loadEntries(more = false, force = false) {
@@ -724,7 +744,7 @@ export class ReaderView extends ItemView {
       ? entry.origin === 'local' && (this.source === '@local' || selected.has(entry.sourceId))
       : entry.origin !== 'local' && entry.origin !== 'vault' && (!this.source || (this.source.startsWith('@qiaomu:') ? group.has(entry.sourceId) : entry.sourceId === this.source));
     return uniqueRemoteEntries(entries, this.bundle?.entry.id).filter(entry => (this.filter === 'later' || inScope(entry)) &&
-      !this.plugin.articleDeleted(entry) && keepCuratedEntry(state, entry) && (state.settings.pickedSourceIds !== null || entry.sourceId !== 'levelingup') && (this.platform === 'all' || !this.communityScope() || platformOf(entry.link) === this.platform) &&
+      !this.plugin.articleHidden(entry) && keepCuratedEntry(state, entry) && (state.settings.pickedSourceIds !== null || entry.sourceId !== 'levelingup') && (this.platform === 'all' || !this.communityScope() || platformOf(entry.link) === this.platform) &&
       (this.filter !== 'unread' || !this.relatedContentIds(entry).some(id => readIds.has(id)) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
       (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
   }
@@ -777,7 +797,7 @@ export class ReaderView extends ItemView {
     const focusedId = (this.contentEl.ownerDocument.activeElement as HTMLElement)?.closest('[data-collection-id]')?.getAttribute('data-collection-id');
     this.list.empty();
     const query = this.query.trim().toLocaleLowerCase();
-    const items = this.collectionItems.filter(job => `${job.title} ${job.url} ${job.submitter || ''}`.toLocaleLowerCase().includes(query));
+    const items = this.collectionItems.filter(job => (!job.entryId || !this.plugin.articleHidden(this.collectionEntry(job))) && `${job.title} ${job.url} ${job.submitter || ''}`.toLocaleLowerCase().includes(query));
     if (!items.length) this.list.createDiv({ cls: 'qrs-collection-empty', text: this.loading ? t('reader.loadingEntries') : query ? t('reader.emptyFilter') : t('lab.emptyRequests') });
     for (const job of items) {
       const row = this.list.createDiv({ cls: 'qrs-entry qrs-collection-entry', attr: { 'data-collection-id': job.id } });
@@ -794,6 +814,7 @@ export class ReaderView extends ItemView {
       if (url) row.oncontextmenu = event => {
         event.preventDefault();
         const menu = new Menu();
+        if (job.entryId) menu.addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(this.collectionEntry(job))));
         menu.addItem(item => item.setTitle(t('capture.copyLink')).setIcon('link').onClick(() => { void navigator.clipboard.writeText(url); }));
         menu.showAtMouseEvent(event);
       };
@@ -918,6 +939,10 @@ export class ReaderView extends ItemView {
       if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' }); else row.addClass('qrs-no-summary');
       this.renderThumbnail(row, entry);
       row.addEventListener('click', () => { void this.openArticle(record.entry); });
+      if (entry.origin !== 'vault') row.addEventListener('contextmenu', event => {
+        event.preventDefault();
+        new Menu().setUseNativeMenu(false).addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(record.entry))).showAtMouseEvent(event);
+      });
     }
     output.empty();
     const after = output.createDiv({ cls: 'qrs-window-spacer', attr: { 'aria-hidden': 'true' } });
@@ -948,7 +973,7 @@ export class ReaderView extends ItemView {
     if (this.renderSamples.length > 60) this.renderSamples.shift();
   }
   private async openArticle(entry: Entry, resume?: ChannelState, preferredMode?: Mode) {
-    if (this.plugin.articleDeleted(entry)) { new Notice(t('moderation.deleted')); return; }
+    if (this.plugin.articleHidden(entry)) { new Notice(t(this.plugin.localArticleDeleted(entry) ? 'localDelete.done' : 'moderation.deleted')); return; }
     this.stopRestoring();
     // Keep this unread reading session navigable after opening marks entries read.
     if (this.filter === 'unread') this.unreadSession.add(entry.id);
@@ -989,7 +1014,7 @@ export class ReaderView extends ItemView {
         if (hydrated.content) { this.articleLoading = false; this.renderReader(); }
       }
       const { bundle, warnings } = entry.origin === 'vault' ? { bundle: await this.plugin.vaultSources.article(entry), warnings: [] } : await this.plugin.api().article(entry.id, entry, content => {
-        if (this.closed || version !== this.articleVersion || this.plugin.articleDeleted(entry)) return;
+        if (this.closed || version !== this.articleVersion || this.plugin.articleHidden(entry)) return;
         this.bundle = { ...content, rewrite: content.rewrite ?? this.bundle?.rewrite ?? null, translation: content.translation ?? this.bundle?.translation ?? null };
         this.mode = this.availableMode(this.requestedMode);
         this.articleLoading = false; this.reader.setAttribute('aria-busy', 'false');
@@ -997,7 +1022,7 @@ export class ReaderView extends ItemView {
         originalShown = this.mode === 'original';
         this.plugin.remember(this.bundle); this.run(() => this.plugin.persist());
       });
-      if (this.closed || version !== this.articleVersion || this.plugin.articleDeleted(entry)) return;
+      if (this.closed || version !== this.articleVersion || this.plugin.articleHidden(entry)) return;
       this.bundle = bundle; this.message = warnings.join('；');
       this.plugin.remember(bundle); this.run(() => this.plugin.persist());
     } catch (error) {
@@ -1017,7 +1042,7 @@ export class ReaderView extends ItemView {
   /** Opens one article from outside the list, e.g. from Qiaomu Home. */
   openEntry(entry: Entry) { void this.openArticle(entry); }
   showSavedArticle(bundle: Bundle, mode: Mode) {
-    if (this.plugin.articleDeleted(bundle.entry)) { new Notice(t('moderation.deleted')); return; }
+    if (this.plugin.articleHidden(bundle.entry)) { new Notice(t(this.plugin.localArticleDeleted(bundle.entry) ? 'localDelete.done' : 'moderation.deleted')); return; }
     this.stopRestoring();
     this.articleVersion++; this.articleLoading = false; this.articleFailed = false;
     this.bundle = bundle; this.mode = mode; this.message = ''; this.audioDock?.open(bundle.entry);
@@ -1183,6 +1208,7 @@ export class ReaderView extends ItemView {
         try { await this.plugin.syncDeletedArticles(); } catch { /* Preserve cached reading when the service is offline. */ }
         if (!this.plugin.articleDeleted(bundle.entry)) await this.openArticle(bundle.entry);
       })));
+      if (bundle.entry.origin !== 'vault') menu.addSeparator().addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(bundle.entry)));
       if (this.plugin.canDeleteArticle(bundle.entry)) menu.addSeparator().addItem(item => item.setTitle(t('moderation.delete')).setIcon('trash-2').onClick(() => this.plugin.confirmDeleteArticle(bundle.entry)));
       menu.addSeparator();
       menu.addItem(item => item.setTitle(savedNote ? t('reader.openSavedNote') : t('reader.saveNote')).setIcon(savedNote ? 'file-check' : 'file-plus').onClick(() => {
