@@ -1,11 +1,17 @@
-## 中文
+更新后就能知道这次改了什么。
 
-- 乔木精选的播客不再重复：张小珺商业访谈录、42章经、晚点聊已有精读站，只保留精读版，原来的小宇宙节目源不再同时出现。以后其他节目有了精读站，也按这个规则自动去重。
-- 自己在筛选里勾选过原始节目源的，保持你的选择不变。
-- 已通过单元测试与类型检查；实体手机与 Windows 未实机验证。
+- 新增更新内容弹窗：同一版本自动显示一次。
+- 在「关于」或命令面板随时重新查看，也可关闭自动提示。
+- 多个乔木插件的提示依次显示；更新说明离线可读。
 
-## English
+- 更新受公告影响的依赖到修复版。
 
-- Qiaomu picks no longer list a podcast twice: Zhang Xiaojun, 42zhangjing and LateTalk now have close-reading sites, so only the close readings are shown and the original Xiaoyuzhou feeds are hidden. Future shows with a close-reading site are de-duplicated the same way.
-- If you explicitly ticked an original show in the picker, your selection is kept.
-- Covered by unit tests and type checking; physical phones and Windows remain untested.
+### English
+
+- Show bundled release notes once after installing a new version.
+- Reopen notes from About or the command palette; automatic display is optional.
+- Qiaomu update dialogs are queued instead of stacked and work offline.
+
+- Update affected dependencies to patched versions.
+
+Validation: repository checks and real Obsidian 1.13.7 startup, reload, About, popout Settings, light/dark, narrow layout, locale fixtures and opt-out checks. Physical mobile devices were not tested in this release.
