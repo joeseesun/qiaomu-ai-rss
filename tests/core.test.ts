@@ -179,6 +179,34 @@ describe('untrusted remote content', () => {
     expect(new URL(articleNoteUrl(options)).searchParams.has('section')).toBe(false);
     expect(excerptBlock('Body', { ...bundle.entry, title: 'Article' }, { ...options, section: '' })).toBe('[Article](<' + articleNoteUrl(options) + '>)\n\nBody');
   });
+  it('embeds a text quote only in excerpt links, keeping section links and headers unchanged', () => {
+    const quote = { type: 'TextQuoteSelector' as const, exact: '测试 + emoji 😀 <script>', prefix: 'before ', suffix: ' after' };
+    const options = { vault: 'QA', article: 'a', mode: 'rewrite' as const, section: 'Heading', quote };
+    const url = articleNoteUrl(options, options.section, quote);
+    expect(JSON.parse(new URL(url).searchParams.get('quote')!)).toEqual(quote);
+    expect(url).not.toContain('+');
+    expect(excerptBlock('Body', bundle.entry, { ...options, template: '{{excerpt_link}}' })).toBe('[Heading](<' + url + '>)\n\nBody');
+    expect(excerptBlock('Body', bundle.entry, { ...options, template: '{{section_link}}' })).not.toContain('quote=');
+    expect(dailyNoteLink(bundle.entry, options)).not.toContain('quote=');
+    expect(excerptBlock('Body', { ...bundle.entry, title: 'Article' }, { ...options, section: '', template: '{{excerpt_link}}' })).toBe('[Article](<' + articleNoteUrl(options, '', quote) + '>)\n\nBody');
+  });
+  it('adds browser text fragments only to external original-mode source links and preserves heading anchors', () => {
+    const entry = { ...bundle.entry, link: 'https://example.com/post?q=1#chapter:~:text=old' };
+    const options = { mode: 'original' as const, template: '{{content}}\n\n{{original_link}}', textFragment: 'text=First%20part,Last%20part' };
+    expect(excerptBlock('Body', entry, options)).toBe('Body\n\n[原文定位 ↗](<https://example.com/post?q=1#chapter:~:text=First%20part,Last%20part>)');
+    for (const mode of ['rewrite', 'translation'] as const) {
+      expect(excerptBlock('Body', entry, { ...options, mode })).toBe('Body\n\n[原文 ↗](<https://example.com/post?q=1#chapter:~:text=old>)');
+    }
+    expect(excerptBlock('Body', bundle.entry, options)).toContain('https://example.com/news#:~:text=First%20part,Last%20part');
+    expect(excerptBlock('Body', bundle.entry, { ...options, textFragment: undefined })).toBe('Body\n\n[原文 ↗](<https://example.com/news>)');
+    expect(excerptBlock('Body', bundle.entry, { ...options, template: '{{url}}' })).toBe('https://example.com/news\n\nBody');
+  });
+  it('never adds browser text fragments to unsafe URLs or vault note links', () => {
+    const entry = { ...bundle.entry, origin: 'vault' as const, link: 'javascript:alert(1)', markdownPath: 'Source.md' };
+    const block = excerptBlock('Body', entry, { vault: 'QA', article: 'vault:a', mode: 'original', template: '{{original_link}}', textFragment: 'text=Body' });
+    expect(block).not.toContain('javascript:'); expect(block).not.toContain(':~:');
+    expect(block).toContain('obsidian://open?');
+  });
   it('respects daily-note folders, formats and common template tokens', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;
     expect(dailyNotePath({ folder: 'Daily', format: 'YYYY/MM/DD', template: '' }, now)).toBe('Daily/2026/09/07.md');

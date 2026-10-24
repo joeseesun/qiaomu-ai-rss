@@ -18,6 +18,7 @@ import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
 import { DEFAULT_EXCERPT_TEMPLATE, folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type LocalDeletion, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, captureMoment, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
+import type { TextQuoteSelector } from './excerpt-anchor';
 import { ReaderView, VIEW_TYPE } from './view';
 import { OutlineView, OUTLINE_VIEW_TYPE } from './outline-view';
 import { contextProvider } from './agent-bridge';
@@ -158,13 +159,13 @@ export default class QiaomuRssPlugin extends Plugin {
       const url = new URL(repairArticleLinks(href));
       if (url.searchParams.get('vault') !== this.app.vault.getName()) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      void this.openSavedArticle(url.searchParams.get('article') || '', url.searchParams.get('mode') || 'original', url.searchParams.get('section') || '')
+      void this.openSavedArticle(url.searchParams.get('article') || '', url.searchParams.get('mode') || 'original', url.searchParams.get('section') || '', url.searchParams.get('quote') || '')
         .catch(() => new Notice(t('notice.localCopyMissing')));
     }, { capture: true });
     registerLinks(document);
     this.registerEvent(this.app.workspace.on('window-open', (_window, win) => registerLinks(win.document)));
     this.registerObsidianProtocolHandler('qiaomu-ai-rss', params => {
-      void this.openSavedArticle(params.article || '', params.mode || 'original', params.section || '').catch(() => new Notice(t('notice.localCopyMissingShort')));
+      void this.openSavedArticle(params.article || '', params.mode || 'original', params.section || '', params.quote || '').catch(() => new Notice(t('notice.localCopyMissingShort')));
     });
   }
   onunload() { this.deletedArticlesModal?.close(); this.deletionNotice?.hide(); this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
@@ -557,13 +558,13 @@ export default class QiaomuRssPlugin extends Plugin {
       }
     }
   }
-  async openSavedArticle(id: string, mode: string, section = '') {
+  async openSavedArticle(id: string, mode: string, section = '', quote = '') {
     const bundle = this.state.savedArticles[id];
     if (!bundle) throw new Error('Missing saved article');
     await this.openReader();
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
     if (!(view instanceof ReaderView)) throw new Error('Reader unavailable');
-    view.showSavedArticle(bundle, modeSchema.catch('original').parse(mode), section);
+    view.showSavedArticle(bundle, modeSchema.catch('original').parse(mode), section, quote);
   }
   private cleanNoteMarkers(file: TFile) {
     this.dailyNoteWrite = this.dailyNoteWrite.catch(() => undefined).then(async () => {
@@ -587,7 +588,7 @@ export default class QiaomuRssPlugin extends Plugin {
     const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.lastNote;
     return file && this.app.vault.getAbstractFileByPath(file.path) === file ? file : null;
   }
-  async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original', target?: TFile, section = ''): Promise<{ file: TFile; added: boolean }> {
+  async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original', target?: TFile, section = '', quote?: TextQuoteSelector, textFragment?: string): Promise<{ file: TFile; added: boolean }> {
     const now = captureMoment();
     let result!: { file: TFile; added: boolean };
     const write = async () => {
@@ -596,7 +597,7 @@ export default class QiaomuRssPlugin extends Plugin {
       const bundle = this.state.cache[entry.id] || this.state.favorites[entry.id] || { entry, rewrite: entry.rewrite || null, translation: null, fetchedAt: Date.now() };
       this.state.savedArticles[id] = bundle;
       await this.persist();
-      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt, section, template: excerpt ? this.state.settings.excerptTemplate : '' };
+      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt, section, quote, textFragment, template: excerpt ? this.state.settings.excerptTemplate : '' };
       if (target && this.app.vault.getAbstractFileByPath(target.path) !== target) throw new Error(t('error.targetNoteMissing'));
       const settings = target ? { folder: '', format: '', template: '' } : await readDailyNoteSettings(this.app.vault);
       const path = target?.path ?? dailyNotePath(settings, now);
@@ -644,10 +645,10 @@ export default class QiaomuRssPlugin extends Plugin {
     await this.dailyNoteWrite;
     return result;
   }
-  async noteArticle(entry: Entry, excerpt = '', mode: Mode = 'original', section = ''): Promise<{ file: TFile; added: boolean }> {
+  async noteArticle(entry: Entry, excerpt = '', mode: Mode = 'original', section = '', quote?: TextQuoteSelector, textFragment?: string): Promise<{ file: TFile; added: boolean }> {
     const reader = this.app.workspace.getLeavesOfType(VIEW_TYPE).find(leaf => leaf === this.app.workspace.getMostRecentLeaf())
       ?? this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-    const result = await this.appendToDailyNote(entry, excerpt, mode, undefined, section);
+    const result = await this.appendToDailyNote(entry, excerpt, mode, undefined, section, quote, textFragment);
     let leaf = this.app.workspace.getLeavesOfType('markdown').find(candidate => candidate.view instanceof MarkdownView && candidate.view.file?.path === result.file.path
       && (!reader || (candidate.parent !== reader.parent && candidate.getRoot() === reader.getRoot())));
     if (!leaf) leaf = reader ? this.app.workspace.createLeafBySplit(reader, 'vertical') : this.app.workspace.getLeaf('split', 'vertical');

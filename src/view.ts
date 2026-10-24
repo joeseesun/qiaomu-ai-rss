@@ -18,6 +18,7 @@ import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { articleSelection } from './speech-source';
 import type { CaptureAction } from './selection';
 import { SelectionCapture, selectionSection } from './selection';
+import { captureTextFragment, captureTextQuote, highlightTextQuote, parseTextQuote } from './excerpt-anchor';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
 import { saveArticlePdf } from './desktop-export';
@@ -181,10 +182,12 @@ export class ReaderView extends ItemView {
       const range = articleSelection(prose);
       const excerpt = range?.toString().trim() || '';
       const section = selectionSection(prose, range, titleOf(bundle.entry));
+      const quote = captureTextQuote(prose, range);
+      const textFragment = mode === 'original' ? captureTextFragment(prose, range) : undefined;
       const append = async (current: boolean) => {
         try {
           this.plugin.remember(bundle);
-          const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, mode, current && note ? note : undefined, section);
+          const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, mode, current && note ? note : undefined, section, quote, textFragment);
           new Notice(result.added ? t('notice.appendedToNote', { name: result.file.basename }) : t('notice.alreadyInNote'));
         } catch (error) { new Notice(error instanceof Error ? error.message : t('notice.cannotAppend')); }
       };
@@ -208,12 +211,15 @@ export class ReaderView extends ItemView {
       if (!bundle || !this.plugin.state.settings.selectionPopup) return null;
       const note = this.plugin.currentNote();
       const capture = async (text: string, range: Range, current: boolean) => {
-        const section = selectionSection(this.reader.querySelector<HTMLElement>('.qrs-prose'), range, titleOf(bundle.entry));
+        const prose = this.reader.querySelector<HTMLElement>('.qrs-prose');
+        const section = selectionSection(prose, range, titleOf(bundle.entry));
+        const quote = captureTextQuote(prose, range);
+        const textFragment = mode === 'original' ? captureTextFragment(prose, range) : undefined;
         try {
           this.plugin.remember(bundle);
           const result = current && note
-            ? await this.plugin.appendToDailyNote(bundle.entry, text, mode, note, section)
-            : await this.plugin.noteArticle(bundle.entry, text, mode, section);
+            ? await this.plugin.appendToDailyNote(bundle.entry, text, mode, note, section, quote, textFragment)
+            : await this.plugin.noteArticle(bundle.entry, text, mode, section, quote, textFragment);
           new Notice(result.added ? t('notice.excerptAddedTo', { name: result.file.basename }) : t('notice.excerptAlready'));
         } catch (error) { new Notice(error instanceof Error ? error.message : t('notice.excerptFailed')); }
       };
@@ -230,6 +236,7 @@ export class ReaderView extends ItemView {
     return Promise.resolve();
   }
   onClose(): Promise<void> {
+    this.reader?.ownerDocument.defaultView?.CSS?.highlights?.delete('qrs-excerpt-target');
     this.toolbarTips?.dispose();
     this.plugin.speech?.detach(this);
     stopMedia(this.reader); this.audioDock?.stop();
@@ -1044,13 +1051,13 @@ export class ReaderView extends ItemView {
   }
   /** Opens one article from outside the list, e.g. from Qiaomu Home. */
   openEntry(entry: Entry) { void this.openArticle(entry); }
-  showSavedArticle(bundle: Bundle, mode: Mode, section = '') {
+  showSavedArticle(bundle: Bundle, mode: Mode, section = '', quote = '') {
     if (this.plugin.articleHidden(bundle.entry)) { new Notice(t(this.plugin.localArticleDeleted(bundle.entry) ? 'localDelete.done' : 'moderation.deleted')); return; }
     this.stopRestoring();
     this.articleVersion++; this.articleLoading = false; this.articleFailed = false;
     this.bundle = bundle; this.mode = mode; this.message = ''; this.audioDock?.open(bundle.entry);
     this.reader.setAttribute('aria-busy', 'false'); this.contentEl.addClass('qrs-has-article');
-    this.reader.scrollTop = 0; this.lastReaderTop = 0; this.renderReader(false, section); this.reader.focus({ preventScroll: true }); this.renderList();
+    this.reader.scrollTop = 0; this.lastReaderTop = 0; this.renderReader(false, section, quote); this.reader.focus({ preventScroll: true }); this.renderList();
   }
   private readerFeedback(parent: Element, bundle: Bundle) {
     const feedback = parent.createDiv({ cls: 'qrs-feedback', attr: { role: 'status' } });
@@ -1111,7 +1118,17 @@ export class ReaderView extends ItemView {
       img.replaceWith(holder); holder.append(img); this.imageObserver.observe(img);
     }
   }
-  private renderReader(keepContent = false, section = '') {
+  private revealCapture(section: string, quote: string) {
+    const context = this.outlineContext();
+    if (quote) {
+      const selector = parseTextQuote(quote);
+      if (selector && highlightTextQuote(context, selector)) return;
+      new Notice(t('notice.excerptNotLocated'));
+    }
+    jumpToArticleSection(context, section);
+  }
+  private renderReader(keepContent = false, section = '', quote = '') {
+    this.reader.ownerDocument.defaultView?.CSS?.highlights?.delete('qrs-excerpt-target');
     this.toolbarTips?.hide();
     this.selectionCapture?.clear();
     const active = this.contentEl.ownerDocument.activeElement;
@@ -1288,7 +1305,7 @@ export class ReaderView extends ItemView {
             await prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || '');
             if (!this.closed && this.reader.contains(prose)) {
               this.plugin.refreshArticleOutline(this);
-              jumpToArticleSection(this.outlineContext(), section);
+              this.revealCapture(section, quote);
             }
           })
           .catch(() => {
@@ -1303,7 +1320,7 @@ export class ReaderView extends ItemView {
     } catch { article.createDiv({ cls: 'qrs-empty', text: t('reader.renderFailed') }); }
     this.reader.scrollTop = scroll; this.restoreOffsets();
     this.plugin.refreshArticleOutline(this);
-    if (bundle.entry.origin !== 'vault') jumpToArticleSection(this.outlineContext(), section);
+    if (bundle.entry.origin !== 'vault') this.revealCapture(section, quote);
     notifyContextChanged(this.app, this.plugin.manifest.id);
   }
   outlineContext(): OutlineContext | null {

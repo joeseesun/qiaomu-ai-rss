@@ -999,3 +999,4 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 .is-mobile .qrs-deleted-modal button { min-height:44px; }
 .qrs-deleted-modal button:not(.mod-cta) { background:transparent; color:var(--qrs-fg); box-shadow:0 0 0 1px var(--qrs-border-strong); }
 .qrs-deleted-modal button:not(.mod-cta):hover { background:var(--qrs-hover); }
+.qrs-prose::highlight(qrs-excerpt-target) { background-color:var(--text-highlight-bg); color:inherit; }

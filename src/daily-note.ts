@@ -1,6 +1,7 @@
 import { moment, normalizePath, type Vault } from 'obsidian';
 import { safeUrl, titleOf, type Entry, type Mode } from './model';
 import { fail, t } from './i18n';
+import type { TextQuoteSelector } from './excerpt-anchor';
 
 export interface DailyNoteSettings { folder: string; format: string; template: string }
 export interface DateFormatter { format(pattern: string): string }
@@ -34,11 +35,12 @@ export function dailyNotePath(settings: DailyNoteSettings, now: DateFormatter = 
   return normalizePath(`${settings.folder ? `${settings.folder}/` : ''}${dated}.md`);
 }
 
-export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string; template?: string; section?: string }
-export function articleNoteUrl(options: CaptureOptions, section = ''): string {
+export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string; template?: string; section?: string; quote?: TextQuoteSelector; textFragment?: string }
+export function articleNoteUrl(options: CaptureOptions, section = '', quote?: TextQuoteSelector): string {
   const params = new URLSearchParams({ vault: options.vault || '', article: options.article || '', mode: options.mode || 'original' });
   const heading = section.replace(/\s+/g, ' ').trim();
   if (heading) params.set('section', heading);
+  if (quote) params.set('quote', JSON.stringify(quote));
   return `obsidian://qiaomu-ai-rss?${params.toString().replace(/\+/g, '%20')}`;
 }
 export function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
@@ -49,6 +51,14 @@ function readingLink(entry: Entry, options: CaptureOptions): string | null {
 }
 function originalUrl(entry: Entry, options: CaptureOptions): string | null {
   return (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
+}
+function originalLink(url: string, options: CaptureOptions): string {
+  if (options.mode === 'original' && options.textFragment && safeUrl(url)) {
+    const target = new URL(url);
+    target.hash = target.hash.split(':~:')[0] + ':~:' + options.textFragment;
+    return `[${t('capture.originalLocated')}](<${target.href}>)`;
+  }
+  return `[${t('mode.original')} ↗](<${url}>)`;
 }
 export function dailyNoteLink(entry: Entry, options: CaptureOptions = {}): string {
   const link = readingLink(entry, options);
@@ -89,6 +99,8 @@ export function excerptBlock(excerpt: string, entry: Entry, options: CaptureOpti
     .replace(/\{\{\s*source\s*\}\}/gi, () => `[${title}](<${url}>)`)
     .replace(/\{\{\s*section\s*\}\}/gi, () => section ? ` · ${section}` : '')
     .replace(/\{\{\s*section_link\s*\}\}/gi, () => `[${section || title}](<${options.article ? articleNoteUrl(options, options.section) : readingLink(entry, options) || ''}>)`)
+    .replace(/\{\{\s*excerpt_link\s*\}\}/gi, () => `[${section || title}](<${options.article ? articleNoteUrl(options, options.section, options.quote) : readingLink(entry, options) || ''}>)`)
+    .replace(/\{\{\s*original_link\s*\}\}/gi, () => originalLink(url, options))
     .replace(/\{\{\s*link\s*\}\}/gi, () => dailyNoteLink(entry, options))
     .replace(/\{\{\s*url\s*\}\}/gi, () => url), title, now);
   return template.search(contentToken) >= 0 ? rendered : `${rendered}\n\n${text}`;
