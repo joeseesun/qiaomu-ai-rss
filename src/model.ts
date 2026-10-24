@@ -60,8 +60,7 @@ export const channelStateSchema = z.object({
 export type ChannelState = z.infer<typeof channelStateSchema>;
 export const collectionJobSchema = z.object({ id: z.string(), url: z.string(), baseUrl: z.string(), status: z.enum(['queued', 'running', 'complete', 'failed']).default('queued'), title: z.string().default(''), originalTitle: z.string().optional(), entryId: z.string().optional(), notified: z.boolean().default(false), createdAt: z.number() });
 export type CollectionJob = z.infer<typeof collectionJobSchema>;
-/** Default excerpt template: an unordered item plus a dash source line, in the Qiaomu daily-note style. */
-export const DEFAULT_EXCERPT_TEMPLATE = '- {{content}}\n\n  -- {{source}}';
+export const DEFAULT_EXCERPT_TEMPLATE = '> {{content}}\n>\n> ↳ {{section_link}} · [原文 ↗](<{{url}}>)';
 export const stateSchema = z.object({
   libraryVersion: z.number().int().min(0).max(1).default(0),
   subscriptionGroups: z.array(z.object({ id: z.string(), name: z.string(), order: z.number() })).default([]),

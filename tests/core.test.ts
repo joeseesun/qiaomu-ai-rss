@@ -131,11 +131,11 @@ describe('untrusted remote content', () => {
     const link = dailyNoteLink(entry, { vault: 'Qiaomu RSS QA', article: 'vault:file' });
     expect(link).toContain('[原文](<obsidian://open?vault=Qiaomu%20RSS%20QA&file=Clippings%2FMy%20article.md>)');
   });
-  it('renders excerpts through the configured template with a dash source line', () => {
+  it('renders excerpts with a linked section and an original link', () => {
     const entry = { ...bundle.entry, title: 'Plain title' };
     const options = { vault: 'QA', article: 'a', excerpt: 'First line\n\nSecond line', template: DEFAULT_EXCERPT_TEMPLATE };
     const first = appendDailyNoteLink('', entry, options);
-    expect(first.content).toContain('- First line\n\n  Second line\n\n  -- [Plain title](<https://example.com/news>)');
+    expect(first.content).toContain('> First line\n> \n> Second line\n>\n> ↳ [Plain title](<' + articleNoteUrl(options) + '>) · [原文 ↗](<https://example.com/news>)');
     expect(appendDailyNoteLink(first.content, entry, options).added).toBe(false);
     expect(appendDailyNoteLink(first.content, entry, { ...options, excerpt: 'Third' }).added).toBe(true);
   });
@@ -147,7 +147,7 @@ describe('untrusted remote content', () => {
     expect(excerptBlock('Body', bundle.entry, {}, now)).toBe('Body');
   });
   it.each([
-    ['- {{CONTENT}}\n\n> {{ content }}', '- A\n\n  B\n\n> A\n\n> B'],
+    ['- {{CONTENT}}\n\n> {{ content }}', '- A\n\n  B\n\n> A\n> \n> B'],
     ['1. {{content}}', '1. A\n\n   B'],
     ['Before {{content}}', 'Before A\n\nB'],
     ['{{unknown}}', '{{unknown}}\n\nA\n\nB'],
@@ -159,6 +159,25 @@ describe('untrusted remote content', () => {
     const block = excerptBlock('Quote', bundle.entry, { vault: 'QA', article: 'a', template: '{{content}}\n\n-- {{title}} · {{link}} · {{url}}' });
     expect(block).toContain('-- Title: "quotes" \\-\\-\\- · [Title: "quotes" \\-\\-\\-](<obsidian://qiaomu-ai-rss?');
     expect(block).toContain('https://example.com/news');
+  });
+  it('adds an escaped section suffix only when the selection has a section heading', () => {
+    const template = '— {{source}}{{section}}';
+    const source = excerptBlock('Body', bundle.entry, { template });
+    expect(source).not.toContain(' · ');
+    expect(source).not.toContain('{{section}}');
+    expect(excerptBlock('Body', bundle.entry, { template, section: '  Small\n plots <script> [x] {{date}}  ' })).toBe(source.replace('\n\nBody', ' · Small plots \\<script\\> \\[x\\] \\{\\{date\\}\\}\n\nBody'));
+    expect(excerptBlock('Body', bundle.entry, { template, section: '   ' })).toBe(source);
+  });
+  it('links section text to the selected reading mode without changing the grouped article header', () => {
+    const options = { vault: 'QA 中文', article: 'a/b', mode: 'rewrite' as const, section: ' 跑分\n对比 [A] ', template: '{{section_link}}\n\n{{content}}' };
+    const link = articleNoteUrl(options, options.section);
+    const params = new URL(link).searchParams;
+    expect(params.get('section')).toBe('跑分 对比 [A]');
+    expect(params.get('mode')).toBe('rewrite');
+    expect(params.get('vault')).toBe('QA 中文');
+    expect(excerptBlock('Body', bundle.entry, options)).toBe('[跑分 对比 \\[A\\]](<' + link + '>)\n\nBody');
+    expect(new URL(articleNoteUrl(options)).searchParams.has('section')).toBe(false);
+    expect(excerptBlock('Body', { ...bundle.entry, title: 'Article' }, { ...options, section: '' })).toBe('[Article](<' + articleNoteUrl(options) + '>)\n\nBody');
   });
   it('respects daily-note folders, formats and common template tokens', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;

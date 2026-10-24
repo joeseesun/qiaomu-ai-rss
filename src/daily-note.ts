@@ -34,9 +34,11 @@ export function dailyNotePath(settings: DailyNoteSettings, now: DateFormatter = 
   return normalizePath(`${settings.folder ? `${settings.folder}/` : ''}${dated}.md`);
 }
 
-export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string; template?: string }
-export function articleNoteUrl(options: CaptureOptions): string {
+export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string; template?: string; section?: string }
+export function articleNoteUrl(options: CaptureOptions, section = ''): string {
   const params = new URLSearchParams({ vault: options.vault || '', article: options.article || '', mode: options.mode || 'original' });
+  const heading = section.replace(/\s+/g, ' ').trim();
+  if (heading) params.set('section', heading);
   return `obsidian://qiaomu-ai-rss?${params.toString().replace(/\+/g, '%20')}`;
 }
 export function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
@@ -78,12 +80,15 @@ export function excerptBlock(excerpt: string, entry: Entry, options: CaptureOpti
     const at = line.search(contentToken);
     if (at < 0) return line;
     const prefix = continuation(line.slice(0, at));
-    const value = prefix ? text.split('\n').map((part, index) => index && part.trim() ? prefix + part : part).join('\n') : text;
+    const value = prefix ? text.split('\n').map((part, index) => index && (part.trim() || quotePrefix.test(prefix)) ? prefix + part : part).join('\n') : text;
     return line.replace(contentToken, () => value);
   }).join('\n');
   const title = noteTitle(entry);
+  const section = markdownText(options.section?.replace(/\s+/g, ' ').trim() || '');
   const rendered = renderDailyNoteTemplate(filled
     .replace(/\{\{\s*source\s*\}\}/gi, () => `[${title}](<${url}>)`)
+    .replace(/\{\{\s*section\s*\}\}/gi, () => section ? ` · ${section}` : '')
+    .replace(/\{\{\s*section_link\s*\}\}/gi, () => `[${section || title}](<${options.article ? articleNoteUrl(options, options.section) : readingLink(entry, options) || ''}>)`)
     .replace(/\{\{\s*link\s*\}\}/gi, () => dailyNoteLink(entry, options))
     .replace(/\{\{\s*url\s*\}\}/gi, () => url), title, now);
   return template.search(contentToken) >= 0 ? rendered : `${rendered}\n\n${text}`;

@@ -2,7 +2,7 @@ import { FeedIndex } from './feed-index';
 import { ListWindow } from './list-window';
 import { LazyThumbnails } from './lazy-thumbnails';
 import { ToolbarTips } from './toolbar-tips';
-import type { OutlineContext } from './article-outline';
+import { jumpToArticleSection, type OutlineContext } from './article-outline';
 import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCuratedPages, filterCuratedEntries, keepCuratedEntry, pickNewCuratedSources, pickedSources } from './curated-sources';
 import type { RssApi } from './api';
 import type { CollectionItem } from './collection';
@@ -17,7 +17,7 @@ import { vaultSourceId } from './vault-source';
 import { enableImageDrag, prepareMarkdownImageDrags } from './image-drag';
 import { articleSelection } from './speech-source';
 import type { CaptureAction } from './selection';
-import { SelectionCapture } from './selection';
+import { SelectionCapture, selectionSection } from './selection';
 import { readingFonts, selectableFonts, fontFamily } from './fonts';
 import { articleFragment } from './content';
 import { saveArticlePdf } from './desktop-export';
@@ -177,13 +177,14 @@ export class ReaderView extends ItemView {
       if (!(target instanceof this.contentEl.ownerDocument.defaultView!.HTMLElement) || !target.closest('.qrs-article') || !this.bundle) return;
       event.preventDefault();
       const bundle = this.bundle, mode = this.mode, note = this.plugin.currentNote();
-      const selection = this.contentEl.ownerDocument.getSelection();
-      const prose = target.closest('.qrs-article')?.querySelector('.qrs-prose');
-      const excerpt = selection && prose?.contains(selection.anchorNode) && prose.contains(selection.focusNode) ? selection.toString().trim() : '';
+      const prose = target.closest('.qrs-article')?.querySelector<HTMLElement>('.qrs-prose');
+      const range = articleSelection(prose);
+      const excerpt = range?.toString().trim() || '';
+      const section = selectionSection(prose, range, titleOf(bundle.entry));
       const append = async (current: boolean) => {
         try {
           this.plugin.remember(bundle);
-          const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, mode, current && note ? note : undefined);
+          const result = await this.plugin.appendToDailyNote(bundle.entry, excerpt, mode, current && note ? note : undefined, section);
           new Notice(result.added ? t('notice.appendedToNote', { name: result.file.basename }) : t('notice.alreadyInNote'));
         } catch (error) { new Notice(error instanceof Error ? error.message : t('notice.cannotAppend')); }
       };
@@ -196,7 +197,7 @@ export class ReaderView extends ItemView {
         menu.addSeparator().addItem(item => item.setTitle(t('capture.copyLink')).setIcon('copy').onClick(async () => { try { await this.contentEl.ownerDocument.defaultView!.navigator.clipboard.writeText(link); } catch { new Notice(t('capture.copyFailed')); } }));
         if (this.plugin.state.settings.labCollection) menu.addItem(item => item.setTitle(t('lab.apply')).setIcon('file-audio').onClick(() => this.plugin.submitCollection(link)));
       }
-      const speechRange = articleSelection(prose as HTMLElement | null);
+      const speechRange = range;
       if (speechRange) menu.addSeparator().addItem(item => item.setTitle(t('speech.selection')).setIcon('volume-2').onClick(() => this.plugin.speech.start(this, speechRange)));
       const snapshot = this.agentSnapshot();
       if (snapshot && agentAvailable(this.app)) menu.addSeparator().addItem(item => item.setTitle(t('capture.askAi')).setIcon('sparkles').onClick(() => { void askAgent(this.app, snapshot, excerpt); }));
@@ -206,18 +207,19 @@ export class ReaderView extends ItemView {
       const bundle = this.bundle, mode = this.mode;
       if (!bundle || !this.plugin.state.settings.selectionPopup) return null;
       const note = this.plugin.currentNote();
-      const capture = async (text: string, current: boolean) => {
+      const capture = async (text: string, range: Range, current: boolean) => {
+        const section = selectionSection(this.reader.querySelector<HTMLElement>('.qrs-prose'), range, titleOf(bundle.entry));
         try {
           this.plugin.remember(bundle);
           const result = current && note
-            ? await this.plugin.appendToDailyNote(bundle.entry, text, mode, note)
-            : await this.plugin.noteArticle(bundle.entry, text, mode);
+            ? await this.plugin.appendToDailyNote(bundle.entry, text, mode, note, section)
+            : await this.plugin.noteArticle(bundle.entry, text, mode, section);
           new Notice(result.added ? t('notice.excerptAddedTo', { name: result.file.basename }) : t('notice.excerptAlready'));
         } catch (error) { new Notice(error instanceof Error ? error.message : t('notice.excerptFailed')); }
       };
       const actions: CaptureAction[] = [
-        { label: t('capture.appendDaily'), icon: 'calendar-plus', save: (text: string) => capture(text, false) },
-        { label: note ? t('capture.appendCurrent', { name: note.basename }) : t('capture.appendCurrentEmpty'), icon: 'file-pen-line', disabled: !note, save: (text: string) => capture(text, true) },
+        { label: t('capture.appendDaily'), icon: 'calendar-plus', save: (text, range) => capture(text, range, false) },
+        { label: note ? t('capture.appendCurrent', { name: note.basename }) : t('capture.appendCurrentEmpty'), icon: 'file-pen-line', disabled: !note, save: (text, range) => capture(text, range, true) },
       ];
       // Only when Qiaomu Agent is installed and enabled; checked each time the popup opens.
       const snapshot = agentAvailable(this.app) ? this.agentSnapshot() : null;
@@ -1042,13 +1044,13 @@ export class ReaderView extends ItemView {
   }
   /** Opens one article from outside the list, e.g. from Qiaomu Home. */
   openEntry(entry: Entry) { void this.openArticle(entry); }
-  showSavedArticle(bundle: Bundle, mode: Mode) {
+  showSavedArticle(bundle: Bundle, mode: Mode, section = '') {
     if (this.plugin.articleHidden(bundle.entry)) { new Notice(t(this.plugin.localArticleDeleted(bundle.entry) ? 'localDelete.done' : 'moderation.deleted')); return; }
     this.stopRestoring();
     this.articleVersion++; this.articleLoading = false; this.articleFailed = false;
     this.bundle = bundle; this.mode = mode; this.message = ''; this.audioDock?.open(bundle.entry);
     this.reader.setAttribute('aria-busy', 'false'); this.contentEl.addClass('qrs-has-article');
-    this.renderReader(); this.reader.scrollTop = 0; this.lastReaderTop = 0; this.reader.focus({ preventScroll: true }); this.renderList();
+    this.reader.scrollTop = 0; this.lastReaderTop = 0; this.renderReader(false, section); this.reader.focus({ preventScroll: true }); this.renderList();
   }
   private readerFeedback(parent: Element, bundle: Bundle) {
     const feedback = parent.createDiv({ cls: 'qrs-feedback', attr: { role: 'status' } });
@@ -1109,7 +1111,7 @@ export class ReaderView extends ItemView {
       img.replaceWith(holder); holder.append(img); this.imageObserver.observe(img);
     }
   }
-  private renderReader(keepContent = false) {
+  private renderReader(keepContent = false, section = '') {
     this.toolbarTips?.hide();
     this.selectionCapture?.clear();
     const active = this.contentEl.ownerDocument.activeElement;
@@ -1284,7 +1286,10 @@ export class ReaderView extends ItemView {
           .then(async () => {
             if (this.closed || !this.reader.contains(prose)) return;
             await prepareMarkdownImageDrags(this.app, this.plugin.images, prose, bundle.entry.markdownPath || '');
-            if (!this.closed && this.reader.contains(prose)) this.plugin.refreshArticleOutline(this);
+            if (!this.closed && this.reader.contains(prose)) {
+              this.plugin.refreshArticleOutline(this);
+              jumpToArticleSection(this.outlineContext(), section);
+            }
           })
           .catch(() => {
             if (this.closed || !this.reader.contains(prose)) return;
@@ -1298,6 +1303,7 @@ export class ReaderView extends ItemView {
     } catch { article.createDiv({ cls: 'qrs-empty', text: t('reader.renderFailed') }); }
     this.reader.scrollTop = scroll; this.restoreOffsets();
     this.plugin.refreshArticleOutline(this);
+    if (bundle.entry.origin !== 'vault') jumpToArticleSection(this.outlineContext(), section);
     notifyContextChanged(this.app, this.plugin.manifest.id);
   }
   outlineContext(): OutlineContext | null {
