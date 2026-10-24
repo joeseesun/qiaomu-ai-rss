@@ -1,11 +1,11 @@
 ## 中文
 
-- 修复部分 AI 改写图片显示为 `![image` 的问题，兼容已有缓存中的图片括号错误，重新打开文章即可生效。
-- 保留正常图片、代码示例、链接和关闭远程图片的行为。未变更文章原文、改写正文或用户数据。
-- 已检查 Latent Space DeepInfer 文章。验证记录见 docs/image-markdown-progress.md；实体手机与 Windows 未实机验证。
+- 「乔木频道 → 播客」新增 8 个中文播客精读源：张小珺商业访谈录、42章经、晚点聊、十字路口、AI炼金术、三五环、知行小酒馆、面基。每期是基于节目转写整理的精读全文，附节目音频。
+- 以后乔木新增的精读站会自动出现在播客频道里，不用再等插件更新。英文精读站排序不变。
+- 已通过单元测试与类型检查；实体手机与 Windows 未实机验证。
 
 ## English
 
-- Recover images displayed as literal Markdown in AI rewrites, including malformed image references already stored in the cache. Reopen the article after updating.
-- Preserve valid images, code examples, links and the remote-image preference. Article content and user data are unchanged.
-- Checked the Latent Space DeepInfer article. See docs/image-markdown-progress.md for verification; physical phones and Windows remain untested.
+- Qiaomu Channels → Podcasts now lists eight Chinese-podcast close readings (Zhang Xiaojun, 42zhangjing, LateTalk, Crossing, AI Alchemy, 35huan, Zhixing Tavern, Mianji), each with the full article and the episode audio.
+- Future Qiaomu close-reading sites appear in the Podcasts channel automatically, without a plugin update. The order of the English sites is unchanged.
+- Covered by unit tests and type checking; physical phones and Windows remain untested.
