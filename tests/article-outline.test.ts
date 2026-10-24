@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ArticleOutline, articleHeadings } from '../src/article-outline';
+import { ArticleOutline, articleHeadings, jumpToArticleSection } from '../src/article-outline';
 import { articleFragment } from '../src/content';
 import type { Bundle } from '../src/model';
 
@@ -64,6 +64,22 @@ function fixture() {
 }
 
 describe('outline navigation and lifecycle', () => {
+  it('reuses outline positioning for a saved section and leaves no navigation observers behind', () => {
+    const f = fixture(); f.outline.dispose();
+    jumpToArticleSection({ title: 'Article', loading: false, prose: f.scroller.querySelector('.qrs-prose'), scroller: f.scroller, beforeJump: f.beforeJump }, ' End\n ');
+    expect(f.scroller.scrollTop).toBe(1000);
+    expect(f.beforeJump).toHaveBeenCalledOnce();
+    expect(f.disconnect).toHaveBeenCalledTimes(2);
+  });
+  it('leaves the article at its current position when the saved heading no longer exists', () => {
+    const f = fixture(); f.outline.dispose(); f.scroller.scrollTop = 42;
+    const context = { title: 'Article', loading: false, prose: f.scroller.querySelector<HTMLElement>('.qrs-prose'), scroller: f.scroller, beforeJump: f.beforeJump };
+    jumpToArticleSection(context, 'Missing');
+    jumpToArticleSection(context, '');
+    jumpToArticleSection(null, 'Heading');
+    expect(f.scroller.scrollTop).toBe(42);
+    expect(f.beforeJump).not.toHaveBeenCalled();
+  });
   it('jumps to the exact duplicate heading below the toolbar and follows scrolling without remeasuring each frame', () => {
     const f = fixture(); f.flush();
     expect(f.selected).toHaveBeenLastCalledWith(0);
