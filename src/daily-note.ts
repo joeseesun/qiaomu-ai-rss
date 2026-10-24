@@ -42,7 +42,8 @@ export function articleNoteUrl(options: CaptureOptions): string {
 export function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
 function noteTitle(entry: Entry): string { return markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || t('untitled.article')); }
 function readingLink(entry: Entry, options: CaptureOptions): string | null {
-  return options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
+  if (options.article) return articleNoteUrl(options);
+  return entry.link ? safeUrl(entry.link) : null;
 }
 function originalUrl(entry: Entry, options: CaptureOptions): string | null {
   return (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
@@ -61,7 +62,6 @@ export function cleanCaptureMarkers(content: string): string {
 }
 
 const contentToken = /\{\{\s*content\s*\}\}/gi;
-const hasContentToken = /\{\{\s*content\s*\}\}/i;
 const listPrefix = /^\s*(?:[-*+]|\d+[.)])\s/;
 const quotePrefix = /^\s*(?:>\s*)+/;
 /** Keeps later excerpt paragraphs inside the list item or quote the template puts the content in. */
@@ -81,11 +81,12 @@ export function excerptBlock(excerpt: string, entry: Entry, options: CaptureOpti
     const value = prefix ? text.split('\n').map((part, index) => index && part.trim() ? prefix + part : part).join('\n') : text;
     return line.replace(contentToken, () => value);
   }).join('\n');
+  const title = noteTitle(entry);
   const rendered = renderDailyNoteTemplate(filled
-    .replace(/\{\{\s*source\s*\}\}/gi, () => `[${noteTitle(entry)}](<${url}>)`)
+    .replace(/\{\{\s*source\s*\}\}/gi, () => `[${title}](<${url}>)`)
     .replace(/\{\{\s*link\s*\}\}/gi, () => dailyNoteLink(entry, options))
-    .replace(/\{\{\s*url\s*\}\}/gi, () => url), noteTitle(entry), now);
-  return hasContentToken.test(template) ? rendered : `${rendered}\n\n${text}`;
+    .replace(/\{\{\s*url\s*\}\}/gi, () => url), title, now);
+  return template.search(contentToken) >= 0 ? rendered : `${rendered}\n\n${text}`;
 }
 export function appendDailyNoteLink(content: string, entry: Entry, options: CaptureOptions = {}): { content: string; added: boolean } {
   content = cleanCaptureMarkers(repairArticleLinks(content));

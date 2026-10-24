@@ -146,6 +146,15 @@ describe('untrusted remote content', () => {
     expect(excerptBlock('Body', bundle.entry, { template: '## 摘录' }, now)).toBe('## 摘录\n\nBody');
     expect(excerptBlock('Body', bundle.entry, {}, now)).toBe('Body');
   });
+  it.each([
+    ['- {{CONTENT}}\n\n> {{ content }}', '- A\n\n  B\n\n> A\n\n> B'],
+    ['1. {{content}}', '1. A\n\n   B'],
+    ['Before {{content}}', 'Before A\n\nB'],
+    ['{{unknown}}', '{{unknown}}\n\nA\n\nB'],
+    ['   ', 'A\n\nB'],
+  ])('preserves excerpt formatting for template %j', (template, expected) => {
+    expect(excerptBlock('A\n\nB', bundle.entry, { template })).toBe(expected);
+  });
   it('expands link, url and title tokens with the saved reading link', () => {
     const block = excerptBlock('Quote', bundle.entry, { vault: 'QA', article: 'a', template: '{{content}}\n\n-- {{title}} · {{link}} · {{url}}' });
     expect(block).toContain('-- Title: "quotes" \\-\\-\\- · [Title: "quotes" \\-\\-\\-](<obsidian://qiaomu-ai-rss?');
