@@ -1,6 +1,6 @@
 {
   "name": "qiaomu-ai-rss",
-  "version": "0.32.5",
+  "version": "0.32.6",
   "description": "Read Qiaomu and personal RSS feeds, then add article links to your Daily Note.",
   "license": "GPL-3.0-only",
   "private": true,
@@ -21,7 +21,7 @@
     "marked": "^18.0.11",
     "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2",
-    "zod": "^4.5.4"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@codemirror/state": "6.5.0",

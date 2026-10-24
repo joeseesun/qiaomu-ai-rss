@@ -4,10 +4,14 @@
 - 在「关于」或命令面板随时重新查看，也可关闭自动提示。
 - 多个乔木插件的提示依次显示；更新说明离线可读。
 
+- 更新受公告影响的依赖到修复版。
+
 ### English
 
 - Show bundled release notes once after installing a new version.
 - Reopen notes from About or the command palette; automatic display is optional.
 - Qiaomu update dialogs are queued instead of stacked and work offline.
+
+- Update affected dependencies to patched versions.
 
 Validation: repository checks and real Obsidian 1.13.7 startup, reload, About, popout Settings, light/dark, narrow layout, locale fixtures and opt-out checks. Physical mobile devices were not tested in this release.
