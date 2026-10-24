@@ -3,7 +3,7 @@ import { ListWindow } from './list-window';
 import { LazyThumbnails } from './lazy-thumbnails';
 import { ToolbarTips } from './toolbar-tips';
 import type { OutlineContext } from './article-outline';
-import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCuratedPages, filterCuratedEntries, keepCuratedEntry, pickedSources } from './curated-sources';
+import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCuratedPages, filterCuratedEntries, keepCuratedEntry, pickNewCuratedSources, pickedSources } from './curated-sources';
 import type { RssApi } from './api';
 import type { CollectionItem } from './collection';
 import { todayLabel } from './daily-note';
@@ -703,6 +703,7 @@ export class ReaderView extends ItemView {
     }
     if (!current()) return;
     state.sources = result.sources;
+    pickNewCuratedSources(state);
     // A local UI/storage error must not be reported as a failed network request.
     const apply = async () => {
       if (!current()) return;

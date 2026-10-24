@@ -38,6 +38,28 @@ export function keepCuratedEntry(state: State, entry: Entry): boolean {
   const picked = state.settings.pickedSourceIds;
   return picked === null || entry.origin === 'local' || entry.origin === 'vault' || !!entry.podcastSlug || state.settings.followedPodcasts.includes(entry.sourceId) || picked.includes(entry.sourceId);
 }
+/** Sources a default (unpicked) reader sees: the editorial channels plus reader submissions. */
+export function defaultCuratedIds(sources: Source[]): string[] {
+  return [...readerChannelSources(sources), ...communityChannelSources(sources)].map(source => source.id);
+}
+// Added to the default catalog in 0.32.2, before custom selections remembered which sources were already seen.
+// Readers migrating from 0.32.2 or earlier get these as new; every other current source counts as already seen.
+const ADDED_BEFORE_KNOWN_TRACKING = ['zhangxiaojun-zh', '42zhangjing-zh', 'latetalk-zh', 'crossing-zh', 'aialchemy-zh', '35huan-zh', 'zhixing-zh', 'mianji-zh'];
+/**
+ * With a custom selection, sources that join the default catalog later are picked automatically, once:
+ * a source the reader has already seen (and possibly unticked) is never re-added. Returns whether picks changed.
+ */
+export function pickNewCuratedSources(state: State): boolean {
+  const picked = state.settings.pickedSourceIds;
+  if (picked === null || !state.sources.length) return false;
+  const catalog = defaultCuratedIds(state.sources);
+  const known = new Set(state.settings.knownSourceIds ?? catalog.filter(id => !ADDED_BEFORE_KNOWN_TRACKING.includes(id)));
+  const fresh = catalog.filter(id => !known.has(id) && !picked.includes(id));
+  state.settings.knownSourceIds = [...new Set([...known, ...catalog])].slice(-600);
+  if (!fresh.length) return false;
+  state.settings.pickedSourceIds = [...picked, ...fresh].slice(0, 300);
+  return true;
+}
 export function filterCuratedEntries(state: State, entries: Entry[]): Entry[] {
   return entries.filter(entry => keepCuratedEntry(state, entry));
 }

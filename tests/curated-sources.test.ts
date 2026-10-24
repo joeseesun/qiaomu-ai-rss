@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { initialState, type Entry } from '../src/model';
-import { applyCuratedPicks, curatedChannels, curatedCommunityChannels, filterCuratedEntries, pickedSources } from '../src/curated-sources';
+import { applyCuratedPicks, curatedChannels, curatedCommunityChannels, filterCuratedEntries, pickNewCuratedSources, pickedSources } from '../src/curated-sources';
 import { qiaomuChannelDivider, qiaomuDividers } from '../src/discovery';
 const entry = (sourceId: string, origin?: Entry['origin']): Entry => ({ id: sourceId, sourceId, title: sourceId, ...(origin ? { origin } : {}) });
 const sources = [
@@ -65,5 +65,40 @@ describe('curated source picks', () => {
       { id: 'community', name: 'Community', category: 'community' },
     ];
     expect(catalog.map(qiaomuChannelDivider)).toEqual(['微信公众号', '播客', 'Newsletter', '博客与资讯', '博客与资讯', '博客与资讯']);
+  });
+});
+
+describe('new Qiaomu sources with a custom selection', () => {
+  const zh = (id: string) => ({ id, name: id, category: 'podcast', siteUrl: `https://${id.replace(/-zh$/, '')}.qiaomu.ai`, enabled: true });
+  const blog = (id: string) => ({ id, name: id, category: 'article', siteUrl: `https://${id}.example`, enabled: true });
+  it('picks a source that joins the default catalog after the selection was saved, but only once', () => {
+    const state = initialState({ sources: [zh('lex-zh'), blog('news')], settings: { pickedSourceIds: ['news'], knownSourceIds: ['lex-zh', 'news'] } });
+    state.sources = [...state.sources, zh('newsite-zh')];
+    expect(pickNewCuratedSources(state)).toBe(true);
+    expect(state.settings.pickedSourceIds).toEqual(['news', 'newsite-zh']);
+    // The reader unticks it again: a later refresh must not bring it back
+    state.settings.pickedSourceIds = ['news'];
+    expect(pickNewCuratedSources(state)).toBe(false);
+    expect(state.settings.pickedSourceIds).toEqual(['news']);
+  });
+  it('never re-adds a source the reader saw and left unticked', () => {
+    const state = initialState({ sources: [zh('lex-zh'), blog('news')], settings: { pickedSourceIds: ['news'], knownSourceIds: ['lex-zh', 'news'] } });
+    expect(pickNewCuratedSources(state)).toBe(false);
+    expect(state.settings.pickedSourceIds).toEqual(['news']);
+  });
+  it('migrates a 0.32.2 selection: the eight Chinese close readings are new, older sources stay as picked', () => {
+    const state = initialState({ sources: [zh('lex-zh'), zh('mianji-zh'), zh('zhangxiaojun-zh'), blog('news')], settings: { pickedSourceIds: ['news'] } });
+    expect(state.settings.knownSourceIds).toBeNull();
+    expect(pickNewCuratedSources(state)).toBe(true);
+    expect(state.settings.pickedSourceIds).toEqual(['news', 'mianji-zh', 'zhangxiaojun-zh']);
+    expect(state.settings.knownSourceIds).toEqual(expect.arrayContaining(['lex-zh', 'mianji-zh', 'zhangxiaojun-zh', 'news']));
+  });
+  it('leaves the default (unpicked) catalog and an empty catalog alone', () => {
+    const defaults = initialState({ sources: [zh('newsite-zh')] });
+    expect(pickNewCuratedSources(defaults)).toBe(false);
+    expect(defaults.settings.pickedSourceIds).toBeNull();
+    const offline = initialState({ settings: { pickedSourceIds: ['news'] } });
+    expect(pickNewCuratedSources(offline)).toBe(false);
+    expect(offline.settings.knownSourceIds).toBeNull();
   });
 });

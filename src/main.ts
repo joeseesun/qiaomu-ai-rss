@@ -6,7 +6,7 @@ import { SaveQueue } from './save-queue';
 import { RssSpeech } from './speech';
 import { SpeechSettingsModal } from './speech-settings';
 import { CuratedSourcePicker } from './curated-source-picker';
-import { applyCuratedPicks } from './curated-sources';
+import { applyCuratedPicks, defaultCuratedIds } from './curated-sources';
 import { watchPaneDividers } from "./pane-dividers";
 import { LabSettingsModal } from './lab-settings';
 import { applyDeletedEntries, remoteEntry } from './moderation';
@@ -420,15 +420,17 @@ export default class QiaomuRssPlugin extends Plugin {
   }
   pickCuratedSources() { new CuratedSourcePicker(this).open(); }
   async saveCuratedSources(ids: string[] | null, sources = this.state.sources) {
-    const previous = { ids: this.state.settings.pickedSourceIds, sources: this.state.sources, entries: this.state.entries,
+    const previous = { ids: this.state.settings.pickedSourceIds, known: this.state.settings.knownSourceIds, sources: this.state.sources, entries: this.state.entries,
       channels: structuredClone(this.state.channelStates), last: this.state.settings.lastSource };
     this.state.settings.pickedSourceIds = ids === null ? null : [...new Set(ids)];
+    // Everything in the catalog the reader just reviewed counts as seen, so an unticked source stays unticked.
+    this.state.settings.knownSourceIds = ids === null ? null : defaultCuratedIds(sources);
     this.state.sources = sources;
     const last = this.state.settings.lastSource;
     if (ids !== null && sources.some(source => source.id === last) && !ids.includes(last) && !this.state.settings.followedPodcasts.includes(last)) this.state.settings.lastSource = '';
     try { await this.persist(); }
     catch (error) {
-      this.state.settings.pickedSourceIds = previous.ids; this.state.sources = previous.sources;
+      this.state.settings.pickedSourceIds = previous.ids; this.state.settings.knownSourceIds = previous.known; this.state.sources = previous.sources;
       this.state.entries = previous.entries; this.state.channelStates = previous.channels; this.state.settings.lastSource = previous.last;
       throw error;
     }
