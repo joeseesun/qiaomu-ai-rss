@@ -81,9 +81,11 @@ export const stateSchema = z.object({
     selectionPopup: z.boolean().default(true), markdownFolders: z.array(z.string()).default([]), followedPodcasts: z.array(z.string()).default([]), podcastNames: z.record(z.string(), z.string()).default({}),
     excerptTemplate: z.string().max(4000).default(DEFAULT_EXCERPT_TEMPLATE),
     pickedSourceIds: z.array(z.string().max(120)).max(300).nullable().default(null),
+    // Default-catalog sources the reader has already seen while using a custom selection; anything outside it is new and gets picked.
+    knownSourceIds: z.array(z.string().max(120)).max(600).nullable().default(null),
     lastSource: z.string().max(300).default(''), articleFolder: z.string().default('Qiaomu RSS/文章'), pdfDirectory: z.string().default(''),
   }).default({ speechSetupPending: false, speechHighlight: DEFAULT_HIGHLIGHT, tts: { provider: 'edge', profiles: {}, rate: 1, welcomed: false }, labCollection: false, labInviteVerified: false, labInviteCode: '', baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', articleFolder: 'Qiaomu RSS/文章', pdfDirectory: '', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
-    readingTheme: 'auto', fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [], followedPodcasts: [], podcastNames: {}, excerptTemplate: DEFAULT_EXCERPT_TEMPLATE, pickedSourceIds: null }),
+    readingTheme: 'auto', fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [], followedPodcasts: [], podcastNames: {}, excerptTemplate: DEFAULT_EXCERPT_TEMPLATE, pickedSourceIds: null, knownSourceIds: null }),
   collectionIdentity: z.object({ id: z.string(), key: z.string() }).nullable().default(null),
   collectionAdminSession: z.object({ token: z.string(), expiresAt: z.number(), name: z.string(), baseUrl: z.string() }).nullable().default(null),
   collectionJobs: z.array(collectionJobSchema).default([]),

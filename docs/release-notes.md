@@ -1,11 +1,11 @@
 ## 中文
 
-- 「乔木频道 → 播客」新增 8 个中文播客精读源：张小珺商业访谈录、42章经、晚点聊、十字路口、AI炼金术、三五环、知行小酒馆、面基。每期是基于节目转写整理的精读全文，附节目音频。
-- 以后乔木新增的精读站会自动出现在播客频道里，不用再等插件更新。英文精读站排序不变。
+- 乔木精选的播客不再重复：张小珺商业访谈录、42章经、晚点聊已有精读站，只保留精读版，原来的小宇宙节目源不再同时出现。以后其他节目有了精读站，也按这个规则自动去重。
+- 自己在筛选里勾选过原始节目源的，保持你的选择不变。
 - 已通过单元测试与类型检查；实体手机与 Windows 未实机验证。
 
 ## English
 
-- Qiaomu Channels → Podcasts now lists eight Chinese-podcast close readings (Zhang Xiaojun, 42zhangjing, LateTalk, Crossing, AI Alchemy, 35huan, Zhixing Tavern, Mianji), each with the full article and the episode audio.
-- Future Qiaomu close-reading sites appear in the Podcasts channel automatically, without a plugin update. The order of the English sites is unchanged.
+- Qiaomu picks no longer list a podcast twice: Zhang Xiaojun, 42zhangjing and LateTalk now have close-reading sites, so only the close readings are shown and the original Xiaoyuzhou feeds are hidden. Future shows with a close-reading site are de-duplicated the same way.
+- If you explicitly ticked an original show in the picker, your selection is kept.
 - Covered by unit tests and type checking; physical phones and Windows remain untested.
