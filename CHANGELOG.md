@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.2
+
+- Feature every Qiaomu close-reading podcast source (id ending in `-zh` with a `*.qiaomu.ai` site) automatically, so new sites such as the eight Chinese-podcast close readings (张小珺、42章经、晚点聊、十字路口、AI炼金术、三五环、知行小酒馆、面基) appear under Qiaomu Channels → Podcasts without a plugin release.
+
 ## 0.32.1
 
 - Recover standalone HTTP(S) image references with unbalanced alt-text brackets in cached AI rewrites; keep normal Markdown, code examples and remote-image preferences unchanged.

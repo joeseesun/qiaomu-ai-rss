@@ -82,12 +82,19 @@ export function featuredXiaoyuzhouPodcasts(sources: Source[]): Source[] {
   return featuredXiaoyuzhouIds.map(id => available.get(id)).filter((source): source is Source => !!source);
 }
 // Qiaomu's own podcast sites publish full Chinese close-reading articles (with the
-// official audio) as RSS; Reader registers them as podcast sources with these ids.
-const qiaomuZhPodcastIds = ['lex-zh', 'allin-zh', 'nopriors-zh', 'cogrev-zh', 'trainingdata-zh', 'unsupervised-zh'] as const;
+// official audio) as RSS; Reader registers them as podcast sources with ids ending in "-zh"
+// and a *.qiaomu.ai site URL. Any such source is featured automatically, so a new site only
+// needs to be added in Reader, not here. This list only fixes the order of the first few.
+const qiaomuZhPodcastOrder = ['lex-zh', 'allin-zh', 'nopriors-zh', 'cogrev-zh', 'trainingdata-zh', 'unsupervised-zh'];
+export function isQiaomuZhPodcast(source: Source): boolean {
+  if (source.category !== 'podcast' || !source.id.endsWith('-zh')) return false;
+  try { return new URL(source.siteUrl || '').hostname.toLowerCase().endsWith('.qiaomu.ai'); } catch { return false; }
+}
 /** Podcasts shown as Qiaomu channels and mixed into the default feed: Qiaomu close readings first, then Xiaoyuzhou picks. */
 export function featuredPodcasts(sources: Source[]): Source[] {
-  const available = new Map(sources.filter(source => source.category === 'podcast' && source.enabled !== false).map(source => [source.id, source]));
-  const zh = qiaomuZhPodcastIds.map(id => available.get(id)).filter((source): source is Source => !!source);
+  const rank = (id: string) => { const i = qiaomuZhPodcastOrder.indexOf(id); return i < 0 ? qiaomuZhPodcastOrder.length : i; };
+  const zh = sources.filter(source => source.enabled !== false && isQiaomuZhPodcast(source))
+    .map((source, i) => ({ source, i })).sort((a, b) => rank(a.source.id) - rank(b.source.id) || a.i - b.i).map(x => x.source);
   return [...zh, ...featuredXiaoyuzhouPodcasts(sources)];
 }
 export function readerChannelSources(sources: Source[]): Source[] {

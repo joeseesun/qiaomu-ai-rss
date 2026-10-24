@@ -79,6 +79,13 @@ describe('local discovery catalog', () => {
     expect(sources.filter(item => channels.includes(item.id)).map(qiaomuChannelDivider)).toEqual(Array(6).fill('播客'));
     expect(featuredPodcasts(sources).map(item => item.id)).toEqual(['lex-zh', 'allin-zh', 'nopriors-zh', 'cogrev-zh', 'trainingdata-zh', 'zhangxiaojun']);
   });
+  it('features any Qiaomu close-reading site automatically, known English sites first', () => {
+    const source = (id: string, siteUrl = `https://${id.replace(/-zh$/, '')}.qiaomu.ai`) => ({ id, name: id, category: 'podcast', siteUrl, enabled: true });
+    const sources = [source('mianji-zh'), source('zhangxiaojun-zh'), source('lex-zh'), source('fake-zh', 'https://example.com'), source('42zhangjing-zh')];
+    expect(featuredPodcasts(sources).map(item => item.id)).toEqual(['lex-zh', 'mianji-zh', 'zhangxiaojun-zh', '42zhangjing-zh']);
+    expect(readerChannelSources(sources).map(item => item.id)).not.toContain('fake-zh');
+    expect(sources.filter(item => item.id !== 'fake-zh').map(qiaomuChannelDivider)).toEqual(Array(4).fill('播客'));
+  });
   it('shows selected Xiaoyuzhou shows as Qiaomu channels before subscription', () => {
     const source = (id: string, category: string, siteUrl?: string, enabled = true) => ({ id, name: id, category, siteUrl, enabled });
     const xy = (id: string) => source(id, 'podcast', `https://www.xiaoyuzhoufm.com/podcast/${id}`);
