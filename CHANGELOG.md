@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.4
+
+- List a show only once in Qiaomu picks: when a Xiaoyuzhou pick has its own Qiaomu close-reading site (`<id>-zh`), only the close reading is shown.
+
 ## 0.32.3
 
 - With a custom Qiaomu picks selection, sources that join the default catalog later are now picked automatically, once. Sources you have already seen and left unticked are never re-added. Readers coming from 0.32.2 or earlier get the eight new Chinese close-reading podcasts added to their selection.
