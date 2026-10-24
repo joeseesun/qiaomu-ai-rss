@@ -16,7 +16,7 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, type App, type SettingDefinitionItem, type SettingGroupItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type LocalDeletion, type Mode, type State } from './model';
+import { DEFAULT_EXCERPT_TEMPLATE, folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type LocalDeletion, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, captureMoment, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
 import { ReaderView, VIEW_TYPE } from './view';
 import { OutlineView, OUTLINE_VIEW_TYPE } from './outline-view';
@@ -594,7 +594,7 @@ export default class QiaomuRssPlugin extends Plugin {
       const bundle = this.state.cache[entry.id] || this.state.favorites[entry.id] || { entry, rewrite: entry.rewrite || null, translation: null, fetchedAt: Date.now() };
       this.state.savedArticles[id] = bundle;
       await this.persist();
-      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt };
+      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt, template: excerpt ? this.state.settings.excerptTemplate : '' };
       if (target && this.app.vault.getAbstractFileByPath(target.path) !== target) throw new Error(t('error.targetNoteMissing'));
       const settings = target ? { folder: '', format: '', template: '' } : await readDailyNoteSettings(this.app.vault);
       const path = target?.path ?? dailyNotePath(settings, now);
@@ -783,6 +783,18 @@ class RssSettings extends PluginSettingTab {
       setting.addText(text => { text.setValue(settings[key]); text.inputEl.addEventListener('change', () => { void save(text.getValue()).then(() => text.setValue(settings[key])); }); });
       setting.addButton(button => button.setButtonText(t('settings.choose')).onClick(() => new VaultFolderPicker(this.app, folder => { if (key === 'articleFolder' || folder.path !== '/') void save(folder.path).then(() => this.update()); else new Notice(t('notice.pickVaultFolder')); }).open()));
     } });
+    // Excerpt template: a multiline field saved when it loses focus, like the folder fields.
+    const templateSetting: SettingDefinitionItem = { name: t('settings.excerptTemplate.name'), desc: t('settings.excerptTemplate.desc'), render: setting => {
+      setting.settingEl.addClass('qrs-settings-template');
+      setting.addTextArea(area => {
+        area.setValue(settings.excerptTemplate).setPlaceholder(DEFAULT_EXCERPT_TEMPLATE);
+        area.inputEl.rows = 4;
+        area.inputEl.addEventListener('change', () => { settings.excerptTemplate = area.getValue().slice(0, 4000); void this.plugin.persist(); });
+      });
+      setting.addButton(button => button.setButtonText(t('settings.excerptTemplate.reset')).onClick(async () => {
+        settings.excerptTemplate = DEFAULT_EXCERPT_TEMPLATE; await this.plugin.persist(); this.update();
+      }));
+    } };
     const definitions: SettingDefinitionItem[] = [
       { type: 'group', heading: t('settings.groupReading'), items: [
         { name: t('settings.selectionPopup.name'), desc: t('settings.selectionPopup.desc'), render: setting => {
@@ -869,7 +881,7 @@ class RssSettings extends PluginSettingTab {
       } }, definitions[2], definitions[1], { name: t('localDelete.title'), desc: t('localDelete.description'), render: setting => {
         setting.addButton(button => button.setButtonText(t('localDelete.manage')).onClick(() => this.plugin.openDeletedArticles()));
       } }],
-      excerpt: [definitions[3], excerpt, definitions[7]],
+      excerpt: [definitions[3], excerpt, templateSetting, definitions[7]],
       lab: [{ name: t('lab.collection'), desc: t('lab.entryDescription'), render: setting => {
         setting.addButton(button => button.setButtonText(t('lab.manage')).onClick(() => this.plugin.openCollectionSettings()));
       } }],

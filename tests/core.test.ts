@@ -2,8 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RssApi } from '../src/api';
 import { articleFragment } from '../src/content';
-import { articleNoteUrl, appendDailyNoteLink, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate } from '../src/daily-note';
-import { folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle } from '../src/model';
+import { articleNoteUrl, appendDailyNoteLink, dailyNoteLink, dailyNotePath, excerptBlock, renderDailyNoteTemplate } from '../src/daily-note';
+import { DEFAULT_EXCERPT_TEMPLATE, folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle } from '../src/model';
 const bundle: Bundle = {
   entry: { id: 'abc123', sourceId: 'example', title: 'Title: "quotes"\n---', link: 'https://example.com/news', content: '<h2>Original</h2><p>Full text</p>' },
   rewrite: { body: '# Title\n\n**Hello** [source](/path)\n\n```dataviewjs\nthrow Error("never execute");\n```' },
@@ -131,6 +131,26 @@ describe('untrusted remote content', () => {
     const link = dailyNoteLink(entry, { vault: 'Qiaomu RSS QA', article: 'vault:file' });
     expect(link).toContain('[原文](<obsidian://open?vault=Qiaomu%20RSS%20QA&file=Clippings%2FMy%20article.md>)');
   });
+  it('renders excerpts through the configured template with a dash source line', () => {
+    const entry = { ...bundle.entry, title: 'Plain title' };
+    const options = { vault: 'QA', article: 'a', excerpt: 'First line\n\nSecond line', template: DEFAULT_EXCERPT_TEMPLATE };
+    const first = appendDailyNoteLink('', entry, options);
+    expect(first.content).toContain('- First line\n\n  Second line\n\n  -- [Plain title](<https://example.com/news>)');
+    expect(appendDailyNoteLink(first.content, entry, options).added).toBe(false);
+    expect(appendDailyNoteLink(first.content, entry, { ...options, excerpt: 'Third' }).added).toBe(true);
+  });
+  it('keeps excerpts inert inside custom templates, passes HTML through and never drops the text', () => {
+    const now = { format: (format: string) => ({ 'YYYY-MM-DD': '2026-10-24', 'HH:mm': '09:05' })[format] || format } as never;
+    expect(excerptBlock('<script>bold</script>', bundle.entry, { template: '<div>{{content}}</div>' }, now)).toBe('<div>\\<script\\>bold\\</script\\></div>');
+    expect(excerptBlock('A\nB', bundle.entry, { template: '> {{content}}\n> — {{date}} {{time}}' }, now)).toBe('> A\n> B\n> — 2026-10-24 09:05');
+    expect(excerptBlock('Body', bundle.entry, { template: '## 摘录' }, now)).toBe('## 摘录\n\nBody');
+    expect(excerptBlock('Body', bundle.entry, {}, now)).toBe('Body');
+  });
+  it('expands link, url and title tokens with the saved reading link', () => {
+    const block = excerptBlock('Quote', bundle.entry, { vault: 'QA', article: 'a', template: '{{content}}\n\n-- {{title}} · {{link}} · {{url}}' });
+    expect(block).toContain('-- Title: "quotes" \\-\\-\\- · [Title: "quotes" \\-\\-\\-](<obsidian://qiaomu-ai-rss?');
+    expect(block).toContain('https://example.com/news');
+  });
   it('respects daily-note folders, formats and common template tokens', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;
     expect(dailyNotePath({ folder: 'Daily', format: 'YYYY/MM/DD', template: '' }, now)).toBe('Daily/2026/09/07.md');
@@ -159,6 +179,7 @@ describe('paths and persistence', () => {
   });
   it('defaults the selection popup on and persists folder sources and opt-in', () => {
     expect(initialState({}).settings.selectionPopup).toBe(true);
+    expect(initialState({}).settings.excerptTemplate).toBe(DEFAULT_EXCERPT_TEMPLATE);
     const state = initialState({ settings: { selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] } });
     expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] });
   });

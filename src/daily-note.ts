@@ -34,18 +34,24 @@ export function dailyNotePath(settings: DailyNoteSettings, now: DateFormatter = 
   return normalizePath(`${settings.folder ? `${settings.folder}/` : ''}${dated}.md`);
 }
 
-export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string }
+export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string; template?: string }
 export function articleNoteUrl(options: CaptureOptions): string {
   const params = new URLSearchParams({ vault: options.vault || '', article: options.article || '', mode: options.mode || 'original' });
   return `obsidian://qiaomu-ai-rss?${params.toString().replace(/\+/g, '%20')}`;
 }
 export function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
+function noteTitle(entry: Entry): string { return markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || t('untitled.article')); }
+function readingLink(entry: Entry, options: CaptureOptions): string | null {
+  return options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
+}
+function originalUrl(entry: Entry, options: CaptureOptions): string | null {
+  return (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
+}
 export function dailyNoteLink(entry: Entry, options: CaptureOptions = {}): string {
-  const link = options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
+  const link = readingLink(entry, options);
   if (!link) fail('error.noArticleLink');
-  const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || t('untitled.article'));
-  const original = (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
-  return `[${title}](<${link}>)` + (options.article && original ? ` · [原文](<${original}>)` : '');
+  const original = originalUrl(entry, options);
+  return `[${noteTitle(entry)}](<${link}>)` + (options.article && original ? ` · [原文](<${original}>)` : '');
 }
 export function repairArticleLinks(content: string): string {
   return content.replace(/obsidian:\/\/qiaomu-ai-rss\?[^\s<>)]*/g, url => url.replace(/\+/g, '%20'));
@@ -53,11 +59,39 @@ export function repairArticleLinks(content: string): string {
 export function cleanCaptureMarkers(content: string): string {
   return content.replace(/^[ \t]*<!-- qrs-article:[^\r\n]*?-->[ \t]*(?:\r?\n)?/gm, '');
 }
+
+const contentToken = /\{\{\s*content\s*\}\}/gi;
+const hasContentToken = /\{\{\s*content\s*\}\}/i;
+const listPrefix = /^\s*(?:[-*+]|\d+[.)])\s/;
+const quotePrefix = /^\s*(?:>\s*)+/;
+/** Keeps later excerpt paragraphs inside the list item or quote the template puts the content in. */
+function continuation(prefix: string): string {
+  return quotePrefix.exec(prefix)?.[0] ?? (listPrefix.test(prefix) ? ' '.repeat(prefix.length) : '');
+}
+/** Renders one captured excerpt through the template; an empty template keeps the escaped plain paragraph. */
+export function excerptBlock(excerpt: string, entry: Entry, options: CaptureOptions = {}, now: DateFormatter = currentMoment()): string {
+  const text = markdownText(excerpt.trim());
+  const template = options.template?.trim();
+  if (!template) return text;
+  const url = originalUrl(entry, options) ?? readingLink(entry, options) ?? '';
+  const filled = template.split('\n').map(line => {
+    const at = line.search(contentToken);
+    if (at < 0) return line;
+    const prefix = continuation(line.slice(0, at));
+    const value = prefix ? text.split('\n').map((part, index) => index && part.trim() ? prefix + part : part).join('\n') : text;
+    return line.replace(contentToken, () => value);
+  }).join('\n');
+  const rendered = renderDailyNoteTemplate(filled
+    .replace(/\{\{\s*source\s*\}\}/gi, () => `[${noteTitle(entry)}](<${url}>)`)
+    .replace(/\{\{\s*link\s*\}\}/gi, () => dailyNoteLink(entry, options))
+    .replace(/\{\{\s*url\s*\}\}/gi, () => url), noteTitle(entry), now);
+  return hasContentToken.test(template) ? rendered : `${rendered}\n\n${text}`;
+}
 export function appendDailyNoteLink(content: string, entry: Entry, options: CaptureOptions = {}): { content: string; added: boolean } {
   content = cleanCaptureMarkers(repairArticleLinks(content));
   const title = dailyNoteLink(entry, options);
   const excerpt = options.excerpt?.trim();
-  const text = excerpt ? markdownText(excerpt) : '';
+  const text = excerpt ? excerptBlock(excerpt, entry, options) : '';
   // Upgrade an existing capture's header without changing its title or reading-version link.
   const originalSuffix = title.slice(title.indexOf('>)') + 2);
   if (options.article && originalSuffix) {

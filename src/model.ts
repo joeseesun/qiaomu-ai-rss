@@ -60,6 +60,8 @@ export const channelStateSchema = z.object({
 export type ChannelState = z.infer<typeof channelStateSchema>;
 export const collectionJobSchema = z.object({ id: z.string(), url: z.string(), baseUrl: z.string(), status: z.enum(['queued', 'running', 'complete', 'failed']).default('queued'), title: z.string().default(''), originalTitle: z.string().optional(), entryId: z.string().optional(), notified: z.boolean().default(false), createdAt: z.number() });
 export type CollectionJob = z.infer<typeof collectionJobSchema>;
+/** Default excerpt template: an unordered item plus a dash source line, in the Qiaomu daily-note style. */
+export const DEFAULT_EXCERPT_TEMPLATE = '- {{content}}\n\n  -- {{source}}';
 export const stateSchema = z.object({
   libraryVersion: z.number().int().min(0).max(1).default(0),
   subscriptionGroups: z.array(z.object({ id: z.string(), name: z.string(), order: z.number() })).default([]),
@@ -77,10 +79,11 @@ export const stateSchema = z.object({
     fontSize: z.number().int().min(14).max(32).default(19), customFont: z.string().max(200).catch('').default(''), fontFamily: readingFontSchema.default('fangsong'),
     lineHeight: z.number().min(1.5).max(2.4).default(1.9), lineWidth: z.union([z.literal(28), z.literal(36), z.literal(44)]).default(36),
     selectionPopup: z.boolean().default(true), markdownFolders: z.array(z.string()).default([]), followedPodcasts: z.array(z.string()).default([]), podcastNames: z.record(z.string(), z.string()).default({}),
+    excerptTemplate: z.string().max(4000).default(DEFAULT_EXCERPT_TEMPLATE),
     pickedSourceIds: z.array(z.string().max(120)).max(300).nullable().default(null),
     lastSource: z.string().max(300).default(''), articleFolder: z.string().default('Qiaomu RSS/文章'), pdfDirectory: z.string().default(''),
   }).default({ speechSetupPending: false, speechHighlight: DEFAULT_HIGHLIGHT, tts: { provider: 'edge', profiles: {}, rate: 1, welcomed: false }, labCollection: false, labInviteVerified: false, labInviteCode: '', baseUrl: 'https://rss.qiaomu.ai', folder: 'Qiaomu RSS', articleFolder: 'Qiaomu RSS/文章', pdfDirectory: '', defaultMode: 'rewrite', remoteImages: true, listWidth: 300,
-    readingTheme: 'auto', fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [], followedPodcasts: [], podcastNames: {}, pickedSourceIds: null }),
+    readingTheme: 'auto', fontSize: 19, fontFamily: 'fangsong', customFont: '', lineHeight: 1.9, lineWidth: 36, lastSource: '', selectionPopup: true, markdownFolders: [], followedPodcasts: [], podcastNames: {}, excerptTemplate: DEFAULT_EXCERPT_TEMPLATE, pickedSourceIds: null }),
   collectionIdentity: z.object({ id: z.string(), key: z.string() }).nullable().default(null),
   collectionAdminSession: z.object({ token: z.string(), expiresAt: z.number(), name: z.string(), baseUrl: z.string() }).nullable().default(null),
   collectionJobs: z.array(collectionJobSchema).default([]),
