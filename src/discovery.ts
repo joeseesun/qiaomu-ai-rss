@@ -95,7 +95,9 @@ export function featuredPodcasts(sources: Source[]): Source[] {
   const rank = (id: string) => { const i = qiaomuZhPodcastOrder.indexOf(id); return i < 0 ? qiaomuZhPodcastOrder.length : i; };
   const zh = sources.filter(source => source.enabled !== false && isQiaomuZhPodcast(source))
     .map((source, i) => ({ source, i })).sort((a, b) => rank(a.source.id) - rank(b.source.id) || a.i - b.i).map(x => x.source);
-  return [...zh, ...featuredXiaoyuzhouPodcasts(sources)];
+  // A show with its own close-reading site ("<id>-zh") is listed once, as the close reading.
+  const covered = new Set(zh.map(source => source.id.slice(0, -3)));
+  return [...zh, ...featuredXiaoyuzhouPodcasts(sources).filter(source => !covered.has(source.id))];
 }
 export function readerChannelSources(sources: Source[]): Source[] {
   const featuredIds = new Set(featuredPodcasts(sources).map(source => source.id));
