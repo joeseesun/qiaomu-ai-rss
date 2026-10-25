@@ -1000,3 +1000,23 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 .qrs-deleted-modal button:not(.mod-cta) { background:transparent; color:var(--qrs-fg); box-shadow:0 0 0 1px var(--qrs-border-strong); }
 .qrs-deleted-modal button:not(.mod-cta):hover { background:var(--qrs-hover); }
 .qrs-prose::highlight(qrs-excerpt-target) { background-color:var(--text-highlight-bg); color:inherit; }
+
+/* Offline update notes shared by the Qiaomu plugin family. */
+.modal.qiaomu-update-notes { width: 520px; max-width: calc(100vw - 32px); padding: 28px; border: 1px solid var(--background-modifier-border); border-radius: 14px; background: var(--background-primary); color: var(--text-normal); }
+.qiaomu-update-notes .modal-title { margin: 0; font-size: 20px; font-weight: 600; line-height: 1.4; padding-inline-end: 20px; }
+.qiaomu-update-notes .modal-content { margin: 0; overflow-wrap: anywhere; }
+.qiaomu-update-notes-version { display: inline-block; margin: 12px 0 20px; padding: 3px 8px; border-radius: 5px; background: var(--background-secondary); color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.qiaomu-update-notes-section h3 { margin: 20px 0 8px; font-size: 14px; }
+.qiaomu-update-notes-section ul { margin: 0 0 20px; padding-inline-start: 20px; }
+.qiaomu-update-notes-section li { margin: 0 0 10px; padding-inline-start: 3px; font-size: 14px; line-height: 1.7; }
+.qiaomu-update-notes-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--background-modifier-border); }
+.qiaomu-update-notes-option { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 12px; line-height: 1.6; cursor: pointer; }
+.qiaomu-update-notes-option input { margin: 0; accent-color: var(--text-normal); flex-shrink: 0; }
+.qiaomu-update-notes button.qiaomu-update-notes-done { min-height: 36px; padding: 8px 18px; background: var(--text-normal); color: var(--background-primary); border: 0; border-radius: 7px; box-shadow: none; font-weight: 500; cursor: pointer; }
+button.qiaomu-update-notes-link { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 10px; background: var(--background-primary); color: var(--text-normal); border: 1px solid var(--background-modifier-border); border-radius: 6px; box-shadow: none; font-size: 13px; cursor: pointer; }
+.qiaomu-update-notes-link svg { width: 14px; height: 14px; }
+button.qiaomu-update-notes-link:hover { background: var(--background-modifier-hover); }
+.qiaomu-update-notes button:focus-visible, button.qiaomu-update-notes-link:focus-visible, .qiaomu-update-notes input:focus-visible { outline: 2px solid var(--text-muted); outline-offset: 3px; }
+@media (max-width: 420px) { .modal.qiaomu-update-notes { padding: 22px; } .qiaomu-update-notes-footer { gap: 20px; } }
+
+.qiaomu-update-notes-option { --checkbox-color: var(--text-normal); --checkbox-color-hover: var(--text-normal); --checkbox-marker-color: var(--background-primary); }

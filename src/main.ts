@@ -1,3 +1,6 @@
+import { UpdateNotes } from './update-notes';
+import { UPDATE_ENTRIES } from './update-notes-release';
+import { locale as updateLocale } from './i18n';
 import { localDeletion, localDeletionMatcher } from './local-deletions';
 import { DeletedArticlesModal } from './deleted-articles';
 import { articleSelection } from './speech-source';
@@ -42,6 +45,7 @@ function formatBytes(bytes: number): string {
 }
 
 export default class QiaomuRssPlugin extends Plugin {
+  updateNotes!: UpdateNotes;
   speech!: RssSpeech;
   private speechSettings?: SpeechSettingsModal;
   openSpeechSettings(onReady?: () => void) { this.speechSettings?.close(); this.speechSettings = new SpeechSettingsModal(this, onReady); this.speechSettings.open(); }
@@ -114,6 +118,7 @@ export default class QiaomuRssPlugin extends Plugin {
     this.addCommand({ id: 'source-health', name: t('cmd.sourceHealth'), callback: () => this.openSourceHealth() });
     this.registerInterval(window.setInterval(() => { void this.checkCollectionJobs(); }, 15000));
     void this.checkCollectionJobs();
+    this.updateNotes = new UpdateNotes(this, UPDATE_ENTRIES, updateLocale);
     this.addSettingTab(new RssSettings(this.app, this));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       if (renameArticleNotes(this.state.articleNotes, oldPath, file.path)) void this.persist();
@@ -888,7 +893,7 @@ class RssSettings extends PluginSettingTab {
       lab: [{ name: t('lab.collection'), desc: t('lab.entryDescription'), render: setting => {
         setting.addButton(button => button.setButtonText(t('lab.manage')).onClick(() => this.plugin.openCollectionSettings()));
       } }],
-      about: [definitions[6], {
+      about: [definitions[6], { name: this.plugin.updateNotes.text('title'), render: setting => { this.plugin.updateNotes.addButton(setting.controlEl); } }, {
         // Storage panel: sizes are computed when the tab opens, never serialized into definitions.
         name: t('settings.storage.name'), desc: t('settings.storage.calculating'), render: setting => {
           void this.plugin.storageStats().then(stats => {
