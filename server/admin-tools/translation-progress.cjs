@@ -8,8 +8,9 @@ function createProgress(dbFile) {
   // Bound abandoned progress without expiring active work.
   db.prepare('DELETE FROM translation_progress WHERE updated_at < ?').run(Date.now() - 30 * 86400000);
   return {
-    async run(config, entry, chunk, translate) {
+    async run(config, entry, chunk, translate, force = false) {
       const key = createHash('sha256').update(JSON.stringify(['v1', entry.id, entry.title, entry.summary, config.provider, config.baseUrl, config.model, chunk])).digest('hex');
+      if (force) db.prepare('DELETE FROM translation_progress WHERE key=?').run(key);
       let saved;
       try { saved = JSON.parse(db.prepare('SELECT result FROM translation_progress WHERE key=?').get(key)?.result || '{}'); } catch { saved = {}; }
       const pairs = new Map((saved.pairs || []).map(pair => [Number(pair.i), pair]));
@@ -20,8 +21,20 @@ function createProgress(dbFile) {
         saved = { pairs: [...pairs.values()], titleZh: saved.titleZh || partial.titleZh || '', summaryZh: saved.summaryZh || partial.summaryZh || '' };
         db.prepare('INSERT INTO translation_progress VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET result=excluded.result,updated_at=excluded.updated_at').run(key, JSON.stringify(saved), Date.now());
       };
-      const result = await translate(config, entry, pending, record);
-      record(result);
+      const perform = async (blocks, depth = 0) => {
+        const missing = blocks.filter(block => !pairs.has(Number(block.i)));
+        if (!missing.length) return;
+        try { record(await translate(config, entry, missing, record)); }
+        catch (error) {
+          const recoverable = ['length', 'max_tokens', 'model_context_window_exceeded'].includes(error.translationFailure)
+            || error instanceof SyntaxError || /漏译|重复或越界/.test(String(error.message));
+          if (!recoverable || depth >= 2) throw error;
+          const middle = Math.ceil(missing.length / 2);
+          await perform(missing.slice(0, middle), depth + 1);
+          if (middle < missing.length) await perform(missing.slice(middle), depth + 1);
+        }
+      };
+      await perform(pending);
       return { ...saved, pairs: chunk.map(block => pairs.get(Number(block.i))) };
     },
     close() { db.close(); },
@@ -39,7 +52,10 @@ async function translateChunks(chunks, run, concurrency = 2) {
     while (next < chunks.length) {
       const index = next++;
       try { results[index] = await run(chunks[index]); }
-      catch (error) { errors.push(error); }
+      catch (error) {
+        errors.push(error);
+        if (['refusal', 'content_filter'].includes(error.translationFailure) || [401, 403, 429].includes(Number(error.upstreamStatus || error.statusCode || error.status)) || /not configured|quota|rate.?limit/i.test(String(error.message))) next = chunks.length;
+      }
     }
   }));
   if (errors.length) throw errors[0];

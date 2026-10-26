@@ -79,9 +79,42 @@ test('translation checkpoints retain successful blocks across failure and restar
     const resumed = await progress.run(config, entry, chunks, async (_c,_e,pending) => { assert.deepEqual(pending.map(b=>b.i),[1]); return { pairs:[{...pending[0],target:'第二'}] }; });
     assert.equal(resumed.pairs.length,2); assert.equal(resumed.titleZh,'测试');
     await progress.run(config, entry, chunks, () => { throw Error('must reuse'); });
+    let forced = false;
+    await progress.run(config, entry, chunks, async (_c,_e,pending) => { forced = pending.length === 2; return {pairs:pending}; }, true);
+    assert.equal(forced,true);
     let changed = 0;
     await progress.run({...config,model:'other'}, entry, chunks, async (_c,_e,pending) => { changed=pending.length; return {pairs:pending}; });
     assert.equal(changed,2);
     await progress.run(config, {...entry,title:'changed'}, chunks, async (_c,_e,pending) => { assert.equal(pending.length,2); return {pairs:pending}; });
   } finally { progress.close(); fs.rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('translation concurrency is bounded and stops scheduling on quota rejection', async () => {
+  const { translateChunks } = require('./admin-tools/translation-progress.cjs');
+  let active = 0, peak = 0, calls = 0;
+  const results = await translateChunks([1,2,3,4], async n => { active++; peak=Math.max(peak,active); await new Promise(resolve=>setTimeout(resolve,5)); active--; return n; });
+  assert.deepEqual(results,[1,2,3,4]); assert.equal(peak,2);
+  await assert.rejects(translateChunks([1,2,3,4,5], async () => { calls++; throw Object.assign(Error('quota'),{statusCode:429}); }));
+  assert.equal(calls,2);
+});
+
+test('truncated batches shrink with bounded retries; explicit refusal is never retried', async () => {
+  const { createProgress } = require('./admin-tools/translation-progress.cjs');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'rss-adaptive-')), progress=createProgress(path.join(dir,'db.sqlite'));
+  const config={model:'deepseek-flash'}, chunks=[0,1,2,3].map(i=>({i,source:'text'}));
+  try {
+    const sizes=[];
+    const result=await progress.run(config,{id:'split'},chunks,async (_c,_e,blocks)=>{
+      sizes.push(blocks.length);
+      if(blocks.length>2)throw Object.assign(Error('length'),{translationFailure:'length'});
+      return {pairs:blocks.map(b=>({...b,target:'正文'}))};
+    });
+    assert.deepEqual(sizes,[4,2,2]); assert.equal(result.pairs.length,4);
+    let attempts=0;
+    await assert.rejects(progress.run(config,{id:'refuse'},chunks,async ()=>{attempts++;throw Object.assign(Error('refusal'),{translationFailure:'refusal'});}));
+    assert.equal(attempts,1);
+    attempts=0;
+    await assert.rejects(progress.run(config,{id:'invalid'},[chunks[0]],async ()=>{attempts++;throw new SyntaxError('invalid JSON');}));
+    assert.equal(attempts,3);
+  } finally {progress.close();fs.rmSync(dir,{recursive:true,force:true});}
 });
