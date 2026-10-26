@@ -1,0 +1,46 @@
+name: Public release gate
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  public-release-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test public asset checker
+        run: python3 -m unittest discover -s tests -p test_public_release.py
+      - name: Detect install version promotion
+        id: promotion
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, subprocess
+          from pathlib import Path
+          base = json.loads(subprocess.check_output(['git', 'show', os.environ['BASE_SHA'] + ':manifest.json']))
+          head = json.loads(Path('manifest.json').read_text())
+          if base['id'] != head['id']:
+              raise SystemExit('Plugin identity changed; migration requires separate review')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('changed=' + str(base['version'] != head['version']).lower() + '\n')
+          PYCODE
+      - uses: actions/setup-node@v4
+        if: steps.promotion.outputs.changed == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build exact candidate assets
+        if: steps.promotion.outputs.changed == 'true'
+        run: npm ci && npm run build
+      - name: Verify anonymous exact release assets
+        if: steps.promotion.outputs.changed == 'true'
+        env:
+          PLUGIN_REPO: ${{ github.repository }}
+        run: python3 scripts/check_public_release.py . --repo "$PLUGIN_REPO" --attempts 3 --retry-delay 2

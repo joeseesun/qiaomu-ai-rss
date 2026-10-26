@@ -1020,3 +1020,6 @@ button.qiaomu-update-notes-link:hover { background: var(--background-modifier-ho
 @media (max-width: 420px) { .modal.qiaomu-update-notes { padding: 22px; } .qiaomu-update-notes-footer { gap: 20px; } }
 
 .qiaomu-update-notes-option { --checkbox-color: var(--text-normal); --checkbox-color-hover: var(--text-normal); --checkbox-marker-color: var(--background-primary); }
+
+.qrs-pick-modal .qrs-pick-lead { color: var(--qrs-muted); font-size: 13px; overflow-wrap: anywhere; }
+.qrs-pick-modal input[type="radio"] { accent-color: var(--qrs-fg); }

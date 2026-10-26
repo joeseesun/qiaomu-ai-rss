@@ -82,3 +82,16 @@ describe('verified collection access', () => {
     expect(transport.mock.calls[1][0].body).toBeUndefined();
   });
 });
+
+it('moves with admin credentials and preserves classified failures across reload', async () => {
+  const transport = vi.fn().mockResolvedValueOnce({ status: 200, text: '{"ok":true,"entryId":"entry","sourceId":"target","sourceName":"Target"}' })
+    .mockResolvedValueOnce({ status: 200, text: '{"status":"failed","stage":"translation","failure":"structure"}' });
+  const client = new CollectionClient('https://rss.qiaomu.ai', 'invite', transport, { id: 'client', key: 'secret' });
+  expect(await client.moveArticle('admin', 'entry', 'target')).toMatchObject({ sourceId: 'target' });
+  const request = transport.mock.calls[0][0];
+  expect(request.headers.Authorization).toBe('Bearer admin');
+  expect(request.headers['X-Qiaomu-Client-Key']).toBeUndefined();
+  expect(JSON.parse(request.body)).toEqual({ entryId: 'entry', sourceId: 'target' });
+  const result = await client.status('job');
+  expect(initialState({collectionJobs:[{id:'job',url:'https://example.com',baseUrl:'https://rss.qiaomu.ai',createdAt:1,...result}]}).collectionJobs[0]).toMatchObject({failure:'structure',stage:'translation'});
+});

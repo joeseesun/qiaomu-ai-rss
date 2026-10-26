@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { serviceUrl, safeUrl } from './model';
+import { serviceUrl, safeUrl, sourceSchema } from './model';
 import { t } from './i18n';
 import type { CollectionJob } from './model';
 
-const resultSchema = z.object({ status: z.enum(['queued', 'running', 'complete', 'failed']), title: z.string().default(''), originalTitle: z.string().optional(), entryId: z.string().optional() });
+const resultSchema = z.object({ status: z.enum(['queued', 'running', 'complete', 'failed']), title: z.string().default(''), originalTitle: z.string().optional(), stage: z.enum(['queued', 'fetch', 'translation', 'rewrite', 'complete']).optional(), failure: z.enum(['timeout', 'quota', 'credentials', 'incomplete', 'network', 'structure', 'unknown']).optional(), entryId: z.string().optional() });
 export const collectionItemSchema = resultSchema.extend({ id: z.string(), url: z.string(), createdAt: z.number(), submitter: z.string().optional() });
 const pageSchema = z.object({ jobs: z.array(collectionItemSchema), hasMore: z.boolean(), nextCursor: z.string() });
 export type CollectionItem = z.infer<typeof collectionItemSchema>;
@@ -34,7 +34,7 @@ export class CollectionClient {
     ]).finally(() => window.clearTimeout(timer));
     if (response.status === 401 || response.status === 403) throw new Error(t(path.includes('/admin/') ? 'lab.adminDenied' : 'lab.invalidInvite'));
     if (response.status === 404 && !body) throw new Error('COLLECTION_NOT_FOUND');
-    if (response.status === 400) throw new Error(t('lab.invalidLink'));
+    if (response.status === 400) throw new Error(t(path.endsWith('/move-entry') ? 'moderation.moveFailed' : 'lab.invalidLink'));
     if (response.status === 429) throw new Error(t('lab.rateLimited'));
     if (response.status < 200 || response.status >= 300) throw new Error(t('lab.unavailable'));
     if (response.text.length > 2000000) throw new Error(t('error.responseTooLarge'));
@@ -59,6 +59,8 @@ export class CollectionClient {
   list(cursor = '') { return this.request(`/api/lab/collection-jobs?cursor=${encodeURIComponent(cursor)}`, pageSchema); }
   adminLogin(email: string, password: string) { return this.request('/api/lab/admin/session', z.object({ token: z.string(), expiresAt: z.number(), name: z.string() }), { email, password }, ''); }
   listAll(token: string, cursor = '') { return this.request(`/api/lab/admin/collection-jobs?cursor=${encodeURIComponent(cursor)}`, pageSchema, undefined, token); }
+  adminChannels(token: string) { return this.request('/api/lab/admin/channels', z.object({ sources: z.array(sourceSchema) }), undefined, token); }
+  moveArticle(token: string, entryId: string, sourceId: string) { return this.request('/api/lab/admin/move-entry', z.object({ ok: z.literal(true), entryId: z.string(), sourceId: z.string(), sourceName: z.string() }), { entryId, sourceId }, token); }
   deleteArticle(token: string, entryId: string) { return this.request('/api/lab/admin/delete-entry', z.object({ ok: z.literal(true), entryId: z.string() }), { entryId }, token); }
   logout(token: string) { return this.request('/api/lab/admin/logout', z.object({ verified: z.literal(false) }), {}, token); }
 }

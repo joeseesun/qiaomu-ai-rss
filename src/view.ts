@@ -7,7 +7,7 @@ import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCura
 import type { RssApi } from './api';
 import type { CollectionItem } from './collection';
 import { todayLabel } from './daily-note';
-import { groupsInOrder, personalSources } from './personal-library';
+import { groupsInOrder, personalSources, personalArticleEntries, personalArticleKey } from './personal-library';
 import { SourceIcons } from './source-icons';
 import { addSearchClear } from './search-clear';
 import { ChannelPicker, channelMark, type ChannelChoice } from './channel-picker';
@@ -448,6 +448,12 @@ export class ReaderView extends ItemView {
   }
   showPersonalSource(id: string) { this.selectSource(id); }
   private collectionScope() { return this.source === '@collection' || this.source === '@collection-all'; }
+  refreshMovedArticle(id: string, sourceId: string, sourceName: string) {
+    if (this.bundle?.entry.id === id) { Object.assign(this.bundle.entry, { sourceId, sourceName }); this.renderReader(true); }
+    this.entries = this.personalScope() ? this.localEntries() : this.entries.filter(entry => entry.id !== id);
+    this.renderList();
+    if (!this.personalScope() && !this.collectionScope()) void this.loadEntries(false, true);
+  }
   moderationEntries() { return [...this.entries, ...(this.bundle ? [this.bundle.entry] : [])]; }
   removeDeletedArticles() {
     this.entries = this.entries.filter(entry => !this.plugin.articleDeleted(entry));
@@ -489,7 +495,7 @@ export class ReaderView extends ItemView {
     return this.plugin.state.subscriptions.filter(feed => this.source === '@local' || feed.id === this.source ||
       (this.source.startsWith('@group:') && this.plugin.state.sourceMeta[feed.id]?.groupId === this.source.slice(7)));
   }
-  private localEntries() { return this.feedIndex.update(this.selectedFeeds()); }
+  private localEntries() { return [...this.feedIndex.update(this.selectedFeeds()), ...personalArticleEntries(this.plugin.state, this.source)].sort((a, b) => (b.publishedTs || 0) - (a.publishedTs || 0)); }
   showSubscriptions() { this.selectSource('@local', false); }
   showSubscription(id: string) {
     if (this.plugin.state.subscriptions.some(feed => feed.id === id)) this.selectSource(id, false);
@@ -747,14 +753,16 @@ export class ReaderView extends ItemView {
       for (const entry of state.entries) if (!byId.has(entry.id)) byId.set(entry.id, entry);
       for (const bundle of Object.values(state.favorites)) if (!byId.has(bundle.entry.id)) byId.set(bundle.entry.id, bundle.entry);
       for (const bundle of Object.values(state.savedArticles)) if (!byId.has(bundle.entry.id)) byId.set(bundle.entry.id, bundle.entry);
+      for (const entry of personalArticleEntries(state, '@local')) if (!byId.has(entry.id)) byId.set(entry.id, entry);
       entries = state.readLater.map(id => byId.get(id)).filter((entry): entry is Entry => !!entry);
     } else entries = this.entries;
     const query = this.query.trim().toLocaleLowerCase(), group = this.qiaomuGroupIds();
+    const personalIds = new Set(personalArticleEntries(state, this.source).map(entry => entry.id));
     const inScope = (entry: Entry) => this.vaultScope() ? entry.origin === 'vault' && entry.sourceId === this.source : this.personalScope()
-      ? entry.origin === 'local' && (this.source === '@local' || selected.has(entry.sourceId))
+      ? personalIds.has(entry.id) || entry.origin === 'local' && (this.source === '@local' || selected.has(entry.sourceId))
       : entry.origin !== 'local' && entry.origin !== 'vault' && (!this.source || (this.source.startsWith('@qiaomu:') ? group.has(entry.sourceId) : entry.sourceId === this.source));
     return uniqueRemoteEntries(entries, this.bundle?.entry.id).filter(entry => (this.filter === 'later' || inScope(entry)) &&
-      !this.plugin.articleHidden(entry) && keepCuratedEntry(state, entry) && (state.settings.pickedSourceIds !== null || entry.sourceId !== 'levelingup') && (this.platform === 'all' || !this.communityScope() || platformOf(entry.link) === this.platform) &&
+      !this.plugin.articleHidden(entry) && (personalIds.has(entry.id) || keepCuratedEntry(state, entry)) && (personalIds.has(entry.id) || state.settings.pickedSourceIds !== null || entry.sourceId !== 'levelingup') && (this.platform === 'all' || !this.communityScope() || platformOf(entry.link) === this.platform) &&
       (this.filter !== 'unread' || !this.relatedContentIds(entry).some(id => readIds.has(id)) || this.unreadSession.has(entry.id) || entry.id === this.bundle?.entry.id) &&
       (!query || `${titleOf(entry)} ${entry.title} ${entry.summary || ''} ${this.sourceName(entry)}`.toLocaleLowerCase().includes(query)));
   }
@@ -820,10 +828,11 @@ export class ReaderView extends ItemView {
       copy.createDiv('qrs-entry-title').createEl('h3', { text: job.title || job.url });
       const status = copy.createDiv('qrs-summary qrs-collection-status');
       setIcon(status.createSpan({ attr: { 'aria-hidden': 'true' } }), { complete: 'check', running: 'loader-circle', queued: 'clock-3', failed: 'circle-alert' }[job.status]);
-      status.createSpan({ text: [t(`lab.status.${job.status}`), job.submitter].filter(Boolean).join(' · ') });
+      status.createSpan({ text: [t(`lab.status.${job.status}`), job.status === 'failed' && job.failure ? t(`lab.failure.${job.failure}`) : '', job.submitter].filter(Boolean).join(' · ') });
       if (url) row.oncontextmenu = event => {
         event.preventDefault();
         const menu = new Menu();
+        if (job.entryId && this.plugin.collectionAdminAvailable()) menu.addItem(item => item.setTitle(t('moderation.move')).setIcon('folder-input').onClick(() => this.plugin.openMoveArticle(this.collectionEntry(job))));
         if (job.entryId) menu.addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(this.collectionEntry(job))));
         menu.addItem(item => item.setTitle(t('capture.copyLink')).setIcon('link').onClick(() => { void navigator.clipboard.writeText(url); }));
         menu.showAtMouseEvent(event);
@@ -951,7 +960,9 @@ export class ReaderView extends ItemView {
       row.addEventListener('click', () => { void this.openArticle(record.entry); });
       if (entry.origin !== 'vault') row.addEventListener('contextmenu', event => {
         event.preventDefault();
-        new Menu().setUseNativeMenu(false).addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(record.entry))).showAtMouseEvent(event);
+        const menu = new Menu().setUseNativeMenu(false);
+        if (this.plugin.canDeleteArticle(record.entry)) menu.addItem(item => item.setTitle(t('moderation.move')).setIcon('folder-input').onClick(() => this.plugin.openMoveArticle(record.entry)));
+        menu.addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(record.entry))).showAtMouseEvent(event);
       });
     }
     output.empty();
@@ -990,7 +1001,7 @@ export class ReaderView extends ItemView {
     this.expandWindowTo(entry.id);
     const version = ++this.articleVersion; const state = this.plugin.state;
     this.audioDock?.open(entry);
-    this.bundle = state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
+    this.bundle = state.personalArticles[personalArticleKey(state.settings.baseUrl, entry.id)]?.bundle || state.cache[entry.id] || state.favorites[entry.id] || { entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: 0 };
     state.readIds = [...new Set([...state.readIds, entry.id])].slice(-5000);
     // Open time feeds the 30-day source health stats; the queue consumes itself on open.
     state.readAt[entry.id] = Date.now();
@@ -1229,6 +1240,7 @@ export class ReaderView extends ItemView {
         if (!this.plugin.articleDeleted(bundle.entry)) await this.openArticle(bundle.entry);
       })));
       if (bundle.entry.origin !== 'vault') menu.addSeparator().addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(bundle.entry)));
+      if (this.plugin.canDeleteArticle(bundle.entry)) menu.addItem(item => item.setTitle(t('moderation.move')).setIcon('folder-input').onClick(() => this.plugin.openMoveArticle(bundle.entry)));
       if (this.plugin.canDeleteArticle(bundle.entry)) menu.addSeparator().addItem(item => item.setTitle(t('moderation.delete')).setIcon('trash-2').onClick(() => this.plugin.confirmDeleteArticle(bundle.entry)));
       menu.addSeparator();
       menu.addItem(item => item.setTitle(savedNote ? t('reader.openSavedNote') : t('reader.saveNote')).setIcon(savedNote ? 'file-check' : 'file-plus').onClick(() => {

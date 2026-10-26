@@ -1,4 +1,4 @@
-import type { State } from './model';
+import type { Bundle, State } from './model';
 import { fail, t } from './i18n';
 export interface PersonalSource { id: string; name: string; kind: 'rss' | 'podcast' | 'vault'; groupId: string; url?: string; site?: string; image?: string; detail: string }
 /** Group names that mean the same thing (catalogs and OPML files use English categories). */
@@ -21,6 +21,7 @@ export function migrateLibrary(state: State) {
   mergeDuplicateGroups(state);
   const valid = new Set(state.subscriptionGroups.map(g => g.id));
   for (const meta of Object.values(state.sourceMeta)) if (meta.groupId && !valid.has(meta.groupId)) meta.groupId = '';
+  for (const item of Object.values(state.personalArticles)) if (item.groupId && !valid.has(item.groupId)) item.groupId = '';
   if (state.settings.lastSource.startsWith('@group:')) {
     const value = state.settings.lastSource.slice(7), group = state.subscriptionGroups.find(g => g.id === value || g.name === value);
     if (group) state.settings.lastSource = `@group:${group.id}`;
@@ -37,6 +38,7 @@ export function mergeDuplicateGroups(state: State) {
   }
   if (!moved.size) return false;
   for (const meta of Object.values(state.sourceMeta)) meta.groupId = moved.get(meta.groupId) || meta.groupId;
+  for (const item of Object.values(state.personalArticles)) item.groupId = moved.get(item.groupId) || item.groupId;
   const names = new Map([...keep.values()].map(g => [g.id, g.name]));
   for (const feed of state.subscriptions) { const id = state.sourceMeta[feed.id]?.groupId; if (id) feed.group = names.get(id) || feed.group; }
   state.subscriptionGroups = groupsInOrder(state).filter(g => !moved.has(g.id)).map((g, order) => ({ ...g, order }));
@@ -68,12 +70,23 @@ export function renameGroup(state: State, id: string, raw: string) {
   const group = state.subscriptionGroups.find(g => g.id === id); if (!group) fail('error.groupMissing');
   // Renaming onto an existing name merges the two groups instead of failing.
   const target = state.subscriptionGroups.find(g => g.id !== id && groupKey(g.name) === groupKey(name));
-  if (target) { moveSources(state, personalSources(state).filter(s => s.groupId === id).map(s => s.id), target.id); deleteGroup(state, id); return target.id; }
+  if (target) { for (const item of Object.values(state.personalArticles)) if (item.groupId === id) item.groupId = target.id; moveSources(state, personalSources(state).filter(s => s.groupId === id).map(s => s.id), target.id); deleteGroup(state, id); return target.id; }
   group.name = name; moveSources(state, personalSources(state).filter(s => s.groupId === id).map(s => s.id), id); return id;
 }
 export function deleteGroup(state: State, id: string) {
+  for (const item of Object.values(state.personalArticles)) if (item.groupId === id) item.groupId = '';
   moveSources(state, personalSources(state).filter(s => s.groupId === id).map(s => s.id), '');
   state.subscriptionGroups = state.subscriptionGroups.filter(g => g.id !== id);
   state.collapsedGroups = state.collapsedGroups.filter(g => g !== id);
   if (state.settings.lastSource === `@group:${id}`) state.settings.lastSource = '@local';
+}
+
+export function personalArticleKey(baseUrl: string, id: string) { return JSON.stringify([baseUrl, id]); }
+export function placePersonalArticle(state: State, bundle: Bundle, groupId: string, baseUrl: string) {
+  if (groupId && !state.subscriptionGroups.some(group => group.id === groupId)) fail('error.groupMissing');
+  state.personalArticles[personalArticleKey(baseUrl, bundle.entry.id)] = { baseUrl, groupId, bundle };
+}
+export function personalArticleEntries(state: State, source: string) {
+  if (source !== '@local' && !source.startsWith('@group:')) return [];
+  return Object.values(state.personalArticles).filter(item => item.baseUrl === state.settings.baseUrl && (source === '@local' || item.groupId === source.slice(7))).map(item => item.bundle.entry);
 }
