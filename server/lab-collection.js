@@ -7,10 +7,11 @@ const crypto = require('node:crypto');
 function failureCode(error) {
   const message = String(error?.message || '');
   const status = Number(error?.statusCode || error?.status || 0);
+  if (status === 413 || /过长.*结构块|structure exceeds request limit/i.test(message)) return 'structure';
   if (/timeout|timed out|超时/i.test(message) || ['TimeoutError', 'AbortError'].includes(error?.name)) return 'timeout';
   if (status === 429 || /rate.?limit|quota|额度|request failed: 429/i.test(message)) return 'quota';
   if ([401, 403].includes(status) || /not configured|api.?key|unauthorized|authentication|request failed: (401|403)/i.test(message)) return 'credentials';
-  if (/coverage|preserv|structure|empty|not ready|incomplete|truncat|max.?tokens|输出.*(?:截断|中断)/i.test(message)) return 'incomplete';
+  if (/漏译|不完整|重复或越界|coverage|preserv|structure|empty|not ready|incomplete|truncat|max.?tokens|输出.*(?:截断|中断)/i.test(message)) return 'incomplete';
   if (status >= 500 || error?.name === 'TypeError' || /fetch failed|network|ECONN|ENOTFOUND/i.test(message)) return 'network';
   return 'unknown';
 }
@@ -39,7 +40,7 @@ function mountLabCollection(app, { directory, processLink, validateUrl, codes = 
   };
   const view = job => {
     const title = job.entryId && adminAuth?.getTitleTranslations?.([job.entryId])?.[job.entryId];
-    return { status: job.status, title: title || job.title || '', ...(job.originalTitle || title ? { originalTitle: job.originalTitle || job.title } : {}), ...(job.entryId ? { entryId: job.entryId } : {}) };
+    return { status: job.status, ...(job.stage ? { stage: job.stage } : {}), ...(job.failure ? { failure: job.failure } : {}), title: title || job.title || '', ...(job.originalTitle || title ? { originalTitle: job.originalTitle || job.title } : {}), ...(job.entryId ? { entryId: job.entryId } : {}) };
   };
   const auth = (req, res, next) => {
     const token = String(req.get('authorization') || '').replace(/^Bearer /, '');

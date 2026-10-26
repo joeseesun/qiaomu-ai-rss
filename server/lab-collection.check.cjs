@@ -44,7 +44,7 @@ test('server verifies invite, deduplicates jobs, exposes only ready results, and
     assert.equal(call('GET', {}, id).data.status, 'running');
     await settle(); await settle();
     assert.equal(calls, 1);
-    assert.deepEqual(call('GET', {}, id).data, { status: 'complete', title: 'Actual result', originalTitle: 'Actual result', entryId: 'entry' });
+    assert.deepEqual(call('GET', {}, id).data, { status: 'complete', stage: 'complete', title: 'Actual result', originalTitle: 'Actual result', entryId: 'entry' });
     assert.equal(call('GET', {}, id, 'invalid').statusCode, 403);
     control.stop();
     const restored = fixture(directory, processLink);
@@ -61,7 +61,7 @@ test('failed jobs never masquerade as completed and interrupted jobs resume', as
   const f = fixture(directory, async () => { throw Error('provider secret must not leak'); });
   try {
     await settle();
-    assert.deepEqual(f.call('GET', {}, id).data, { status: 'failed', title: '' });
+    assert.deepEqual(f.call('GET', {}, id).data, { status: 'failed', stage: 'queued', failure: 'unknown', title: '' });
     assert.equal(f.call('GET', {}, crypto.randomUUID()).statusCode, 404);
   } finally { f.control.stop(); fs.rmSync(directory, { recursive: true, force: true }); }
 });

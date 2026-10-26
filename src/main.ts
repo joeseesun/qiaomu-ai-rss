@@ -1,3 +1,4 @@
+import { MoveArticleModal } from './move-article';
 import { UpdateNotes } from './update-notes';
 import { UPDATE_ENTRIES } from './update-notes-release';
 import { locale as updateLocale } from './i18n';
@@ -14,7 +15,7 @@ import { watchPaneDividers } from "./pane-dividers";
 import { LabSettingsModal } from './lab-settings';
 import { applyDeletedEntries, remoteEntry } from './moderation';
 import { CollectionClient, syncCollectionTitles, type CollectionItem } from './collection';
-import { migrateLibrary, moveSources, registerSource } from './personal-library';
+import { migrateLibrary, moveSources, registerSource, personalArticleKey, placePersonalArticle } from './personal-library';
 import { EditorView } from '@codemirror/view';
 import { MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, type App, type SettingDefinitionItem, type SettingGroupItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
@@ -172,7 +173,7 @@ export default class QiaomuRssPlugin extends Plugin {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice(t('notice.localCopyMissingShort')));
     });
   }
-  onunload() { this.deletedArticlesModal?.close(); this.deletionNotice?.hide(); this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
+  onunload() { this.moveArticleModal?.close(); this.deletedArticlesModal?.close(); this.deletionNotice?.hide(); this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
   api(): RssApi {
     const base = this.state.settings.baseUrl;
     if (this.apiClient && this.apiBase === base) return this.apiClient;
@@ -304,6 +305,41 @@ export default class QiaomuRssPlugin extends Plugin {
     if (state === this.state && baseUrl === this.state.settings.baseUrl && deleted.length) await this.applyArticleDeletions(deleted, baseUrl);
   }
   canDeleteArticle(entry: Entry) { return this.collectionAdminAvailable() && remoteEntry(entry) && !this.articleDeleted(entry); }
+  async articleMoveChannels() {
+    if (!this.collectionAdminAvailable()) throw new Error(t('lab.adminDenied'));
+    return (await this.collectionClient().adminChannels(this.adminSession!.token)).sources;
+  }
+  private moveArticleModal?: MoveArticleModal;
+  openMoveArticle(entry: Entry) {
+    if (!this.canDeleteArticle(entry)) return;
+    this.moveArticleModal?.close(); this.moveArticleModal = new MoveArticleModal(this.app, this, entry); this.moveArticleModal.open();
+  }
+  async moveArticleToGroup(entry: Entry, groupId: string, baseUrl: string) {
+    if (baseUrl !== this.state.settings.baseUrl || !this.canDeleteArticle(entry)) throw new Error(t('lab.adminDenied'));
+    const state = this.state, { bundle } = await this.api().article(entry.id);
+    if (this.collectionStopped || state !== this.state || baseUrl !== state.settings.baseUrl) throw new Error(t('moderation.moveFailed'));
+    await this.editLibrary(() => { placePersonalArticle(state, bundle, groupId, baseUrl); this.markBodiesDirty(); });
+    return state.subscriptionGroups.find(group => group.id === groupId)?.name || t('common.ungrouped');
+  }
+  async moveArticle(entry: Entry, sourceId: string, baseUrl: string) {
+    if (baseUrl !== this.state.settings.baseUrl || !this.canDeleteArticle(entry)) throw new Error(t('lab.adminDenied'));
+    const state = this.state;
+    const result = await this.collectionClient(baseUrl).moveArticle(this.adminSession!.token, entry.id, sourceId);
+    if (this.collectionStopped || state !== this.state || baseUrl !== this.state.settings.baseUrl) return result.sourceName;
+    const patch = (item: Entry) => { if (remoteEntry(item) && item.id === result.entryId) Object.assign(item, { sourceId: result.sourceId, sourceName: result.sourceName }); };
+    const personal = state.personalArticles[personalArticleKey(baseUrl, result.entryId)]; if (personal) patch(personal.bundle.entry);
+    this.state.entries.forEach(patch);
+    for (const bundles of [this.state.cache, this.state.favorites, this.state.savedArticles]) for (const bundle of Object.values(bundles)) patch(bundle.entry);
+    // Invalidate cached channel membership while retaining article bodies and reading state.
+    for (const [key, channel] of Object.entries(this.state.channelStates)) {
+      if (!key.startsWith(JSON.stringify([baseUrl]).slice(0, -1) + ',')) continue;
+      channel.entries = channel.entries.filter(item => item.id !== result.entryId);
+      if (channel.bundle) patch(channel.bundle.entry);
+    }
+    this.markBodiesDirty(); await this.persist();
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) if (leaf.view instanceof ReaderView) leaf.view.refreshMovedArticle(result.entryId, result.sourceId, result.sourceName);
+    return result.sourceName;
+  }
   confirmDeleteArticle(entry: Entry) {
     if (!this.canDeleteArticle(entry)) return;
     const baseUrl = this.state.settings.baseUrl, modal = new Modal(this.app);
@@ -483,11 +519,11 @@ export default class QiaomuRssPlugin extends Plugin {
     const revision = this.cacheRevision, dirty = revision !== this.savedCacheRevision;
     const { slim, cache } = splitContentCache(this.state, dirty);
     if (dirty) {
-      const entries = [...this.state.entries, ...this.state.subscriptions.flatMap(feed => feed.entries),
+      const entries = [...this.state.entries, ...this.state.subscriptions.flatMap(feed => feed.entries), ...Object.values(this.state.personalArticles).map(item => item.bundle.entry),
         ...Object.values(this.state.channelStates).flatMap(channel => [...channel.entries, ...(channel.bundle ? [channel.bundle.entry] : [])]),
         ...[this.state.cache, this.state.favorites, this.state.savedArticles].flatMap(bundles => Object.values(bundles).map(bundle => bundle.entry))];
       // Write bodies before advertising metadata, preserving offline data if a write fails.
-      const protectedIds = new Set([this.state.cache, this.state.favorites, this.state.savedArticles].flatMap(bundles => Object.values(bundles).map(bundle => bundle.entry.id)));
+      const protectedIds = new Set([...Object.values(this.state.personalArticles).map(item => item.bundle.entry.id), ...[this.state.cache, this.state.favorites, this.state.savedArticles].flatMap(bundles => Object.values(bundles).map(bundle => bundle.entry.id))]);
       const evicted = new Set(await this.bodyStore().write(cache, new Set(entries.map(entry => entry.id)), protectedIds));
       for (const feed of this.state.subscriptions) if (feed.entries.some(entry => evicted.has(entry.id))) {
         feed.entries = feed.entries.map(entry => evicted.has(entry.id) ? { ...entry, content: undefined } : entry);
@@ -546,6 +582,7 @@ export default class QiaomuRssPlugin extends Plugin {
   async clearImages(): Promise<{ files: number; bytes: number }> { return this.images.clear(); }
   remember(bundle: Bundle) {
     if (this.articleDeleted(bundle.entry)) return;
+    const personal = this.state.personalArticles[personalArticleKey(this.state.settings.baseUrl, bundle.entry.id)]; if (personal) personal.bundle = bundle;
     this.state.cache[bundle.entry.id] = bundle;
     const recent = Object.values(this.state.cache).sort((a, b) => b.fetchedAt - a.fetchedAt).slice(0, 40);
     this.state.cache = Object.fromEntries(recent.map(value => [value.entry.id, value]));
@@ -672,7 +709,7 @@ export default class QiaomuRssPlugin extends Plugin {
     this.libraryEdits = operation; return operation;
   }
   private async applyLibraryEdit(edit: () => void) {
-    const snapshot = structuredClone({ subscriptionGroups: this.state.subscriptionGroups, sourceMeta: this.state.sourceMeta, collapsedGroups: this.state.collapsedGroups, subscriptions: this.state.subscriptions, settings: this.state.settings });
+    const snapshot = structuredClone({ subscriptionGroups: this.state.subscriptionGroups, sourceMeta: this.state.sourceMeta, personalArticles: this.state.personalArticles, collapsedGroups: this.state.collapsedGroups, subscriptions: this.state.subscriptions, settings: this.state.settings });
     try { edit(); migrateLibrary(this.state); await this.persist(); }
     catch (e) { Object.assign(this.state, snapshot); throw e; }
     this.refreshPersonalViews(); this.refreshDiscovery();
