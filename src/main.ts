@@ -1,3 +1,4 @@
+import { MoveArticleModal } from './move-article';
 import { UpdateNotes } from './update-notes';
 import { UPDATE_ENTRIES } from './update-notes-release';
 import { locale as updateLocale } from './i18n';
@@ -172,7 +173,7 @@ export default class QiaomuRssPlugin extends Plugin {
       void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice(t('notice.localCopyMissingShort')));
     });
   }
-  onunload() { this.deletedArticlesModal?.close(); this.deletionNotice?.hide(); this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
+  onunload() { this.moveArticleModal?.close(); this.deletedArticlesModal?.close(); this.deletionNotice?.hide(); this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
   api(): RssApi {
     const base = this.state.settings.baseUrl;
     if (this.apiClient && this.apiBase === base) return this.apiClient;
@@ -304,6 +305,33 @@ export default class QiaomuRssPlugin extends Plugin {
     if (state === this.state && baseUrl === this.state.settings.baseUrl && deleted.length) await this.applyArticleDeletions(deleted, baseUrl);
   }
   canDeleteArticle(entry: Entry) { return this.collectionAdminAvailable() && remoteEntry(entry) && !this.articleDeleted(entry); }
+  async articleMoveChannels() {
+    if (!this.collectionAdminAvailable()) throw new Error(t('lab.adminDenied'));
+    return (await this.collectionClient().adminChannels(this.adminSession!.token)).sources;
+  }
+  private moveArticleModal?: MoveArticleModal;
+  openMoveArticle(entry: Entry) {
+    if (!this.canDeleteArticle(entry)) return;
+    this.moveArticleModal?.close(); this.moveArticleModal = new MoveArticleModal(this.app, this, entry); this.moveArticleModal.open();
+  }
+  async moveArticle(entry: Entry, sourceId: string, baseUrl: string) {
+    if (baseUrl !== this.state.settings.baseUrl || !this.canDeleteArticle(entry)) throw new Error(t('lab.adminDenied'));
+    const state = this.state;
+    const result = await this.collectionClient(baseUrl).moveArticle(this.adminSession!.token, entry.id, sourceId);
+    if (this.collectionStopped || state !== this.state || baseUrl !== this.state.settings.baseUrl) return result.sourceName;
+    const patch = (item: Entry) => { if (remoteEntry(item) && item.id === result.entryId) Object.assign(item, { sourceId: result.sourceId, sourceName: result.sourceName }); };
+    this.state.entries.forEach(patch);
+    for (const bundles of [this.state.cache, this.state.favorites, this.state.savedArticles]) for (const bundle of Object.values(bundles)) patch(bundle.entry);
+    // Invalidate cached channel membership while retaining article bodies and reading state.
+    for (const [key, channel] of Object.entries(this.state.channelStates)) {
+      if (!key.startsWith(JSON.stringify([baseUrl]).slice(0, -1) + ',')) continue;
+      channel.entries = channel.entries.filter(item => item.id !== result.entryId);
+      if (channel.bundle) patch(channel.bundle.entry);
+    }
+    this.markBodiesDirty(); await this.persist();
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) if (leaf.view instanceof ReaderView) leaf.view.refreshMovedArticle(result.entryId, result.sourceId, result.sourceName);
+    return result.sourceName;
+  }
   confirmDeleteArticle(entry: Entry) {
     if (!this.canDeleteArticle(entry)) return;
     const baseUrl = this.state.settings.baseUrl, modal = new Modal(this.app);

@@ -1,6 +1,6 @@
 {
   "name": "qiaomu-ai-rss",
-  "version": "0.32.6",
+  "version": "0.32.7",
   "description": "Read Qiaomu and personal RSS feeds, then add article links to your Daily Note.",
   "license": "GPL-3.0-only",
   "private": true,
@@ -28,6 +28,7 @@
     "@codemirror/view": "6.38.6",
     "@types/node": "^26.4.1",
     "@types/turndown": "^5.0.6",
+    "cheerio": "^1.2.0",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
     "eslint-plugin-obsidianmd": "^0.4.2",

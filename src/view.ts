@@ -439,6 +439,12 @@ export class ReaderView extends ItemView {
   }
   showPersonalSource(id: string) { this.selectSource(id); }
   private collectionScope() { return this.source === '@collection' || this.source === '@collection-all'; }
+  refreshMovedArticle(id: string, sourceId: string, sourceName: string) {
+    if (this.bundle?.entry.id === id) { Object.assign(this.bundle.entry, { sourceId, sourceName }); this.renderReader(true); }
+    this.entries = this.entries.filter(entry => entry.id !== id);
+    this.renderList();
+    if (!this.personalScope() && !this.collectionScope()) void this.loadEntries(false, true);
+  }
   moderationEntries() { return [...this.entries, ...(this.bundle ? [this.bundle.entry] : [])]; }
   removeDeletedArticles() {
     this.entries = this.entries.filter(entry => !this.plugin.articleDeleted(entry));
@@ -811,10 +817,11 @@ export class ReaderView extends ItemView {
       copy.createDiv('qrs-entry-title').createEl('h3', { text: job.title || job.url });
       const status = copy.createDiv('qrs-summary qrs-collection-status');
       setIcon(status.createSpan({ attr: { 'aria-hidden': 'true' } }), { complete: 'check', running: 'loader-circle', queued: 'clock-3', failed: 'circle-alert' }[job.status]);
-      status.createSpan({ text: [t(`lab.status.${job.status}`), job.submitter].filter(Boolean).join(' · ') });
+      status.createSpan({ text: [t(`lab.status.${job.status}`), job.status === 'failed' && job.failure ? t(`lab.failure.${job.failure}`) : '', job.submitter].filter(Boolean).join(' · ') });
       if (url) row.oncontextmenu = event => {
         event.preventDefault();
         const menu = new Menu();
+        if (job.entryId && this.plugin.collectionAdminAvailable()) menu.addItem(item => item.setTitle(t('moderation.move')).setIcon('folder-input').onClick(() => this.plugin.openMoveArticle(this.collectionEntry(job))));
         if (job.entryId) menu.addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(this.collectionEntry(job))));
         menu.addItem(item => item.setTitle(t('capture.copyLink')).setIcon('link').onClick(() => { void navigator.clipboard.writeText(url); }));
         menu.showAtMouseEvent(event);
@@ -942,7 +949,9 @@ export class ReaderView extends ItemView {
       row.addEventListener('click', () => { void this.openArticle(record.entry); });
       if (entry.origin !== 'vault') row.addEventListener('contextmenu', event => {
         event.preventDefault();
-        new Menu().setUseNativeMenu(false).addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(record.entry))).showAtMouseEvent(event);
+        const menu = new Menu().setUseNativeMenu(false);
+        if (this.plugin.canDeleteArticle(record.entry)) menu.addItem(item => item.setTitle(t('moderation.move')).setIcon('folder-input').onClick(() => this.plugin.openMoveArticle(record.entry)));
+        menu.addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(record.entry))).showAtMouseEvent(event);
       });
     }
     output.empty();
@@ -1210,6 +1219,7 @@ export class ReaderView extends ItemView {
         if (!this.plugin.articleDeleted(bundle.entry)) await this.openArticle(bundle.entry);
       })));
       if (bundle.entry.origin !== 'vault') menu.addSeparator().addItem(item => item.setTitle(t('localDelete.action')).setIcon('trash-2').onClick(() => this.deleteLocal(bundle.entry)));
+      if (this.plugin.canDeleteArticle(bundle.entry)) menu.addItem(item => item.setTitle(t('moderation.move')).setIcon('folder-input').onClick(() => this.plugin.openMoveArticle(bundle.entry)));
       if (this.plugin.canDeleteArticle(bundle.entry)) menu.addSeparator().addItem(item => item.setTitle(t('moderation.delete')).setIcon('trash-2').onClick(() => this.plugin.confirmDeleteArticle(bundle.entry)));
       menu.addSeparator();
       menu.addItem(item => item.setTitle(savedNote ? t('reader.openSavedNote') : t('reader.saveNote')).setIcon(savedNote ? 'file-check' : 'file-plus').onClick(() => {

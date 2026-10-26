@@ -58,7 +58,7 @@ export const channelStateSchema = z.object({
   articlePending: z.boolean(),
 });
 export type ChannelState = z.infer<typeof channelStateSchema>;
-export const collectionJobSchema = z.object({ id: z.string(), url: z.string(), baseUrl: z.string(), status: z.enum(['queued', 'running', 'complete', 'failed']).default('queued'), title: z.string().default(''), originalTitle: z.string().optional(), entryId: z.string().optional(), notified: z.boolean().default(false), createdAt: z.number() });
+export const collectionJobSchema = z.object({ id: z.string(), url: z.string(), baseUrl: z.string(), status: z.enum(['queued', 'running', 'complete', 'failed']).default('queued'), title: z.string().default(''), originalTitle: z.string().optional(), stage: z.enum(['queued', 'fetch', 'translation', 'rewrite', 'complete']).optional(), failure: z.enum(['timeout', 'quota', 'credentials', 'incomplete', 'network', 'structure', 'unknown']).optional(), entryId: z.string().optional(), notified: z.boolean().default(false), createdAt: z.number() });
 export type CollectionJob = z.infer<typeof collectionJobSchema>;
 export const stateSchema = z.object({
   libraryVersion: z.number().int().min(0).max(1).default(0),
