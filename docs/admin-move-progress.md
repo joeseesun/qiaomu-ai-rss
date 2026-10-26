@@ -1,22 +1,20 @@
-# 管理员转写修复与移动文章
+# Admin collection and article organization
 
-更新时间：2026-10-26（Asia/Shanghai）
+Updated: 2026-10-26 (Asia/Shanghai).
 
-目标：修复 Goodfire 链接转写失败；支持管理员将普通文章和已完成转写移动到服务器频道，沿用现有分类选择目标。保留文章 ID、正文、改写和收藏关联，刷新后不恢复原归属。
+Scope: fix the Goodfire collection failure, support every public channel plus private subscription groups (both confirmed by the user). Preserve article identity, content, AI results, favorites and reading state. No WeChat UI automation.
 
-基线：RSS origin/main 627f657，已安装版本 0.32.6；旧工作区 0.29.0 不用于安装。
+Baseline: origin/main 627f657 (0.32.6), isolated worktree rss-admin-move-fix. The old 0.29.0 checkout was not used for installation.
 
-已验证：生产任务 b2a2cb17-699a-4a30-88d1-54729eae7120 抓取完成，translation 阶段失败。生产 deepseek.translateEntry 复现 HTTP 413：单个结构块 10376 字符。实际正文有 417 块，figure 与 ol 包含大量图片/链接；不能截断正文或跳过翻译冒充完成。DeepSeek 实际模型为 deepseek-flash。
-
-实施：独立工作树 rss-admin-move-fix；服务端以线上当前文件做锚点补丁并备份，不覆盖 QMReader 其他改动。目录含义等待用户澄清，频道移动先行。
-
-待验证：拆块内容/链接/图片完整性，真实转写结果，移动权限、持久化及刷新，插件安装运行、发布。
-
-## 验证记录
-
-- `npm run check`：317 个插件测试、36 个服务端测试、3 个语言包检查通过；lint 零错误，10 个原有警告；构建约 4.6 MiB。依赖审计无已知漏洞。
-- 实际 Goodfire 文本：417 块拆为 420 块，全部文字、313 张图片和 176 个链接保持，最大请求块 9847 字符。
-- 第二处故障已复现：开头作者署名 `Nick Cammarata Goodfire` 原样保留被误判为漏译；仅为开头短链接署名增加校验例外，正文/标题仍检查完整性。
-- 独立 Obsidian `/tmp/rss-admin-qa-20261026`：0.32.7 已加载，137 个生产频道可搜索。真实菜单点击移动后，生产 API 返回目标频道，搜索能找到文章，正文及改写完全一致；测试后恢复原频道。管理员令牌仅留测试实例内存，没有写入 QA 配置。
-- 生产备份：`/opt/qiaomu-apps/qmreader/.deploy-backups/rss-admin-tools-1792985640567415270`。Goodfire 新任务 `b9e37a17-2879-4554-95f8-129cad5dbb5a` 正在翻译，完成结果待确认。
-- 分类目录当前沿用服务器频道在插件里的既有分组；私人订阅分组与 Vault 文件夹不是服务器文章的频道，不混改个人订阅或笔记。
+Evidence:
+- Original job b2a2cb17-699a-4a30-88d1-54729eae7120 passed authentication/fetch but failed translation: a 10376-character structured block exceeded the 10000-character request budget.
+- Actual Goodfire DOM: 417 blocks split into 420, preserving all text, 313 images and 176 links; largest prompt block 9847 characters.
+- A linked author byline was incorrectly treated as untranslated prose. Generic bounded byline recognition now distinguishes it from ordinary headings/body text.
+- Translation checkpoints preserve validated blocks across failure/restart; input and provider/model changes invalidate reuse. At most two concurrent chunks. Incomplete articles are never saved as complete.
+- Latest production task 64dbf47f-045b-4127-a2e1-4778abaead2f is running. Full real-article completion remains pending.
+- Production backup: /opt/qiaomu-apps/qmreader/.deploy-backups/rss-admin-tools-1792986288023988481. Narrow idempotent patches apply to the current live baseline, not an old server checkout.
+- 318 plugin tests, 37 server tests, 3 language bundle checks passed; lint zero errors and 10 existing warnings. Build/typecheck and release artifact audit passed. npm audit reported zero known vulnerabilities.
+- Isolated native Obsidian: 137 public channels selectable; actual move/search/read/restore preserved original content and rewrite. Private move/search/read/plugin-reload preserved content and public source. Group merging/deletion and scoped storage tested. No admin token saved in the QA vault.
+- Narrow dialog inspected visually with current rendered frames. Public/private effect is explained before confirming. No physical mobile-device test.
+- rockfish received initial 0.32.7; final private-group build installation pending. Existing data was preserved during asset replacement.
+- PR #95. Official preview b09cbea completed with existing warnings only. Expanded final candidate requires another preview. Public Release and default-branch version update remain pending.

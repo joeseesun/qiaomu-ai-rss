@@ -10,6 +10,7 @@ export function applyDeletedEntries(state: State, ids: string[], baseUrl: string
     channel.entries = channel.entries.filter(keep);
     if (channel.bundle && !keep(channel.bundle.entry)) { channel.bundle = null; channel.articlePending = false; }
   }
+  for (const [key, item] of Object.entries(state.personalArticles)) if (item.baseUrl === baseUrl && !keep(item.bundle.entry)) delete state.personalArticles[key];
   if (baseUrl !== state.settings.baseUrl) return;
   state.entries = state.entries.filter(keep);
   for (const bundles of [state.cache, state.favorites, state.savedArticles]) {

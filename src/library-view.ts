@@ -154,9 +154,10 @@ export class LibraryPanel extends Component {
     const filtering = !!query || this.kind !== 'all', read = new Set(state.readIds); let shown = 0;
     for (const group of [...groupsInOrder(state), { id: '', name: t('common.ungrouped'), order: Infinity }]) {
       const items = all.filter(s => s.groupId === group.id && this.matchesKind(s) && `${s.name} ${s.detail} ${group.name}`.toLocaleLowerCase().includes(query));
-      if (!items.length && (filtering || !group.id)) continue;
+      const articles = Object.values(state.personalArticles).filter(item => item.baseUrl === state.settings.baseUrl && item.groupId === group.id && !this.plugin.articleHidden(item.bundle.entry) && `${item.bundle.entry.title} ${item.bundle.entry.titleZh || ''} ${group.name}`.toLocaleLowerCase().includes(query));
+      if (!items.length && !articles.length && (filtering || !group.id)) continue;
       const section = this.list.createEl('section', { cls: 'qrs-library-group' });
-      const empty = !items.length, collapsed = empty || (!filtering && state.collapsedGroups.includes(group.id));
+      const empty = !items.length && !articles.length, collapsed = empty || (!filtering && state.collapsedGroups.includes(group.id));
       const header = section.createDiv('qrs-group-header');
       header.toggleClass('is-empty', empty);
       const pickId = crypto.randomUUID();
@@ -168,10 +169,14 @@ export class LibraryPanel extends Component {
       const toggle = header.createEl('button', { cls: 'qrs-library-group-toggle', attr: { 'aria-expanded': String(!collapsed) } });
       setIcon(toggle.createSpan('qrs-library-chevron'), 'chevron-right'); toggle.createSpan({ text: group.name });
       if (empty) toggle.createSpan({ cls: 'qrs-library-empty-hint', text: t('library.emptyGroupHint') });
-      else toggle.createSpan({ cls: 'qrs-library-count', text: String(items.length) });
+      else toggle.createSpan({ cls: 'qrs-library-count', text: String(items.length + articles.length) });
       toggle.onclick = () => { if (filtering || empty) return; void this.plugin.editLibrary(() => { state.collapsedGroups = collapsed ? state.collapsedGroups.filter(id => id !== group.id) : [...state.collapsedGroups, group.id]; }).catch(() => new Notice(t('common.saveFailed'))); };
       if (group.id) { const more = iconButton(header, 'ellipsis', t('library.manage', { name: group.name }), () => this.groupMenu(group.id, more)); }
       if (collapsed) continue;
+      if (articles.length) {
+        shown++;
+        section.createEl('button', { cls: 'qrs-source-name', text: t('moderation.viewArticles', { n: articles.length }) }).onclick = () => { void this.plugin.openPersonalSource(group.id ? `@group:${group.id}` : '@local'); };
+      }
       for (const item of items) {
         if (shown++ >= this.limit) continue;
         const row = section.createDiv({ cls: 'qrs-subscription-row', attr: { 'data-source': item.id } });
@@ -191,7 +196,7 @@ export class LibraryPanel extends Component {
         row.onclick = e => { if (!this.selected.size || (e.target as HTMLElement).closest('button,input')) return; check.click(); };
       }
     }
-    if (!all.length) {
+    if (!all.length && !Object.values(state.personalArticles).some(item => item.baseUrl === state.settings.baseUrl)) {
       const empty = this.list.createDiv('qrs-empty'); empty.createEl('p', { text: t('library.empty') });
       empty.createEl('button', { text: t('reader.discover'), cls: 'mod-cta' }).onclick = () => this.discover();
     } else if (!shown && filtering) this.list.createDiv({ cls: 'qrs-empty', text: t('library.noMatch') });

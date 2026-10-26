@@ -64,6 +64,7 @@ export const stateSchema = z.object({
   libraryVersion: z.number().int().min(0).max(1).default(0),
   subscriptionGroups: z.array(z.object({ id: z.string(), name: z.string(), order: z.number() })).default([]),
   sourceMeta: z.record(z.string(), z.object({ groupId: z.string(), name: z.string().default(''), order: z.number().default(0) })).default({}),
+  personalArticles: z.record(z.string(), z.object({ baseUrl: z.string(), groupId: z.string(), bundle: bundleSchema })).default({}),
   collapsedGroups: z.array(z.string()).default([]),
   speechProgress: z.record(z.string(), z.object({ fingerprint: z.string(), offset: z.number().int().nonnegative(), ended: z.boolean(), at: z.number() })).catch({}).default({}),
   settings: z.object({
@@ -142,6 +143,7 @@ export function splitContentCache(state: State, collectBodies = true): { slim: S
         ...cs, entries: cs.entries.map(strip), bundle: cs.bundle ? { ...cs.bundle, entry: strip(cs.bundle.entry) } : cs.bundle,
       }])),
       entries: state.entries.map(strip),
+      personalArticles: Object.fromEntries(Object.entries(state.personalArticles).map(([key, item]) => [key, { ...item, bundle: { ...item.bundle, entry: strip(item.bundle.entry) } }])),
       cache: mapBundles(state.cache), favorites: mapBundles(state.favorites), savedArticles: mapBundles(state.savedArticles),
     },
     cache,
@@ -152,6 +154,7 @@ export function attachContentCache(state: State, cache: Record<string, string>):
   for (const feed of state.subscriptions) for (const entry of feed.entries) attach(entry);
   for (const cs of Object.values(state.channelStates)) { for (const entry of cs.entries) attach(entry); if (cs.bundle) attach(cs.bundle.entry); }
   for (const entry of state.entries) attach(entry);
+  for (const item of Object.values(state.personalArticles)) attach(item.bundle.entry);
   for (const bundle of Object.values(state.cache)) attach(bundle.entry);
   for (const bundle of Object.values(state.favorites)) attach(bundle.entry);
   for (const bundle of Object.values(state.savedArticles)) attach(bundle.entry);

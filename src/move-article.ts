@@ -2,6 +2,7 @@ import { Modal, Notice, type App } from 'obsidian';
 import type QiaomuRssPlugin from './main';
 import type { Entry, Source } from './model';
 import { qiaomuChannelDivider } from './discovery';
+import { groupsInOrder, personalArticleKey } from './personal-library';
 import { dividerLabel, t } from './i18n';
 
 export class MoveArticleModal extends Modal {
@@ -22,22 +23,31 @@ export class MoveArticleModal extends Modal {
     actions.createEl('button', { text: t('common.cancel') }).onclick = () => this.close();
     const button = actions.createEl('button', { cls: 'mod-cta', text: t('moderation.moveConfirm'), attr: { disabled: true } });
     let sources: Source[] = [], selected = '', busy = false;
+    type Target = { id: string; name: string; group: string; personal: boolean };
+    const targets = (): Target[] => [
+      { id: '@personal:', name: t('common.ungrouped'), group: t('moderation.privateGroups'), personal: true },
+      ...groupsInOrder(this.plugin.state).map(group => ({ id: `@personal:${group.id}`, name: group.name, group: t('moderation.privateGroups'), personal: true })),
+      ...sources.map(source => ({ id: source.id, name: source.name, group: `${t('moderation.publicChannels')} · ${dividerLabel(qiaomuChannelDivider(source))}`, personal: false })),
+    ];
+    const unchanged = () => selected.startsWith('@personal:')
+      ? this.plugin.state.personalArticles[personalArticleKey(baseUrl, this.entry.id)]?.groupId === selected.slice(10)
+      : selected === this.entry.sourceId;
     const baseUrl = this.plugin.state.settings.baseUrl;
     const render = () => {
       list.empty();
       const query = search.value.trim().toLocaleLowerCase();
       let previous = '';
       let count = 0;
-      for (const source of sources.filter(s => `${s.name} ${dividerLabel(qiaomuChannelDivider(s))}`.toLocaleLowerCase().includes(query))) {
+      for (const source of targets().filter(s => `${s.name} ${s.group}`.toLocaleLowerCase().includes(query))) {
         count++;
-        const group = dividerLabel(qiaomuChannelDivider(source));
+        const group = source.group;
         if (group !== previous) list.createDiv({ cls: 'qrs-pick-group', text: group });
         previous = group;
         const row = list.createEl('label', { cls: 'qrs-pick-row' });
         const radio = row.createEl('input', { type: 'radio', attr: { name: 'qrs-move-target' } });
         radio.checked = selected === source.id; radio.disabled = busy;
         row.createSpan({ cls: 'qrs-pick-name', text: source.name });
-        radio.onchange = () => { selected = source.id; button.disabled = busy || selected === this.entry.sourceId; };
+        radio.onchange = () => { selected = source.id; button.disabled = busy || unchanged(); status.setText(t(source.personal ? 'moderation.privateHint' : 'moderation.publicHint')); };
       }
       if (!count) list.createDiv({ cls: 'qrs-pick-empty', text: t('pick.empty') });
     };
@@ -55,10 +65,12 @@ export class MoveArticleModal extends Modal {
       if (baseUrl !== this.plugin.state.settings.baseUrl) { status.setText(t('moderation.moveFailed')); return; }
       busy = true; button.disabled = true; search.disabled = true; render();
       try {
-        const name = await this.plugin.moveArticle(this.entry, selected, baseUrl);
+        const name = selected.startsWith('@personal:')
+          ? await this.plugin.moveArticleToGroup(this.entry, selected.slice(10), baseUrl)
+          : await this.plugin.moveArticle(this.entry, selected, baseUrl);
         new Notice(t('moderation.moved', { name })); this.close();
       } catch (error) { if (!this.closed) status.setText(error instanceof Error ? error.message : t('moderation.moveFailed')); }
-      finally { busy = false; if (!this.closed) { button.disabled = false; search.disabled = false; render(); } }
+      finally { busy = false; if (!this.closed) { button.disabled = unchanged(); search.disabled = false; render(); } }
     };
   }
   onClose() { this.closed = true; this.contentEl.empty(); }

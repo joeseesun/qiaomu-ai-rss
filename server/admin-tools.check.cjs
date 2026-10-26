@@ -66,3 +66,22 @@ test('keeps a linked name-only byline verbatim but rejects untranslated prose an
   assert.equal(preservesAttribution({...byline,i:100},byline.source),false);
   assert.equal(preservesAttribution({...byline,source:'Neural Networks Are Already Clean'},'Neural Networks Are Already Clean'),false);
 });
+
+test('translation checkpoints retain successful blocks across failure and restart, isolate changed input/model', async () => {
+  const { createProgress } = require('./admin-tools/translation-progress.cjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rss-progress-')), file = path.join(dir,'progress.sqlite');
+  let progress = createProgress(file);
+  const config = { model: 'deepseek-flash', provider: 'test' }, entry = { id: 'one', title: 'Test' };
+  const chunks = [{ i: 0, source: 'First' }, { i: 1, source: 'Second' }];
+  try {
+    await assert.rejects(progress.run(config, entry, chunks, async (_c,_e,_b,save) => { save({ pairs: [{ ...chunks[0], target:'第一' }], titleZh:'测试' }); throw Error('network'); }));
+    progress.close(); progress = createProgress(file);
+    const resumed = await progress.run(config, entry, chunks, async (_c,_e,pending) => { assert.deepEqual(pending.map(b=>b.i),[1]); return { pairs:[{...pending[0],target:'第二'}] }; });
+    assert.equal(resumed.pairs.length,2); assert.equal(resumed.titleZh,'测试');
+    await progress.run(config, entry, chunks, () => { throw Error('must reuse'); });
+    let changed = 0;
+    await progress.run({...config,model:'other'}, entry, chunks, async (_c,_e,pending) => { changed=pending.length; return {pairs:pending}; });
+    assert.equal(changed,2);
+    await progress.run(config, {...entry,title:'changed'}, chunks, async (_c,_e,pending) => { assert.equal(pending.length,2); return {pairs:pending}; });
+  } finally { progress.close(); fs.rmSync(dir,{recursive:true,force:true}); }
+});

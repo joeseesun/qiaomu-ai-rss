@@ -109,3 +109,26 @@ describe('group aliases and catalog dedupe', () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 });
+
+describe('private article placement', () => {
+  it('survives storage/reload, hides other servers, and follows merged/deleted groups', async () => {
+    const { placePersonalArticle, personalArticleEntries } = await import('../src/personal-library');
+    const { splitContentCache, attachContentCache } = await import('../src/model');
+    const state = initialState(null), base = state.settings.baseUrl;
+    const a = ensureGroup(state, 'Research'), b = ensureGroup(state, 'Reading');
+    const bundle = { entry: { id: 'one', sourceId: 'original', title: 'Test', link: 'https://example.org', content: '<p>Full text</p>' }, rewrite: null, translation: null, fetchedAt: 1 };
+    placePersonalArticle(state, bundle, a, base);
+    placePersonalArticle(state, { ...bundle, entry: { ...bundle.entry, id: 'other' } }, a, 'https://other.example');
+    expect(personalArticleEntries(state, `@group:${a}`).map(e => e.id)).toEqual(['one']);
+    expect(personalArticleEntries(state, 'local:feed')).toEqual([]);
+    const { slim, cache } = splitContentCache(state), restored = initialState(JSON.parse(JSON.stringify(slim))); attachContentCache(restored, cache);
+    expect(personalArticleEntries(restored, `@group:${a}`)[0].content).toBe(bundle.entry.content);
+    expect(personalArticleEntries(restored, `@group:${a}`)[0].sourceId).toBe('original');
+    renameGroup(restored, a, 'Reading');
+    expect(personalArticleEntries(restored, `@group:${b}`)).toHaveLength(1);
+    deleteGroup(restored, b);
+    expect(personalArticleEntries(initialState(restored), '@local')).toHaveLength(1);
+    expect(Object.values(restored.personalArticles).every(item => item.groupId === '')).toBe(true);
+    expect(() => placePersonalArticle(restored, bundle, 'missing', base)).toThrow();
+  });
+});
