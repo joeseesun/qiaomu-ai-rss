@@ -1,4 +1,5 @@
 import { Menu, Notice, Platform, setIcon } from 'obsidian';
+import { mobileSpeechSettings } from './speech-platform';
 import { openVoicePicker, SpeechService, createLocalTtsManager, normalizeSettings, rememberProgress, resumeOffset } from '@qiaomu/speech/speech';
 import type { LocalManager, SpeechOwner, SpeechSettings, VoiceCatalog } from '@qiaomu/speech/speech';
 import type QiaomuRssPlugin from './main';
@@ -54,7 +55,7 @@ export class RssSpeech {
   readonly reading = { restartWithSettings: () => this.restart() };
   constructor(readonly plugin: QiaomuRssPlugin) {
     this.app = plugin.app; this.manifest = plugin.manifest;
-    this.settings.tts = normalizeSettings({ tts: this.settings.tts }, Platform.isDesktopApp).tts;
+    this.settings.tts = mobileSpeechSettings(normalizeSettings({ tts: this.settings.tts }, Platform.isDesktopApp).tts, Platform.isDesktopApp);
     this.speech = new SpeechService(this);
     this.unsubscribe = this.speech.subscribe(() => { this.checkpoint(); this.session?.render?.(); this.renderActions(); });
   }
