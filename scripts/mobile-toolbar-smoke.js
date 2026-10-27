@@ -22,7 +22,6 @@
         sidebar.querySelector('.qrs-channel-label').textContent = '这是一个很长的订阅频道名称 — A very long channel name';
         const settings = sidebar.querySelector('.qrs-sidebar-toolbar [data-qrs-label]:last-child');
         settings.classList.toggle('is-hidden', !collection);
-        await new Promise(resolve => requestAnimationFrame(resolve));
         const bar = sidebar.querySelector('.qrs-sidebar-toolbar'), bounds = bar.getBoundingClientRect();
         const controls = [...bar.querySelectorAll('button')].filter(b => getComputedStyle(b).display !== 'none');
         for (const button of controls) {
