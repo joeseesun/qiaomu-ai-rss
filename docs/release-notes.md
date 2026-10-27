@@ -1,7 +1,5 @@
-修复平板上刷新、搜索、发现订阅和来源筛选图标消失的问题。手机和平板统一使用至少 44px 的触摸区域，窄屏和分屏时工具栏自动换行，长频道名称不再挤压操作按钮。阅读工具栏也使用正确的图标按钮类型，避免同类问题。
+修复手机和平板首次使用及同步 Edge 设置后无法朗读的问题：移动端自动使用系统语音，保留已保存的音色、语速和其他服务配置。桌面端 Edge 与已配置的云端语音保持原有行为。
 
-提升日期与已读摘要的文字对比度，统一筛选字号和轻量选中态；搜索框聚焦保持尺寸稳定，改善中文标题字距、键盘焦点和阅读设置浮层。保留原有功能与操作路径。
+English: Use device speech on mobile when the default, synced, or imported provider is desktop-only Edge. Preserve voice profiles, playback speed, desktop Edge, and configured cloud services.
 
-English: Fix invisible toolbar icons on tablets. Phone and tablet list controls use 44px touch targets, wrap in narrow panes, and keep long channel names from squeezing actions. Reader toolbar icons also use the host icon-button type. Refine text contrast, filter typography, search focus, Chinese headings and reading settings without changing existing functions.
-
-Validation: repository lint, tests and build; rendered controls under real Obsidian desktop host styles with phone/tablet classes, narrow panes and light/dark themes. Physical iOS and Android devices have not been tested.
+Validation: lint, automated regression tests, typecheck and production build; real macOS Obsidian playback. Physical iOS and Android playback and the original reporter’s failure are not yet verified.

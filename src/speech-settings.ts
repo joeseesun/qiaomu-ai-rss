@@ -6,6 +6,7 @@ import { speechError, speechChoiceText } from './speech';
 import { DEFAULT_HIGHLIGHT, applyHighlightAppearance, type SpeechHighlight } from './speech-highlight';
 import { t, locale } from './i18n';
 import { preferredMacVoices, voiceMarker } from './speech-voices';
+import { mobileSpeechSettings } from './speech-platform';
 export class SpeechSettingsModal extends Modal {
   private cleanups: Array<() => void> = [];
   private revision = 0;
@@ -68,7 +69,7 @@ export class SpeechSettingsModal extends Modal {
       const imports = root.createDiv();
       void findSpeechSettings(this.app, 'qiaomu-audio').then(found => {
         if (!found || revision !== this.revision || this.abort.signal.aborted) return;
-        this.action(imports, t('speech.import'), async () => { await copySpeechSettings(host, 'qiaomu-audio'); if (this.abort.signal.aborted) return; this.verified = ''; this.page = 'home'; this.render(); });
+        this.action(imports, t('speech.import'), async () => { await copySpeechSettings(host, 'qiaomu-audio'); host.settings.tts = mobileSpeechSettings(host.settings.tts, Platform.isDesktopApp); await this.plugin.persist(); if (this.abort.signal.aborted) return; this.verified = ''; this.page = 'home'; this.render(); });
       }).catch(() => { /* Audio import is optional; RSS remains standalone. */ });
       const actions = root.createDiv('qrs-speech-setup-actions');
       this.action(actions, t('speech.back'), () => { this.page = 'home'; this.render(); });
