@@ -73,3 +73,7 @@ Keep read aloud, favorite, read/unread and Daily Note as direct actions. Save/op
 ## Unified subscription input (0.30.0)
 
 This supersedes the URL preview and permanent library action row above. Management and discovery share one input with permanent format guidance and a secondary OPML file action. Names search; URLs resolve on Enter or Add. Single verified feeds are added once with Undo; multiple website feeds and OPML use inline selection. One sticky import button confirms batch additions. Remaining library actions are in More. See [implementation and boundaries](docs/xml-subscription-design.md).
+
+## Mobile toolbar (0.32.8)
+
+Use Obsidian's `clickable-icon` class for icon-only buttons and the channel picker: tablet text-button padding otherwise consumes the SVG's width. Keep SVGs non-shrinking. The list toolbar wraps the action group when its channel and actions cannot fit; phone and tablet list actions have 44px touch targets. Validate actual host CSS, long channel names, 220–1024px panes and both themes; simulated mobile classes do not prove physical-device behavior.

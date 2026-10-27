@@ -1,7 +1,5 @@
-管理员可以从文章列表右键、文章更多菜单或已完成转写右键打开「移动到频道或目录」，搜索任意公共频道或私人订阅分组。公共移动对所有读者生效；私人分组只影响当前知识库。文章 ID、正文、改写和收藏关联保留，刷新与重启后仍保留位置。
+修复平板上刷新、搜索、发现订阅和来源筛选图标消失的问题。手机和平板统一使用至少 44px 的触摸区域，窄屏和分屏时工具栏自动换行，长频道名称不再挤压操作按钮。阅读工具栏也使用正确的图标按钮类型，避免同类问题。
 
-转写失败显示具体原因。配套服务器按 DOM 结构拆分超长图文，保留全部文字、链接和图片；识别英文作者署名，继续检查正文完整性。成功的翻译块保存进度，失败重试或服务重启后只补缺失部分，不把不完整文章标成成功。
+English: Fix invisible toolbar icons on tablets. Phone and tablet list controls use 44px touch targets, wrap in narrow panes, and keep long channel names from squeezing actions. Reader toolbar icons also use the host icon-button type.
 
-English: Administrators can organize articles and completed rewrites into any public channel or private subscription group. Public changes affect all readers; private groups are vault-local. Preserve identity, content and reading associations across refreshes and restarts. The companion server update splits oversized structured content without truncation and checkpoints successful translation blocks for bounded retries.
-
-Validation: repository checks, real server move and restore with unchanged content/rewrites, private-group move/read/reload in isolated Obsidian desktop, narrow light/dark dialog checks. Physical mobile devices have not been tested.
+Validation: repository lint, tests and build; rendered controls under real Obsidian desktop host styles with phone/tablet classes, narrow panes and light/dark themes. Physical iOS and Android devices have not been tested.
