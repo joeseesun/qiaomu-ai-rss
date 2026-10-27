@@ -73,3 +73,13 @@ Keep read aloud, favorite, read/unread and Daily Note as direct actions. Save/op
 ## Unified subscription input (0.30.0)
 
 This supersedes the URL preview and permanent library action row above. Management and discovery share one input with permanent format guidance and a secondary OPML file action. Names search; URLs resolve on Enter or Add. Single verified feeds are added once with Undo; multiple website feeds and OPML use inline selection. One sticky import button confirms batch additions. Remaining library actions are in More. See [implementation and boundaries](docs/xml-subscription-design.md).
+
+## Mobile toolbar (0.32.8)
+
+Use Obsidian's `clickable-icon` class for icon-only buttons and the channel picker: tablet text-button padding otherwise consumes the SVG's width. Keep SVGs non-shrinking. The list toolbar wraps the action group when its channel and actions cannot fit; phone and tablet list actions have 44px touch targets. Validate actual host CSS, long channel names, 220–1024px panes and both themes; simulated mobile classes do not prove physical-device behavior.
+
+## Reading polish (0.32.8)
+
+Keep the current reading-first direction: familiar layout (variance 3/10), immediate actions (motion 1/10), dense scanning with comfortable prose (list density 8/10). Existing navigation and commands are the contract. Follow the Vercel reference's 6px control radii, 400/500/600 type hierarchy, 1px shadow border and low-opacity layered elevation; keep Chinese system UI and the user's chosen reading font.
+
+Dates and read summaries derive a 70% foreground blend from each reading palette instead of disabled-text colors. Filters use 12px desktop / 13px mobile text with a compact selected surface inside the full touch target. Search is 36px desktop / 44px mobile, with one stable border and readable placeholder. Chinese article headings have normal tracking. Reading settings retain their controls in a 16px-padded surface, separated from the trigger by 6px, with thin neutral dropdown edges and keyboard focus contained inside list controls.

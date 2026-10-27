@@ -295,7 +295,7 @@ export class ReaderView extends ItemView {
     }), 8000);
   }
   private addIconButton(parent: HTMLElement, icon: string, label: string, action: () => void): HTMLButtonElement {
-    const button = parent.createEl('button', { cls: 'qrs-icon', attr: { 'data-qrs-label': label } });
+    const button = parent.createEl('button', { cls: 'clickable-icon qrs-icon', attr: { 'data-qrs-label': label } });
     setIcon(button, icon); button.createSpan({ cls: 'qrs-visually-hidden', text: label }); button.addEventListener('click', action); return button;
   }
   refreshPreferences() { this.selectionCapture?.clear(); this.applyAppearance(); if (this.appearanceOpen) this.renderReader(true); }
@@ -326,13 +326,14 @@ export class ReaderView extends ItemView {
     const body = root.createDiv('qrs-layout');
     const sidebar = body.createEl('aside', { cls: 'qrs-sidebar' });
     const bar = sidebar.createDiv('qrs-sidebar-toolbar');
-    this.channelButton = bar.createEl('button', { cls: 'qrs-channel', attr: { 'aria-haspopup': 'dialog' } });
+    this.channelButton = bar.createEl('button', { cls: 'clickable-icon qrs-channel', attr: { 'aria-haspopup': 'dialog' } });
     this.renderChannel(); this.channelButton.addEventListener('click', () => this.pickChannel());
-    this.addIconButton(bar, 'plus', t('reader.discover'), () => { void this.plugin.openDiscovery(); });
-    this.addIconButton(bar, 'search', t('reader.searchTooltip'), () => this.toggleSearch());
-    this.addIconButton(bar, 'list-filter', t('pick.title'), () => this.plugin.pickCuratedSources());
-    this.refreshButton = this.addIconButton(bar, 'refresh-cw', t('reader.refresh'), () => { void this.loadEntries(false, true); });
-    this.collectionSettingsButton = this.addIconButton(bar, 'settings', t('reader.pluginSettings'), () => this.plugin.openCollectionSettings());
+    const tools = bar.createDiv('qrs-sidebar-actions');
+    this.addIconButton(tools, 'plus', t('reader.discover'), () => { void this.plugin.openDiscovery(); });
+    this.addIconButton(tools, 'search', t('reader.searchTooltip'), () => this.toggleSearch());
+    this.addIconButton(tools, 'list-filter', t('pick.title'), () => this.plugin.pickCuratedSources());
+    this.refreshButton = this.addIconButton(tools, 'refresh-cw', t('reader.refresh'), () => { void this.loadEntries(false, true); });
+    this.collectionSettingsButton = this.addIconButton(tools, 'settings', t('reader.pluginSettings'), () => this.plugin.openCollectionSettings());
     this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group' } });
     this.renderFilters();
     this.searchBox = sidebar.createDiv('qrs-search-box'); this.searchBox.toggleClass('is-hidden', !this.query);

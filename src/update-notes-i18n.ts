@@ -1,5 +1,5 @@
 import { M } from './i18n';
-export type UpdateMessage = "title" | "view" | "done" | "automatic" | "saveError" | "introduced" | "revisit" | "control" | "fallback" | "adminMove" | "collectionErrors";
+export type UpdateMessage = "title" | "view" | "done" | "automatic" | "saveError" | "introduced" | "revisit" | "control" | "fallback" | "adminMove" | "collectionErrors" | "mobileToolbar" | "readingPolish";
 export const UPDATE_LOCALES = ['zh-CN', 'en', 'zh-TW', 'ja', 'ko', 'es', 'fr', 'de'] as const;
 export function updateText(language: string, key: UpdateMessage): string {
   const code = String(language || 'en').toLowerCase();
