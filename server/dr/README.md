@@ -37,6 +37,10 @@ The destination must not exist. The tool verifies part checksums and encrypt-the
 
 Before activating a new writer, isolate the old primary, reconcile accepted writes since the backup, restore images and JSON state, test privately, then change origin routing. Never automatically promote the read-only projection into a writer. Do not restore an old projection and label it with a current revision: it could resurrect deleted data.
 
+## Snapshot time budget
+
+Public export has a finite 600-second budget. The sync service allows 1500 seconds for private backup verification, export, and atomic network publication together. Existing installations must update their systemd timeout as well as `snapshot.py`. The lock and five-minute-after-completion timer prevent overlapping runs. A timeout never writes a successful public-sync marker; private backups retain their independent restore-verification marker.
+
 ## Deletion coordination
 
 Before DELETE, admin mutations and source visibility changes, primary middleware starts a durable ticket and increments revision. Standby is invalidated immediately. After successful HTTP completion the ticket ends, but standby remains blocked until a fresh snapshot is atomically promoted and published at the new revision. An aborted request, >=500 result, or coordinator failure deliberately leaves a pending ticket. Investigate the production result and content visibility, then explicitly finish the known ticket through the protected API and run a new sync. Never clear pending blindly. Coordinator outage rejects these mutations with 503, preserving the deletion guarantee.

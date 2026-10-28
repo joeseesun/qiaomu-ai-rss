@@ -121,7 +121,10 @@ def main():
             # The exporter initializes schema only in a SECOND clone, preserving the original restore artifact.
             export_db = stage / 'export.sqlite'; shutil.copy2(clone, export_db)
             env = {**os.environ, **note_env, 'RSS_DR_STAGE': str(stage), 'QMREADER_DB_FILE': str(export_db), 'QMREADER_DATA_DIR': str(private)}
-            subprocess.run(['/usr/bin/node', str(Path(__file__).with_name('export.cjs')), str(public / 'public.sqlite')], env=env, check=True, timeout=240)
+            # A full archive can exceed four wall-clock minutes on a shared CPU,
+            # even with batched hydration. Keep a finite export budget separate
+            # from private backup verification and network publication.
+            subprocess.run(['/usr/bin/node', str(Path(__file__).with_name('export.cjs')), str(public / 'public.sqlite')], env=env, check=True, timeout=600)
             manifest = {**manifest, 'sha256': hashlib.sha256((public / 'public.sqlite').read_bytes()).hexdigest()}
             (public / 'manifest.json').write_text(json.dumps(manifest))
             ssh = 'ssh -i ' + SSHKEY + ' -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/rss-dr/known_hosts -o ConnectTimeout=10'
