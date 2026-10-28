@@ -13,7 +13,7 @@ class SnapshotOrderingTest(unittest.TestCase):
     def test_private_backup_download_restore_and_corrupt_part_rejection(self):
         for corrupt in [False, True]:
             with self.subTest(corrupt=corrupt), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 private = root / 'private'
                 private.mkdir()
                 (root / 'password').write_text('test-only-backup-password')
@@ -45,9 +45,58 @@ class SnapshotOrderingTest(unittest.TestCase):
                             self.assertTrue(json.loads((root / 'last-backup.json').read_text())['restoreVerified'])
                             self.assertEqual((root / 'restore/private-notes.json').read_text(), (private / 'private-notes.json').read_text())
 
+    def test_publication_failure_keeps_cache_and_retry_commits_pair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            app = root / 'app'
+            (app / 'data').mkdir(parents=True)
+            (app / 'lib').mkdir()
+            (app / 'server.js').write_text('// fixture')
+            with sqlite3.connect(app / 'data/qmreader.sqlite') as db:
+                db.execute('CREATE TABLE entries(id TEXT)')
+            work = root / 'work'
+            old = work / 'projection-sold'
+            old.mkdir(parents=True)
+            (old / 'state.json').write_text('old state')
+            (old / 'public.sqlite').write_text('old projection')
+            (work / 'projection-current').symlink_to(old.name)
+            env = {'RSS_DR_WORK': str(work), 'RSS_DR_APP': str(app),
+                   'RSS_DR_CONTROL_URL': 'https://example.invalid', 'RSS_DR_CONTROL_KEY': 'fixture',
+                   'RSS_DR_SSH_TARGET': 'fixture', 'RSS_DR_SSH_KEY': str(root / 'key'),
+                   'RSS_DR_BACKUP_PASSWORD_FILE': str(root / 'password')}
+            for key in ['QMREADER_PODCAST_NOTES_DIR', 'QMREADER_PODSCRIBE_NOTES_DIR', 'QMREADER_YOUTUBE_NOTES_DIR']:
+                env[key] = str(root / 'absent')
+            spec = importlib.util.spec_from_file_location('snapshot_commit', Path(__file__).with_name('snapshot.py'))
+            module = importlib.util.module_from_spec(spec)
+            fail = True
+            def control(op, data=None):
+                if op == 'begin': return {'idle': True, 'revision': 12}
+                if op == 'publish' and fail: raise RuntimeError('revision_changed')
+            def command(args, **kwargs):
+                if args[0] == '/usr/bin/node':
+                    self.assertEqual(Path(kwargs['env']['RSS_DR_PREVIOUS']).resolve(), old)
+                    Path(args[-1]).write_text('new projection')
+                    Path(kwargs['env']['RSS_DR_STATE_FILE']).write_text('new state')
+            with patch.dict(os.environ, env):
+                spec.loader.exec_module(module)
+                with patch.object(module, 'control', side_effect=control), \
+                     patch.object(module, 'private_backup'), \
+                     patch.object(module.subprocess, 'run', side_effect=command):
+                    with self.assertRaisesRegex(RuntimeError, 'revision_changed'): module.main()
+                    self.assertEqual((work / 'projection-current').resolve(), old)
+                    self.assertEqual((old / 'state.json').read_text(), 'old state')
+                    self.assertFalse((work / 'last-sync.json').exists())
+                    fail = False
+                    module.main()
+            current = work / 'projection-current'
+            self.assertEqual((current / 'state.json').read_text(), 'new state')
+            self.assertEqual((current / 'public.sqlite').read_text(), 'new projection')
+            self.assertFalse(old.exists())
+            self.assertEqual(json.loads((work / 'last-sync.json').read_text())['revision'], 12)
+
     def test_export_failure_cannot_prevent_private_backup(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             app = root / 'app'
             (app / 'data').mkdir(parents=True)
             (app / 'lib').mkdir()
