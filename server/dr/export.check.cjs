@@ -6,8 +6,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 
-for (const batching of [true, false]) {
-  test(`projection preserves data and visibility with ${batching ? 'batch' : 'legacy'} Reader`, t => {
+for (const [batching, legacyPodcast] of [[true, false], [false, false], [true, true]]) {
+  test(`projection preserves data and visibility with ${batching ? 'batch' : 'legacy'} Reader${legacyPodcast ? ' and legacy transcript hash' : ''}`, t => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rss-projection-'));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     const app = path.join(root, 'app');
@@ -23,9 +23,9 @@ for (const batching of [true, false]) {
         return {entries:[entry],hasMore:false};},
       getEntryById(){${batching ? "throw Error('per-entry hydration must not run');" : 'return entry;'}}
       ${batching ? ',getEntriesByIds(ids){if(ids.length!==1||ids[0]!==entry.id)throw Error("wrong batch");return [entry];}' : ''}};`);
-    write('store', `module.exports={getRewrite(){return {body:'完整中文',contentHash:'hash'};},getTranslation(){return {body:'Translation',contentHash:'hash'};},getEntryAssetReaction(){return {helpfulCount:2};}};`);
-    write('deepseek', "module.exports={rewriteContentHash(){return 'hash';},translationInputHash(){return 'hash';}};");
-    write('podcast-transcript', 'module.exports={isTranscriptPodcast(){return false;}};');
+    write('store', `module.exports={getRewrite(){return {body:'完整中文',contentHash:'${legacyPodcast ? 'podcast-transcript-v1:legacy' : 'hash'}'};},getTranslation(){return {body:'Translation',contentHash:'hash'};},getEntryAssetReaction(){return {helpfulCount:2};}};`);
+    write('deepseek', `module.exports={rewriteContentHash(){return '${legacyPodcast ? 'podcast-transcript-v2:current' : 'hash'}';},translationInputHash(){return 'hash';}${legacyPodcast ? ",rewriteIsCurrent(){return true;}" : ''}};`);
+    write('podcast-transcript', `module.exports={isTranscriptPodcast(){return ${legacyPodcast};},loadReadyTranscript(){return {};},stripAudioTimestamps(body){return body;}};`);
     write('podscribe-entry', 'module.exports={isPodscribeEntry(){return false;}};');
     write('wechat-images', 'module.exports={createWechatImageService(){return {rewriteEntry(e){return e;}};}};');
     const output = path.join(root, 'public.sqlite');
