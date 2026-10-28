@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sqlite3
@@ -9,6 +10,41 @@ from unittest.mock import patch
 
 
 class SnapshotOrderingTest(unittest.TestCase):
+    def test_private_backup_download_restore_and_corrupt_part_rejection(self):
+        for corrupt in [False, True]:
+            with self.subTest(corrupt=corrupt), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                private = root / 'private'
+                private.mkdir()
+                (root / 'password').write_text('test-only-backup-password')
+                with sqlite3.connect(private / 'qmreader.sqlite') as db:
+                    db.execute('CREATE TABLE fixture(value TEXT)')
+                    db.execute("INSERT INTO fixture VALUES('complete source data')")
+                (private / 'private-notes.json').write_text('{"transcript":"complete private notes"}')
+                env = {'RSS_DR_WORK': str(root), 'RSS_DR_APP': str(root),
+                       'RSS_DR_CONTROL_URL': 'https://example.invalid', 'RSS_DR_CONTROL_KEY': 'fixture',
+                       'RSS_DR_SSH_TARGET': 'fixture', 'RSS_DR_SSH_KEY': str(root / 'key'),
+                       'RSS_DR_BACKUP_PASSWORD_FILE': str(root / 'password')}
+                spec = importlib.util.spec_from_file_location('snapshot_roundtrip', Path(__file__).with_name('snapshot.py'))
+                module = importlib.util.module_from_spec(spec)
+                objects = {}
+                def upload(op, data=None, payload=None):
+                    objects[op.removeprefix('backup/')] = payload
+                def download(key):
+                    value = objects[key]
+                    return bytes([value[0] ^ 1]) + value[1:] if corrupt and key.endswith('.enc') else value
+                with patch.dict(os.environ, env):
+                    spec.loader.exec_module(module)
+                    with patch.object(module, 'control', side_effect=upload), patch.object(module, 'download', side_effect=download):
+                        if corrupt:
+                            with self.assertRaisesRegex(RuntimeError, 'remote_backup_checksum_failed'):
+                                module.private_backup(root, {'id': 'fixture', 'protocol': 1})
+                            self.assertFalse((root / 'last-backup.json').exists())
+                        else:
+                            module.private_backup(root, {'id': 'fixture', 'protocol': 1})
+                            self.assertTrue(json.loads((root / 'last-backup.json').read_text())['restoreVerified'])
+                            self.assertEqual((root / 'restore/private-notes.json').read_text(), (private / 'private-notes.json').read_text())
+
     def test_export_failure_cannot_prevent_private_backup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

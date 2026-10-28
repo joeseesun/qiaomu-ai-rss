@@ -12,6 +12,8 @@ Primary service: `qiaomu-rss-sync.timer` starts a sync 300 seconds after the pre
 
 `capacity-install.sh` installs bounded logs and 15-minute disk/freshness checks. Disk warnings are emitted at 85% or less than 5 GiB free; export refuses below 2 GiB. Checks record systemd failures; no external message destination is configured. A failed sync leaves the previous ready generation in place unless invalidated by a mutation. Failover refuses snapshots older than 24 hours.
 
+Private archives use gzip level 1 to reduce CPU contention with live reading. A bounded 32 MiB source-data sample used about 69% less CPU than level 9, with an 18% larger compressed result; whole-backup ratios vary. Encryption, part checksums, HMAC verification and the download/decrypt/SQLite restore check remain mandatory. A corrupt downloaded part must leave the successful-backup marker unchanged.
+
 ## Validation and fault drills
 
 ```
