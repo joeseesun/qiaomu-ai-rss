@@ -14,7 +14,7 @@ import tempfile
 import time
 import urllib.request
 
-BASE = Path(os.environ.get('RSS_DR_WORK', '/var/lib/qiaomu-rss-backup'))
+BASE = Path(os.environ.get('RSS_DR_WORK', '/var/lib/qiaomu-rss-backup')).resolve()
 APP = Path(os.environ.get('RSS_DR_APP', '/opt/qiaomu-apps/qmreader'))
 CONTROL = os.environ['RSS_DR_CONTROL_URL']
 KEY = os.environ['RSS_DR_CONTROL_KEY']
@@ -70,6 +70,22 @@ def private_backup(stage, manifest):
         if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok': raise RuntimeError('restore_integrity_failed')
     marker.write_text(json.dumps({'completedAt': time.time(), 'id': manifest['id'], 'remoteManifest': prefix + '/manifest.json', 'restoreVerified': True}))
 
+def commit_projection_cache(stage, public, identifier):
+    # Publication is already accepted by the deletion gate. Commit both the
+    # public projection and PRIVATE fingerprints through one atomic pointer.
+    current = BASE / 'projection-current'
+    old = current.resolve() if current.is_symlink() else None
+    destination = BASE / ('projection-' + identifier)
+    destination.mkdir(mode=0o700)
+    shutil.copy2(public / 'public.sqlite', destination / 'public.sqlite')
+    shutil.copy2(stage / 'export-state.json', destination / 'state.json')
+    pointer = BASE / 'projection-next'
+    pointer.unlink(missing_ok=True)
+    pointer.symlink_to(destination.name)
+    pointer.replace(current)
+    if old and old.parent == BASE and old.name.startswith('projection-s') and old != destination:
+        shutil.rmtree(old)
+
 def main():
     BASE.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (BASE / 'sync.lock').open('w') as lock:
@@ -120,10 +136,9 @@ def main():
             private_backup(stage, manifest)
             # The exporter initializes schema only in a SECOND clone, preserving the original restore artifact.
             export_db = stage / 'export.sqlite'; shutil.copy2(clone, export_db)
-            env = {**os.environ, **note_env, 'RSS_DR_STAGE': str(stage), 'QMREADER_DB_FILE': str(export_db), 'QMREADER_DATA_DIR': str(private)}
-            # A full archive can exceed four wall-clock minutes on a shared CPU,
-            # even with batched hydration. Keep a finite export budget separate
-            # from private backup verification and network publication.
+            env = {**os.environ, **note_env, 'RSS_DR_STAGE': str(stage), 'QMREADER_DB_FILE': str(export_db), 'QMREADER_DATA_DIR': str(private), 'RSS_DR_PREVIOUS': str(BASE / 'projection-current'), 'RSS_DR_STATE_FILE': str(stage / 'export-state.json')}
+            # Reuse unchanged anonymous rows; first run, code/schema changes or
+            # a daily reconciliation rebuild in full within the same finite budget.
             subprocess.run(['/usr/bin/node', str(Path(__file__).with_name('export.cjs')), str(public / 'public.sqlite')], env=env, check=True, timeout=600)
             manifest = {**manifest, 'sha256': hashlib.sha256((public / 'public.sqlite').read_bytes()).hexdigest()}
             (public / 'manifest.json').write_text(json.dumps(manifest))
@@ -131,6 +146,7 @@ def main():
             subprocess.run(['rsync', '-rlptz', '--link-dest=/var/lib/qiaomu-rss-standby/current', '-e', ssh, str(public) + '/', TARGET + ':/var/lib/qiaomu-rss-standby/staging/' + identifier + '/'], check=True, timeout=180)
             subprocess.run(['ssh', '-i', SSHKEY, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=/etc/rss-dr/known_hosts', TARGET, 'promote', identifier], check=True, timeout=90)
             control('publish', manifest)
+            commit_projection_cache(stage, public, identifier)
             (BASE / 'last-sync.json').write_text(json.dumps({**manifest, 'completedAt': int(time.time()*1000)}))
             print(json.dumps({'ok': True, 'id': identifier, 'revision': state['revision']}))
 
