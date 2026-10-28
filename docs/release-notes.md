@@ -1,5 +1,11 @@
-修复手机和平板首次使用及同步 Edge 设置后无法朗读的问题：移动端自动使用系统语音，保留已保存的音色、语速和其他服务配置。桌面端 Edge 与已配置的云端语音保持原有行为。
+## 中文
 
-English: Use device speech on mobile when the default, synced, or imported provider is desktop-only Edge. Preserve voice profiles, playback speed, desktop Edge, and configured cloud services.
+公开阅读连接失败时自动尝试 Cloudflare 备用入口，并短时记住可用线路。文章等待超过 6 秒时，在共享重试和并发预算内尝试另一条线路；缓存、手动阅读版本和迟到结果隔离保留。自定义服务、登录/管理、AI 调用与写入不会转发。
 
-Validation: lint, automated regression tests, typecheck and production build; real macOS Obsidian playback. Physical iOS and Android playback and the original reporter’s failure are not yet verified.
+升级保留订阅、收藏、缓存和设置。原反馈用户的 TUN 节点及物理手机仍需复测。
+
+## English
+
+Recover public reading through an alternate Cloudflare endpoint, remember a working route briefly, and try a bounded alternate for stalled articles. Preserve concurrency limits, cached content, manual reading choices and late-result isolation. Custom services, account/admin/AI requests and writes never use the alternate route.
+
+Existing subscriptions, favorites, caches and settings are preserved. The original reporter’s TUN setup and physical mobile devices remain unverified.
