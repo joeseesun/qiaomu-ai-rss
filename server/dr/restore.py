@@ -27,6 +27,6 @@ db=destination/'restored/qmreader.sqlite'
 if hashlib.sha256(db.read_bytes()).hexdigest()!=meta['databaseSha256']:raise SystemExit('Database checksum failed')
 for database in (destination/'restored').rglob('*'):
  if database.suffix not in ['.sqlite','.sqlite3']:continue
- with sqlite3.connect('file:'+str(database)+'?mode=ro&immutable=1',uri=True) as c:
+ with sqlite3.connect('file:'+str(database)+'?mode=ro',uri=True) as c:
   if c.execute('PRAGMA quick_check').fetchone()[0]!='ok':raise SystemExit('Database integrity failed')
 encrypted.unlink();archive.unlink();print(json.dumps({'ok':True,'snapshot':meta['id'],'restored':str(db.parent)}))

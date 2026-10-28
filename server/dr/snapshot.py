@@ -49,7 +49,7 @@ def download(key, expected_size=None):
 
 def private_backup(stage, manifest):
     marker = BASE / 'last-backup.json'
-    if marker.exists() and time.time() - json.loads(marker.read_text())['completedAt'] < 3600: return
+    if not BACKUP_ONLY and marker.exists() and time.time() - json.loads(marker.read_text())['completedAt'] < 3600: return
     archive = stage / 'backup.tar.gz'
     # The archive is verified after download. Prefer bounded CPU work on the
     # primary over marginal compression gains that compete with live readers.

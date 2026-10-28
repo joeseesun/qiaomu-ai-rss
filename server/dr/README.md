@@ -98,3 +98,4 @@ Set `RSS_DR_SKIP_BACKUP=1` on the public publication job. Run a separate job wit
 Read-only detail responses include the article/rewrite bundle expected by current readers. Missing snapshot assets return settled `unavailable` state with no polling delay; a snapshot never claims a live AI generation job. Verification compares published content separately from this intentional read-only availability policy.
 
 Private backup downloads read in bounded chunks, retry transient GET failures, and stop each encrypted part at its manifest length. This avoids waiting indefinitely for connection closure and limits responses that keep trickling bytes. SHA256, HMAC, decryption and restored-database checks still run before success is recorded.
+Dedicated backup-only jobs always execute when their timer fires; the legacy completion-time throttle applies only to combined publication jobs, so an hourly timer does not silently skip every second hour.
