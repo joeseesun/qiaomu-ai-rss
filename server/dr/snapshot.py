@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Consistent private backup, public projection and authenticated atomic publication."""
 import fcntl
+from contextlib import closing
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import hmac
 import json
@@ -19,8 +21,16 @@ APP = Path(os.environ.get('RSS_DR_APP', '/opt/qiaomu-apps/qmreader'))
 CONTROL = os.environ['RSS_DR_CONTROL_URL']
 KEY = os.environ['RSS_DR_CONTROL_KEY']
 TARGET = os.environ['RSS_DR_SSH_TARGET']
+EXTRA_TARGETS = json.loads(os.environ.get('RSS_DR_EXTRA_TARGETS', '[]'))
+BACKUP_ONLY = os.environ.get('RSS_DR_BACKUP_ONLY') == '1'
+SKIP_BACKUP = os.environ.get('RSS_DR_SKIP_BACKUP') == '1'
+NODE = os.environ.get('RSS_DR_NODE', '/usr/bin/node')
 SSHKEY = os.environ['RSS_DR_SSH_KEY']
 PASSWORD = Path(os.environ['RSS_DR_BACKUP_PASSWORD_FILE'])
+
+def capture_sqlite(source, target):
+    with closing(sqlite3.connect('file:' + str(source) + '?mode=ro', uri=True)) as a, closing(sqlite3.connect(target)) as b:
+        a.backup(b, pages=512, sleep=0.05)
 
 def control(op, data=None, payload=None):
     req = urllib.request.Request(CONTROL + '/__dr/' + op, data=payload if payload is not None else json.dumps(data).encode() if data is not None else None,
@@ -48,7 +58,7 @@ def private_backup(stage, manifest):
         while chunk := f.read(48 * 1024 * 1024):
             mac.update(chunk); key = prefix + f'/part-{index:03d}.enc'
             control('backup/' + key, payload=chunk); parts.append({'key': key, 'sha256': hashlib.sha256(chunk).hexdigest(), 'size': len(chunk)}); index += 1
-    backup = {**manifest, 'parts': parts, 'hmac': mac.hexdigest(), 'encryption': 'AES-256-CBC-PBKDF2-200000+HMAC-SHA256', 'databaseSha256': hashlib.sha256((stage / 'private' / 'qmreader.sqlite').read_bytes()).hexdigest()}
+    backup = {**manifest, 'keyId': os.environ.get('RSS_DR_BACKUP_KEY_ID', 'original'), 'parts': parts, 'hmac': mac.hexdigest(), 'encryption': 'AES-256-CBC-PBKDF2-200000+HMAC-SHA256', 'databaseSha256': hashlib.sha256((stage / 'private' / 'qmreader.sqlite').read_bytes()).hexdigest()}
     control('backup/' + prefix + '/manifest.json', payload=json.dumps(backup).encode())
     # Download the uploaded bytes, verify encrypt-then-MAC, then exercise a genuine restore.
     remote_manifest=json.loads(download(prefix+'/manifest.json'))
@@ -68,6 +78,10 @@ def private_backup(stage, manifest):
     if hashlib.sha256(restored_db.read_bytes()).hexdigest() != backup['databaseSha256']: raise RuntimeError('restore_checksum_failed')
     with sqlite3.connect('file:' + str(restored_db) + '?mode=ro', uri=True) as db:
         if db.execute('PRAGMA quick_check').fetchone()[0] != 'ok': raise RuntimeError('restore_integrity_failed')
+    for database in restored_dir.rglob('*'):
+        if database.suffix not in ['.sqlite', '.sqlite3']: continue
+        with sqlite3.connect('file:' + str(database) + '?mode=ro', uri=True) as check:
+            if check.execute('PRAGMA quick_check').fetchone()[0] != 'ok': raise RuntimeError('restore_dependency_integrity_failed')
     marker.write_text(json.dumps({'completedAt': time.time(), 'id': manifest['id'], 'remoteManifest': prefix + '/manifest.json', 'restoreVerified': True}))
 
 def commit_projection_cache(stage, public, identifier):
@@ -86,23 +100,56 @@ def commit_projection_cache(stage, public, identifier):
     if old and old.parent == BASE and old.name.startswith('projection-s') and old != destination:
         shutil.rmtree(old)
 
+def replicate(public, identifier, target):
+    ssh = 'ssh -i ' + SSHKEY + ' -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/rss-dr/known_hosts -o ConnectTimeout=10'
+    subprocess.run(['rsync', '-rlptz', '--link-dest=/var/lib/qiaomu-rss-standby/current', '-e', ssh, str(public) + '/', target + ':/var/lib/qiaomu-rss-standby/staging/' + identifier + '/'], check=True, timeout=180)
+    subprocess.run(['ssh', '-i', SSHKEY, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=/etc/rss-dr/known_hosts', '-o', 'ConnectTimeout=10', target, 'promote', identifier], check=True, timeout=90)
+
+
+def replicate_all(public, manifest):
+    targets = list(dict.fromkeys([TARGET, *EXTRA_TARGETS]))
+    if not all(isinstance(t, str) and t.startswith('rss-sync@') and not any(c.isspace() for c in t) for t in targets):
+        raise ValueError('invalid_replica_target')
+    results = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
+        futures = {pool.submit(replicate, public, manifest['id'], target): target for target in targets}
+        for future in as_completed(futures):
+            target = futures[future]
+            try:
+                future.result()
+                results[target] = {**manifest, 'ready': True, 'completedAt': int(time.time()*1000)}
+            except Exception as error:
+                results[target] = {'id': manifest['id'], 'revision': manifest['revision'], 'ready': False, 'error': type(error).__name__}
+    marker = BASE / 'replicas-next.json'
+    marker.write_text(json.dumps(results)); marker.replace(BASE / 'replicas.json')
+    # The current public router still uses TARGET. Additional replicas are shadow
+    # copies until a router verifies their individual generation and revision.
+    if not results[TARGET]['ready']:
+        raise RuntimeError('routed_replica_unavailable')
+    return results
+
+
 def main():
+    if BACKUP_ONLY and SKIP_BACKUP: raise ValueError('backup_only_cannot_skip_backup')
     BASE.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with (BASE / 'sync.lock').open('w') as lock:
+    with (BASE / ('backup.lock' if BACKUP_ONLY else 'sync.lock')).open('w') as lock:
         try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: return
         state = control('begin')
-        if not state['idle']: raise RuntimeError('mutation_in_progress')
+        if not BACKUP_ONLY and not state['idle']: raise RuntimeError('mutation_in_progress')
         if shutil.disk_usage(BASE).free < 2 * 1024**3: raise RuntimeError('insufficient_staging_space')
         identifier = 's' + str(int(time.time()*1000))
         captured_at = int(time.time()*1000)
         with tempfile.TemporaryDirectory(prefix='export-', dir=BASE) as tmp:
             stage = Path(tmp); private = stage / 'private'; private.mkdir(); public = stage / 'public'; public.mkdir()
             src = APP / 'data' / 'qmreader.sqlite'; clone = private / 'qmreader.sqlite'
-            with sqlite3.connect('file:' + str(src) + '?mode=ro', uri=True) as source, sqlite3.connect(clone) as destination: source.backup(destination, pages=512, sleep=0.05)
+            capture_sqlite(src, clone)
             for p in (APP / 'data').iterdir():
                 if p.name.startswith('qmreader.sqlite') or p.name.endswith('.lock'): continue
-                if p.is_file(): shutil.copy2(p, private / p.name)
+                if p.name.endswith(('-wal', '-shm', '.tmp')): continue
+                if p.name.endswith(('.sqlite', '.sqlite3')):
+                    capture_sqlite(p, private / p.name)
+                elif p.is_file(): shutil.copy2(p, private / p.name)
                 elif p.is_dir() and p.name in ['wechat-images', 'producthunt-official']: shutil.copytree(p, private / p.name)
             code = private / 'code'; code.mkdir()
             shutil.copy2(APP / 'server.js', code / 'server.js'); shutil.copytree(APP / 'lib', code / 'lib')
@@ -111,7 +158,10 @@ def main():
             if (APP/'.env').is_file():shutil.copy2(APP/'.env',code/'.env')
             shutil.copytree(Path(__file__).parent, private / 'dr', ignore=shutil.ignore_patterns('__pycache__', '.wrangler'))
             config = private / 'configuration'; config.mkdir()
-            for path in ['/etc/rss-dr/primary.env', '/etc/rss-dr/origin-key', '/etc/rss-dr/control-key', '/etc/systemd/system/qmreader.service', '/etc/systemd/system/qmreader.service.d', '/etc/systemd/system/qiaomu-rss-sync.service', '/etc/systemd/system/qiaomu-rss-sync.timer']:
+            config_paths = ['/etc/qmreader.env', '/etc/podscribe.env', '/etc/rss-dr/backup.env', '/etc/rss-dr/sync-key', '/etc/rss-dr/sync-key.pub', '/etc/rss-dr/known_hosts', '/etc/qiaomu-rss-fetch', '/etc/rss-dr/primary.env', '/etc/rss-dr/origin-key', '/etc/rss-dr/control-key', '/etc/systemd/system/qmreader.service', '/etc/systemd/system/qmreader.service.d', '/etc/systemd/system/qiaomu-rss-sync.service', '/etc/systemd/system/qiaomu-rss-sync.timer']
+            for pattern in ['qmreader*', 'podscribe*', 'qiaomu-rss*']:
+                config_paths.extend(str(p) for p in Path('/etc/systemd/system').glob(pattern))
+            for path in dict.fromkeys(config_paths):
                 original = Path(path)
                 if original.is_dir(): shutil.copytree(original, config / original.name)
                 elif original.is_file(): shutil.copy2(original, config / original.name)
@@ -133,18 +183,35 @@ def main():
             manifest = {'protocol': 1, 'id': identifier, 'revision': state['revision'], 'createdAt': captured_at, 'productionCodeSha256': hashlib.sha256((APP / 'server.js').read_bytes()).hexdigest()}
             # An expired or broken public projection must not suppress the private
             # disaster-recovery backup. This returns only after a real restore check.
-            private_backup(stage, manifest)
+            if not SKIP_BACKUP:
+                podscribe = Path(os.environ.get('RSS_DR_PODSCRIBE_APP', '/opt/qiaomu-apps/podscribe'))
+                if (podscribe / 'data').is_dir():
+                    captured = private / 'podscribe-data'; captured.mkdir()
+                    for p in (podscribe / 'data').iterdir():
+                        if p.name.endswith(('-wal', '-shm', '.tmp', '.lock')): continue
+                        if p.suffix in ['.sqlite', '.sqlite3']:
+                            capture_sqlite(p, captured / p.name)
+                        elif p.is_dir(): shutil.copytree(p, captured / p.name)
+                        elif p.is_file(): shutil.copy2(p, captured / p.name)
+                    podscribe_code = private / 'podscribe-code'; podscribe_code.mkdir()
+                    for name in ['app', 'scripts', 'requirements.txt', 'requirements-installed.txt']:
+                        original = podscribe / name
+                        if original.is_dir(): shutil.copytree(original, podscribe_code / name, ignore=shutil.ignore_patterns('__pycache__'))
+                        elif original.is_file(): shutil.copy2(original, podscribe_code / name)
+                credentials = Path('/var/lib/qmreader/.getnote')
+                if credentials.is_dir(): shutil.copytree(credentials, private / 'getnote-config')
+                private_backup(stage, manifest)
+            if BACKUP_ONLY:
+                print(json.dumps({'ok': True, 'backupOnly': True, 'id': identifier})); return
             # The exporter initializes schema only in a SECOND clone, preserving the original restore artifact.
             export_db = stage / 'export.sqlite'; shutil.copy2(clone, export_db)
             env = {**os.environ, **note_env, 'RSS_DR_STAGE': str(stage), 'QMREADER_DB_FILE': str(export_db), 'QMREADER_DATA_DIR': str(private), 'RSS_DR_PREVIOUS': str(BASE / 'projection-current'), 'RSS_DR_STATE_FILE': str(stage / 'export-state.json')}
             # Reuse unchanged anonymous rows; first run, code/schema changes or
             # a daily reconciliation rebuild in full within the same finite budget.
-            subprocess.run(['/usr/bin/node', str(Path(__file__).with_name('export.cjs')), str(public / 'public.sqlite')], env=env, check=True, timeout=600)
+            subprocess.run([NODE, str(Path(__file__).with_name('export.cjs')), str(public / 'public.sqlite')], env=env, check=True, timeout=600)
             manifest = {**manifest, 'sha256': hashlib.sha256((public / 'public.sqlite').read_bytes()).hexdigest()}
             (public / 'manifest.json').write_text(json.dumps(manifest))
-            ssh = 'ssh -i ' + SSHKEY + ' -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/rss-dr/known_hosts -o ConnectTimeout=10'
-            subprocess.run(['rsync', '-rlptz', '--link-dest=/var/lib/qiaomu-rss-standby/current', '-e', ssh, str(public) + '/', TARGET + ':/var/lib/qiaomu-rss-standby/staging/' + identifier + '/'], check=True, timeout=180)
-            subprocess.run(['ssh', '-i', SSHKEY, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=/etc/rss-dr/known_hosts', TARGET, 'promote', identifier], check=True, timeout=90)
+            replicate_all(public, manifest)
             control('publish', manifest)
             commit_projection_cache(stage, public, identifier)
             (BASE / 'last-sync.json').write_text(json.dumps({**manifest, 'completedAt': int(time.time()*1000)}))

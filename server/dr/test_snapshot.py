@@ -23,7 +23,7 @@ class SnapshotOrderingTest(unittest.TestCase):
                 (private / 'private-notes.json').write_text('{"transcript":"complete private notes"}')
                 env = {'RSS_DR_WORK': str(root), 'RSS_DR_APP': str(root),
                        'RSS_DR_CONTROL_URL': 'https://example.invalid', 'RSS_DR_CONTROL_KEY': 'fixture',
-                       'RSS_DR_SSH_TARGET': 'fixture', 'RSS_DR_SSH_KEY': str(root / 'key'),
+                       'RSS_DR_SSH_TARGET': 'rss-sync@192.0.2.1', 'RSS_DR_SSH_KEY': str(root / 'key'),
                        'RSS_DR_BACKUP_PASSWORD_FILE': str(root / 'password')}
                 spec = importlib.util.spec_from_file_location('snapshot_roundtrip', Path(__file__).with_name('snapshot.py'))
                 module = importlib.util.module_from_spec(spec)
@@ -62,7 +62,7 @@ class SnapshotOrderingTest(unittest.TestCase):
             (work / 'projection-current').symlink_to(old.name)
             env = {'RSS_DR_WORK': str(work), 'RSS_DR_APP': str(app),
                    'RSS_DR_CONTROL_URL': 'https://example.invalid', 'RSS_DR_CONTROL_KEY': 'fixture',
-                   'RSS_DR_SSH_TARGET': 'fixture', 'RSS_DR_SSH_KEY': str(root / 'key'),
+                   'RSS_DR_SSH_TARGET': 'rss-sync@192.0.2.1', 'RSS_DR_SSH_KEY': str(root / 'key'),
                    'RSS_DR_BACKUP_PASSWORD_FILE': str(root / 'password')}
             for key in ['QMREADER_PODCAST_NOTES_DIR', 'QMREADER_PODSCRIBE_NOTES_DIR', 'QMREADER_YOUTUBE_NOTES_DIR']:
                 env[key] = str(root / 'absent')
@@ -94,6 +94,66 @@ class SnapshotOrderingTest(unittest.TestCase):
             self.assertFalse(old.exists())
             self.assertEqual(json.loads((work / 'last-sync.json').read_text())['revision'], 12)
 
+    def test_conflicting_backup_flags_cannot_report_success(self):
+        env = {'RSS_DR_CONTROL_URL': 'https://example.invalid', 'RSS_DR_CONTROL_KEY': 'fixture',
+               'RSS_DR_SSH_TARGET': 'rss-sync@192.0.2.1', 'RSS_DR_SSH_KEY': 'unused',
+               'RSS_DR_BACKUP_PASSWORD_FILE': 'unused', 'RSS_DR_BACKUP_ONLY': '1', 'RSS_DR_SKIP_BACKUP': '1'}
+        spec = importlib.util.spec_from_file_location('snapshot_flags', Path(__file__).with_name('snapshot.py'))
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(os.environ, env):
+            spec.loader.exec_module(module)
+            with self.assertRaisesRegex(ValueError, 'backup_only_cannot_skip_backup'): module.main()
+
+    def test_captured_wal_database_is_self_contained(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            env = {'RSS_DR_WORK': directory, 'RSS_DR_CONTROL_URL': 'https://example.invalid',
+                   'RSS_DR_CONTROL_KEY': 'fixture', 'RSS_DR_SSH_TARGET': 'rss-sync@192.0.2.1',
+                   'RSS_DR_SSH_KEY': 'unused', 'RSS_DR_BACKUP_PASSWORD_FILE': 'unused'}
+            spec = importlib.util.spec_from_file_location('snapshot_wal', Path(__file__).with_name('snapshot.py'))
+            module = importlib.util.module_from_spec(spec)
+            writer = sqlite3.connect(root / 'source.sqlite')
+            try:
+                writer.execute('PRAGMA journal_mode=WAL')
+                writer.execute('CREATE TABLE fixture(value TEXT)')
+                writer.execute("INSERT INTO fixture VALUES('committed in WAL')")
+                writer.commit()
+                self.assertTrue((root / 'source.sqlite-wal').exists())
+                with patch.dict(os.environ, env):
+                    spec.loader.exec_module(module)
+                    module.capture_sqlite(root / 'source.sqlite', root / 'captured.sqlite')
+                # A restore uses only the captured main file, after all capture connections close.
+                reader = sqlite3.connect('file:' + str(root / 'captured.sqlite') + '?mode=ro&immutable=1', uri=True)
+                try:
+                    self.assertEqual(reader.execute('SELECT value FROM fixture').fetchone()[0], 'committed in WAL')
+                    self.assertEqual(reader.execute('PRAGMA quick_check').fetchone()[0], 'ok')
+                finally: reader.close()
+                self.assertFalse((root / 'captured.sqlite-wal').exists())
+            finally: writer.close()
+
+    def test_failed_replica_does_not_prevent_other_transfer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = {'RSS_DR_WORK': directory, 'RSS_DR_CONTROL_URL': 'https://example.invalid',
+                   'RSS_DR_CONTROL_KEY': 'fixture', 'RSS_DR_SSH_TARGET': 'rss-sync@192.0.2.1',
+                   'RSS_DR_EXTRA_TARGETS': '["rss-sync@192.0.2.2"]',
+                   'RSS_DR_SSH_KEY': 'unused', 'RSS_DR_BACKUP_PASSWORD_FILE': 'unused'}
+            spec = importlib.util.spec_from_file_location('snapshot_targets', Path(__file__).with_name('snapshot.py'))
+            module = importlib.util.module_from_spec(spec)
+            visited = []
+            def transfer(public, identifier, target):
+                visited.append(target)
+                if target.endswith('.1'): raise OSError('offline')
+            with patch.dict(os.environ, env):
+                spec.loader.exec_module(module)
+                with patch.object(module, 'replicate', side_effect=transfer):
+                    with self.assertRaisesRegex(RuntimeError, 'routed_replica_unavailable'):
+                        module.replicate_all(Path(directory), {'id': 's123', 'revision': 9})
+            status = json.loads((Path(directory) / 'replicas.json').read_text())
+            self.assertEqual(set(visited), {'rss-sync@192.0.2.1', 'rss-sync@192.0.2.2'})
+            self.assertFalse(status['rss-sync@192.0.2.1']['ready'])
+            self.assertTrue(status['rss-sync@192.0.2.2']['ready'])
+            self.assertEqual(status['rss-sync@192.0.2.2']['revision'], 9)
+
     def test_export_failure_cannot_prevent_private_backup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -106,7 +166,7 @@ class SnapshotOrderingTest(unittest.TestCase):
                 db.execute("INSERT INTO fixture VALUES('preserve me')")
             env = {'RSS_DR_WORK': str(root / 'work'), 'RSS_DR_APP': str(app),
                    'RSS_DR_CONTROL_URL': 'https://example.invalid',
-                   'RSS_DR_CONTROL_KEY': 'fixture', 'RSS_DR_SSH_TARGET': 'fixture',
+                   'RSS_DR_CONTROL_KEY': 'fixture', 'RSS_DR_SSH_TARGET': 'rss-sync@192.0.2.1',
                    'RSS_DR_SSH_KEY': str(root / 'key'),
                    'RSS_DR_BACKUP_PASSWORD_FILE': str(root / 'password')}
             notes = root / 'notes'

@@ -29,6 +29,19 @@ class StandbyTests(unittest.TestCase):
         self.assertEqual(query(self.root,'/api/entry/a0',{})[1]['entry']['content'],'body')
         self.assertIsNone(query(self.root,'/api/entry/a0/rewrite',{})[1]['rewrite'])
         self.assertEqual(query(self.root,'/api/entry/deleted',{})[0],404)
+    def test_bundle_and_missing_assets_never_promise_live_generation(self):
+        bundle = query(self.root, '/api/entry/a0', {})[1]
+        self.assertIn('rewrite', bundle)
+        self.assertEqual(bundle['readingState']['rewrite']['status'], 'unavailable')
+        self.assertEqual(bundle['readingState']['rewrite']['retryAfterMs'], 0)
+        with sqlite3.connect(self.root/'public.sqlite') as db:
+            db.execute('UPDATE entries SET rewrite=? WHERE id=?', [json.dumps({'body': 'Published Chinese'}), 'a0'])
+        bundle = query(self.root, '/api/entry/a0', {})[1]
+        separate = query(self.root, '/api/entry/a0/rewrite', {})[1]
+        self.assertEqual(bundle['rewrite'], separate['rewrite'])
+        self.assertEqual(bundle['readingState']['rewrite']['status'], 'ready')
+        self.assertEqual(separate['status'], 'ready')
+
     def test_compact_transport_preserves_metadata_and_cursor(self):
         payload={'entries':[{'id':'a','title':'标题','summary':'Keep','assets':{'body':'x'*5000},'stats':{},'content':'body'}], 'nextCursor':'2:a','hasMore':True}
         body,encoding=encode_response(payload,'/api/entries',{'X-Rss-List':'reader-v1'})

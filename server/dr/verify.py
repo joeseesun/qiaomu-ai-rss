@@ -18,6 +18,17 @@ paths=['/api/entries?limit=100','/api/sources']
 for entry in entries[:3]:
  for suffix in ['', '/rewrite','/translation']:
   path='/api/entry/'+entry['id']+suffix; a=call('rss-origin.qiaomu.ai',path)[0];b=call('rss-standby.qiaomu.ai',path)[0]
+  # Read-only replicas expose settled availability instead of live AI-job state.
+  # Compare actual published content; availability is checked independently below.
+  if not suffix:
+   assert 'rewrite' in b and b.get('rewriteAssetId') == ''
+   assert b.get('readingState',{}).get('rewrite',{}).get('status') in ('ready','unavailable')
+  else:
+   asset=b[suffix[1:]]
+   expected=bool(asset and (asset.get('body') if suffix=='/rewrite' else asset.get('content')))
+   assert b.get('status')==('ready' if expected else 'unavailable') and b.get('retryAfterMs')==0
+  key=suffix[1:] if suffix else 'entry'
+  a={key:a[key]};b={key:b[key]}
   if a!=b and '--allow-view-counter-drift' in sys.argv and not suffix:
    # Snapshots intentionally lag views. Compare all content and all other fields exactly.
    a=copy.deepcopy(a);b=copy.deepcopy(b)
@@ -38,4 +49,4 @@ for mode in ['500','timeout','invalid-json']:
  print(json.dumps({'drill':mode,'origin':headers.get('X-Rss-Origin'),'seconds':round(time.monotonic()-start,2)}))
 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
  results=list(pool.map(lambda p:call('rss-standby.qiaomu.ai',p)[0],paths[:10]))
-print(json.dumps({'parity':True,'sources':len(source['sources']),'concurrency':len(results),'paths':len(paths),'viewCounterDriftAllowed':'--allow-view-counter-drift' in sys.argv}))
+print(json.dumps({'publishedContentParity':True,'sources':len(source['sources']),'concurrency':len(results),'paths':len(paths),'viewCounterDriftAllowed':'--allow-view-counter-drift' in sys.argv}))
