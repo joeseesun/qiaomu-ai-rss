@@ -67,6 +67,10 @@ test('incremental export equals fresh full projection across content, assets, re
   assert.equal(verify(0).stats.reused,3);
   db.exec("UPDATE entry_rewrites SET body='更新中文 A' WHERE entry_id='a'");verify(1);
   db.exec("INSERT INTO entry_translations VALUES('b','中文翻译 B')");verify(1);
+  db.exec("DELETE FROM entry_translations WHERE entry_id='b'");verify(1);
+  db.exec("UPDATE entries SET content='Edited original',title='Edited title' WHERE id='b'");verify(1);
+  db.exec("UPDATE entries SET source_id='pod' WHERE id='b'");verify(1);
+  db.exec("UPDATE entries SET source_id='news' WHERE id='b'");verify(1);
   db.exec("DELETE FROM entry_rewrites WHERE entry_id='a'");verify(1);
   db.exec("INSERT INTO comment_reactions VALUES('comment-a','u')");verify(1);
   db.exec("DELETE FROM comment_reactions");verify(1);
