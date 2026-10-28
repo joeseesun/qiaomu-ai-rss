@@ -70,8 +70,9 @@ for (const source of fetcher.getSourcesMeta()) {
     for (const hydrated of entries) {
       const entry = images.rewriteEntry(hydrated);
       let rewrite = store.getRewrite(entry.id), translation = store.getTranslation(entry.id);
-      if (rewrite && (podcast.isTranscriptPodcast(entry) && (!podcast.loadReadyTranscript(entry) || rewrite.contentHash !== deepseek.rewriteContentHash(entry)) || podscribe.isPodscribeEntry(entry) && (!podscribe.loadReady(entry) || rewrite.contentHash !== deepseek.rewriteContentHash(entry)))) rewrite = null;
-      if (rewrite) rewrite = { ...rewrite, ...store.getEntryAssetReaction(entry.id, 'rewrite', null), body: podcast.isTranscriptPodcast(entry) ? podcast.stripAudioTimestamps(rewrite.body) : rewrite.body, stale: entry.sourceId === 'producthunt' ? !/^ph-official-v2:[a-f0-9]+$/i.test(rewrite.contentHash || '') : Boolean(rewrite.contentHash && rewrite.contentHash !== deepseek.rewriteContentHash(entry)) };
+      const rewriteCurrent = rewrite && (typeof deepseek.rewriteIsCurrent === 'function' ? deepseek.rewriteIsCurrent(rewrite, entry) : rewrite.contentHash === deepseek.rewriteContentHash(entry));
+      if (rewrite && (podcast.isTranscriptPodcast(entry) && (!podcast.loadReadyTranscript(entry) || !rewriteCurrent) || podscribe.isPodscribeEntry(entry) && (!podscribe.loadReady(entry) || !rewriteCurrent))) rewrite = null;
+      if (rewrite) rewrite = { ...rewrite, ...store.getEntryAssetReaction(entry.id, 'rewrite', null), body: podcast.isTranscriptPodcast(entry) ? podcast.stripAudioTimestamps(rewrite.body) : rewrite.body, stale: entry.sourceId === 'producthunt' ? !/^ph-official-v2:[a-f0-9]+$/i.test(rewrite.contentHash || '') : Boolean(rewrite.contentHash && !rewriteCurrent) };
       if (translation) translation = { ...translation, ...store.getEntryAssetReaction(entry.id, 'translation', null), stale: Boolean(translation.contentHash && translation.contentHash !== deepseek.translationInputHash(entry)) };
       put.run(entry.id, entry.sourceId, entry.publishedTs || 0, JSON.stringify(entry), JSON.stringify(rewrite), JSON.stringify(translation), entry.rewriteReady ? 1 : 0); count++; generated++;
     }

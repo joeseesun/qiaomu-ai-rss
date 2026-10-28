@@ -21,6 +21,11 @@ def connect(root):
     db.execute('PRAGMA cache_size=-8192')
     return db
 
+def asset_state(asset, kind='rewrite'):
+    # A public read-only snapshot cannot promise a live generation job.
+    ready = isinstance(asset, dict) and (bool(asset.get('content')) if kind == 'translation' else bool(str(asset.get('body') or '').strip()))
+    return {'status': 'ready' if ready else 'unavailable', 'automatic': False, 'retryAfterMs': 0}
+
 def query(root, path, params):
     meta = json.loads((root / 'manifest.json').read_text())
     if meta.get('protocol') != 1:
@@ -67,7 +72,12 @@ def query(root, path, params):
             row = db.execute('SELECT data,rewrite,translation FROM entries WHERE id=?', [unquote(match[1])]).fetchone()
             if not row: return 404, {'error': 'entry not found'}, meta
             kind = match[2]
-            return 200, {kind or 'entry': json.loads(row[{'rewrite': 1, 'translation': 2}.get(kind, 0)])}, meta
+            if kind:
+                asset = json.loads(row[{'rewrite': 1, 'translation': 2}[kind]])
+                return 200, {kind: asset, **asset_state(asset, kind)}, meta
+            rewrite = json.loads(row[1])
+            return 200, {'entry': json.loads(row[0]), 'rewrite': rewrite, 'rewriteAssetId': '',
+                         'readingState': {'rewrite': asset_state(rewrite)}}, meta
         return 404, {'error': 'not_found'}, meta
 
 def encode_response(data, request_path, headers):
