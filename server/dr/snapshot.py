@@ -35,7 +35,9 @@ def private_backup(stage, manifest):
     marker = BASE / 'last-backup.json'
     if marker.exists() and time.time() - json.loads(marker.read_text())['completedAt'] < 3600: return
     archive = stage / 'backup.tar.gz'
-    with tarfile.open(archive, 'w:gz') as tar:
+    # The archive is verified after download. Prefer bounded CPU work on the
+    # primary over marginal compression gains that compete with live readers.
+    with tarfile.open(archive, 'w:gz', compresslevel=1) as tar:
         for p in (stage / 'private').iterdir(): tar.add(p, arcname=p.name)
     encrypted = stage / 'backup.enc'
     subprocess.run(['openssl', 'enc', '-aes-256-cbc', '-pbkdf2', '-iter', '200000', '-salt', '-in', str(archive), '-out', str(encrypted), '-pass', 'file:' + str(PASSWORD)], check=True)
