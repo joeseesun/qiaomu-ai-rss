@@ -30,7 +30,7 @@ class SnapshotOrderingTest(unittest.TestCase):
                 objects = {}
                 def upload(op, data=None, payload=None):
                     objects[op.removeprefix('backup/')] = payload
-                def download(key):
+                def download(key, expected_size=None):
                     value = objects[key]
                     return bytes([value[0] ^ 1]) + value[1:] if corrupt and key.endswith('.enc') else value
                 with patch.dict(os.environ, env):
