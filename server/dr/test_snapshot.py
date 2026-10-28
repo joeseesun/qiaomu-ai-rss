@@ -30,7 +30,7 @@ class SnapshotOrderingTest(unittest.TestCase):
                 objects = {}
                 def upload(op, data=None, payload=None):
                     objects[op.removeprefix('backup/')] = payload
-                def download(key):
+                def download(key, expected_size=None):
                     value = objects[key]
                     return bytes([value[0] ^ 1]) + value[1:] if corrupt and key.endswith('.enc') else value
                 with patch.dict(os.environ, env):
@@ -93,6 +93,27 @@ class SnapshotOrderingTest(unittest.TestCase):
             self.assertEqual((current / 'public.sqlite').read_text(), 'new projection')
             self.assertFalse(old.exists())
             self.assertEqual(json.loads((work / 'last-sync.json').read_text())['revision'], 12)
+
+    def test_dedicated_hourly_backup_is_not_skipped_by_previous_completion_time(self):
+        import time
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'private').mkdir();(root/'password').write_text('test-only-backup-password')
+            db=sqlite3.connect(root/'private/qmreader.sqlite')
+            try:db.execute('CREATE TABLE fixture(value TEXT)');db.commit()
+            finally:db.close()
+            (root/'last-backup.json').write_text(json.dumps({'completedAt':time.time(),'id':'previous'}))
+            env={'RSS_DR_WORK':str(root),'RSS_DR_CONTROL_URL':'https://example.invalid','RSS_DR_CONTROL_KEY':'fixture',
+                 'RSS_DR_SSH_TARGET':'rss-sync@192.0.2.1','RSS_DR_SSH_KEY':'unused','RSS_DR_BACKUP_PASSWORD_FILE':str(root/'password'),
+                 'RSS_DR_BACKUP_ONLY':'1','RSS_DR_SKIP_BACKUP':'0'}
+            spec=importlib.util.spec_from_file_location('snapshot_hourly',Path(__file__).with_name('snapshot.py'));module=importlib.util.module_from_spec(spec)
+            objects={}
+            def upload(op,data=None,payload=None):objects[op.removeprefix('backup/')]=payload
+            with patch.dict(os.environ,env):
+                spec.loader.exec_module(module)
+                with patch.object(module,'control',side_effect=upload),patch.object(module,'download',side_effect=lambda key,expected_size=None:objects[key]):
+                    module.private_backup(root,{'id':'new-hour','protocol':1})
+            result=json.loads((root/'last-backup.json').read_text())
+            self.assertEqual(result['id'],'new-hour');self.assertTrue(result['restoreVerified'])
 
     def test_conflicting_backup_flags_cannot_report_success(self):
         env = {'RSS_DR_CONTROL_URL': 'https://example.invalid', 'RSS_DR_CONTROL_KEY': 'fixture',

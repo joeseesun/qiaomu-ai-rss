@@ -15,6 +15,7 @@ import tarfile
 import tempfile
 import time
 import urllib.request
+from backup_download import download_object
 
 BASE = Path(os.environ.get('RSS_DR_WORK', '/var/lib/qiaomu-rss-backup')).resolve()
 APP = Path(os.environ.get('RSS_DR_APP', '/opt/qiaomu-apps/qmreader'))
@@ -37,13 +38,18 @@ def control(op, data=None, payload=None):
         method='PUT' if payload is not None else 'POST' if data is not None else 'GET', headers={'User-Agent': 'Qiaomu-RSS-DR/1.0', 'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/octet-stream' if payload is not None else 'application/json'})
     with urllib.request.urlopen(req, timeout=120 if payload is not None else 15) as response: return json.load(response)
 
-def download(key):
-    request=urllib.request.Request(CONTROL+'/__dr/backup/'+key,headers={'User-Agent':'Qiaomu-RSS-DR/1.0','Authorization':'Bearer '+KEY})
-    with urllib.request.urlopen(request,timeout=120) as response:return response.read()
+DOWNLOAD_DEADLINE = 120
+DOWNLOAD_SOCKET_TIMEOUT = 15
+DOWNLOAD_RETRY_DELAY = 0.5
+
+def download(key, expected_size=None):
+    return download_object(CONTROL, KEY, key, expected_size,
+        deadline_seconds=DOWNLOAD_DEADLINE, socket_timeout=DOWNLOAD_SOCKET_TIMEOUT,
+        retry_delay=DOWNLOAD_RETRY_DELAY)
 
 def private_backup(stage, manifest):
     marker = BASE / 'last-backup.json'
-    if marker.exists() and time.time() - json.loads(marker.read_text())['completedAt'] < 3600: return
+    if not BACKUP_ONLY and marker.exists() and time.time() - json.loads(marker.read_text())['completedAt'] < 3600: return
     archive = stage / 'backup.tar.gz'
     # The archive is verified after download. Prefer bounded CPU work on the
     # primary over marginal compression gains that compete with live readers.
@@ -66,7 +72,7 @@ def private_backup(stage, manifest):
     remote_mac=hmac.new(hashlib.sha256(PASSWORD.read_bytes()+b'RSS-DR-MAC-v1').digest(),digestmod=hashlib.sha256)
     with verified.open('wb') as out:
         for part in remote_manifest['parts']:
-            chunk=download(part['key'])
+            chunk=download(part['key'], part['size'])
             if hashlib.sha256(chunk).hexdigest()!=part['sha256']:raise RuntimeError('remote_backup_checksum_failed')
             remote_mac.update(chunk);out.write(chunk)
     if not hmac.compare_digest(remote_mac.hexdigest(),backup['hmac']):raise RuntimeError('remote_backup_mac_failed')
