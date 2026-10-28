@@ -33,22 +33,26 @@ function copyPublicImages(entry) {
 const putSource = db.prepare('INSERT INTO sources VALUES(?,?,?)');
 const put = db.prepare('INSERT OR REPLACE INTO entries VALUES(?,?,?,?,?,?,?)');
 let count = 0;
+const canBatch = typeof fetcher.getEntriesByIds === 'function';
 db.exec('BEGIN');
 for (const source of fetcher.getSourcesMeta()) {
   putSource.run(source.id, JSON.stringify(source), fetcher.getSourceById(source.id)?.separate ? 1 : 0);
   if (source.enabled === false) continue;
   let cursor = ''; const cursors = new Set();
   while (true) {
-    const page = fetcher.getSourceEntryHistory({ sourceId: source.id, cursor, limit: 100 });
+    const page = fetcher.getSourceEntryHistory({ sourceId: source.id, cursor, limit: 100, deferAssets: canBatch });
     if (!page) break;
-    for (const listed of page.entries) {
-      const entry = images.rewriteEntry(fetcher.getEntryById(listed.id) || listed);
+    const entries = canBatch
+      ? fetcher.getEntriesByIds(page.entries.map(entry => entry.id))
+      : page.entries.map(listed => fetcher.getEntryById(listed.id) || listed);
+    for (const hydrated of entries) {
+      const entry = images.rewriteEntry(hydrated);
       copyPublicImages(entry);
       let rewrite = store.getRewrite(entry.id), translation = store.getTranslation(entry.id);
       if (rewrite && (podcast.isTranscriptPodcast(entry) && (!podcast.loadReadyTranscript(entry) || rewrite.contentHash !== deepseek.rewriteContentHash(entry)) || podscribe.isPodscribeEntry(entry) && (!podscribe.loadReady(entry) || rewrite.contentHash !== deepseek.rewriteContentHash(entry)))) rewrite = null;
       if (rewrite) rewrite = { ...rewrite, ...store.getEntryAssetReaction(entry.id, 'rewrite', null), body: podcast.isTranscriptPodcast(entry) ? podcast.stripAudioTimestamps(rewrite.body) : rewrite.body, stale: entry.sourceId === 'producthunt' ? !/^ph-official-v2:[a-f0-9]+$/i.test(rewrite.contentHash || '') : Boolean(rewrite.contentHash && rewrite.contentHash !== deepseek.rewriteContentHash(entry)) };
       if (translation) translation = { ...translation, ...store.getEntryAssetReaction(entry.id, 'translation', null), stale: Boolean(translation.contentHash && translation.contentHash !== deepseek.translationInputHash(entry)) };
-      put.run(entry.id, entry.sourceId, entry.publishedTs || 0, JSON.stringify(entry), JSON.stringify(rewrite), JSON.stringify(translation), listed.rewriteReady ? 1 : 0); count++;
+      put.run(entry.id, entry.sourceId, entry.publishedTs || 0, JSON.stringify(entry), JSON.stringify(rewrite), JSON.stringify(translation), entry.rewriteReady ? 1 : 0); count++;
     }
     if (!page.hasMore) break;
     if (!page.nextCursor || cursors.has(page.nextCursor)) throw Error('invalid_source_pagination');
