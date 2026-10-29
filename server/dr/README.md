@@ -150,3 +150,18 @@ and standby implementation. Roll back by restoring the formal DNS record to
 DNS-only LA and restoring only this Worker's previous routes/version. Leave the
 control endpoint, backup store and deletion gate intact. Neither this rollout nor
 its fault drills stop the primary or alter Hostinger's other websites.
+
+Replica reads send `X-Rss-Expected-Snapshot` from the safety coordinator. The
+receiver may already have promoted a newer generation while another target is
+still syncing; the standby serves the retained published generation by ID during
+this window. The router still checks revision, age and the gate after the complete
+body, and never falls back to an arbitrary generation. This closes the handoff gap
+without allowing deleted data to reappear. Missing/invalid generations fail closed.
+
+When proxying the formal hostname, preserve API client compatibility: use a
+hostname- and `/api/`-scoped configuration rule with `bic=false` if Cloudflare
+Browser Integrity Check rejects default library user agents. This does not skip
+application authentication or change security settings for other websites. Keep
+the previous rule configuration and verify unauthenticated private routes remain
+401/403. Operator control/backup clients identify themselves with a descriptive
+User-Agent.

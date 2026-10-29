@@ -90,7 +90,9 @@ async function replicaResponse(request, env, fetcher, maxAge, deadlineMs) {
   const state = await readState();
   const age = Date.now() - state.snapshot?.createdAt;
   if (!state.ready || !state.snapshot || !Number.isFinite(age) || age < -5000 || age > maxAge) throw Error('standby_not_ready');
-  const response = await originJson(anonymousRequest(request), env.STANDBY_ORIGIN, env.ORIGIN_KEY, Math.min(remaining(), Number(env.STANDBY_TIMEOUT_MS || 4000)), fetcher);
+  const pinned = anonymousRequest(request);
+  pinned.headers.set('X-Rss-Expected-Snapshot', state.snapshot.id);
+  const response = await originJson(pinned, env.STANDBY_ORIGIN, env.ORIGIN_KEY, Math.min(remaining(), Number(env.STANDBY_TIMEOUT_MS || 4000)), fetcher);
   if (![200,404].includes(response.status) || response.headers.get('X-Rss-Snapshot') !== state.snapshot.id || Number(response.headers.get('X-Rss-Revision')) !== state.revision) throw Error('standby_generation_mismatch');
   if (siteRead(request) && response.headers.get('X-Rss-Frontend-Version') !== env.FRONTEND_VERSION) throw Error('standby_frontend_mismatch');
   // Recheck after the complete body: a concurrent deletion invalidates the old snapshot.

@@ -108,3 +108,12 @@ test('a concurrent snapshot promotion is retried against the new gate generation
   });
   assert.equal(r.status,200);assert.equal((await r.json()).entries[0].id,'new');assert.equal(copies,2);
 });
+test('router pins standby reads to the published snapshot instead of an unpublished current generation',async()=>{
+  const {env,publish,headers}=setup();await publish();
+  const r=await handle(new Request(url('/api/entries'),{headers:{'X-Rss-Expected-Snapshot':'untrusted'}}),env,async(target,options)=>{
+    if(String(target).includes('primary'))return Response.json({}, {status:500});
+    assert.equal(options.headers.get('X-Rss-Expected-Snapshot'),'s1');
+    return Response.json({entries:[{id:'published-old'}]},{headers});
+  });
+  assert.equal(r.status,200);assert.equal((await r.json()).entries[0].id,'published-old');
+});
