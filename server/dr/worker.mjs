@@ -1,9 +1,12 @@
+import { siteRead, siteType, anonymousRequest, injectStatusClient } from './site.mjs';
+import statusClient from './failover-client.mjs';
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+const failed = status => [500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 530].includes(status);
 export function publicRead(request) {
   const u = new URL(request.url);
   if (!['GET', 'HEAD'].includes(request.method) || request.headers.has('Authorization') || request.headers.has('Cookie')) return false;
   if (!/^\/api\/(sources|entries|sources\/[^/]+\/entries|entry\/[^/]+(?:\/(rewrite|translation))?)$/.test(u.pathname) && !/^\/media\/wechat\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{22}$/.test(u.pathname)) return false;
-  return [...u.searchParams.keys()].every(k => ['source', 'category', 'limit', 'cursor', 'ready', 'optIn'].includes(k));
+  return [...u.searchParams.keys()].every(k => ['source', 'category', 'limit', 'cursor', 'ready', 'optIn', 'q', 'summary'].includes(k));
 }
 export class SafetyGate {
   constructor(ctx) { this.ctx = ctx; }
@@ -12,6 +15,14 @@ export class SafetyGate {
       const state = await this.ctx.storage.get('state') || { revision: 0, pending: {}, snapshot: null };
       const op = new URL(request.url).pathname.slice(1);
       const data = request.method === 'POST' ? await request.json() : {};
+      if (op === 'preview-set' || op === 'preview-status') {
+        if (op === 'preview-set') {
+          if (!['normal', '500', 'timeout', 'invalid-json'].includes(data.mode)) return json({error:'invalid_preview'},400);
+          state.preview = { mode: data.mode, until: Date.now() + 120000 };
+          await this.ctx.storage.put('state', state);
+        }
+        return json(state.preview?.until > Date.now() ? state.preview : {mode:'normal',until:0});
+      }
       if (op === 'start') {
         if (!data.id || typeof data.id !== 'string') return json({ error: 'invalid_ticket' }, 400);
         if (!state.pending[data.id]) { state.revision++; state.pending[data.id] = Date.now(); }
@@ -38,18 +49,21 @@ export async function originJson(request, origin, secret, timeout, fetcher = fet
       (async () => {
         const r = await fetcher(target, { method: 'GET', headers, signal: controller.signal, redirect: 'manual', cf: { cacheTtl: 0 } });
         if (r.status !== 200) return r;
-        const image = u.pathname.startsWith('/media/wechat/');
-        if (image ? !/^image\/(png|jpeg|gif|webp)(?:;|$)/.test(r.headers.get('Content-Type') || '') : !r.headers.get('Content-Type')?.includes('application/json')) throw Error('invalid_content_type');
+        const image = u.pathname.startsWith('/media/wechat/'), site = siteRead(request);
+        const validType = site ? siteType(u.pathname).test(r.headers.get('Content-Type') || '') : image ? /^image\/(png|jpeg|gif|webp)(?:;|$)/.test(r.headers.get('Content-Type') || '') : r.headers.get('Content-Type')?.includes('application/json');
+        if (!validType) throw Error('invalid_content_type');
         if (Number(r.headers.get('Content-Length') || 0) > 12_000_000) throw Error('response_too_large');
         const reader = r.body.getReader(), chunks = []; let size = 0;
         try { while (true) { const part = await reader.read(); if (part.done) break; size += part.value.length; if (size > 12_000_000) throw Error('response_too_large'); chunks.push(part.value); } }
         finally { reader.releaseLock(); }
         const bytes = new Uint8Array(size); let offset = 0; for (const part of chunks) { bytes.set(part, offset); offset += part.length; }
-        if (image) return new Response(request.method === 'HEAD' ? null : bytes, { status: 200, headers: r.headers });
+        const decodedHeaders = new Headers(r.headers);
+        decodedHeaders.delete('Content-Length'); decodedHeaders.delete('Content-Encoding');
+        if (image || site) return new Response(request.method === 'HEAD' ? null : bytes, { status: 200, headers: decodedHeaders });
         const data = JSON.parse(new TextDecoder().decode(bytes));
         const path = u.pathname;
-        if (path === '/api/sources' ? !Array.isArray(data.sources) : path.includes('/entries') ? !Array.isArray(data.entries) : path.endsWith('/rewrite') ? !('rewrite' in data) : path.endsWith('/translation') ? !('translation' in data) : !data.entry?.id) throw Error('invalid_protocol');
-        return new Response(request.method === 'HEAD' ? null : bytes, { status: 200, headers: r.headers });
+        if (path === '/api/health' ? data.status !== 'ok' : path === '/api/sources' ? !Array.isArray(data.sources) : path.includes('/entries') ? !Array.isArray(data.entries) : path.endsWith('/rewrite') ? !('rewrite' in data) : path.endsWith('/translation') ? !('translation' in data) : !data.entry?.id) throw Error('invalid_protocol');
+        return new Response(request.method === 'HEAD' ? null : bytes, { status: 200, headers: decodedHeaders });
       })(),
       new Promise((_, reject) => controller.signal.addEventListener('abort', () => reject(Error('origin_timeout')), { once: true })),
     ]);
@@ -76,29 +90,52 @@ async function replicaResponse(request, env, fetcher, maxAge, deadlineMs) {
   const state = await readState();
   const age = Date.now() - state.snapshot?.createdAt;
   if (!state.ready || !state.snapshot || !Number.isFinite(age) || age < -5000 || age > maxAge) throw Error('standby_not_ready');
-  const response = await originJson(new Request(request), env.STANDBY_ORIGIN, env.ORIGIN_KEY, Math.min(remaining(), Number(env.STANDBY_TIMEOUT_MS || 4000)), fetcher);
-  if (response.status !== 200 || response.headers.get('X-Rss-Snapshot') !== state.snapshot.id || Number(response.headers.get('X-Rss-Revision')) !== state.revision) throw Error('standby_generation_mismatch');
+  const response = await originJson(anonymousRequest(request), env.STANDBY_ORIGIN, env.ORIGIN_KEY, Math.min(remaining(), Number(env.STANDBY_TIMEOUT_MS || 4000)), fetcher);
+  if (![200,404].includes(response.status) || response.headers.get('X-Rss-Snapshot') !== state.snapshot.id || Number(response.headers.get('X-Rss-Revision')) !== state.revision) throw Error('standby_generation_mismatch');
+  if (siteRead(request) && response.headers.get('X-Rss-Frontend-Version') !== env.FRONTEND_VERSION) throw Error('standby_frontend_mismatch');
   // Recheck after the complete body: a concurrent deletion invalidates the old snapshot.
   const latest = await readState();
   if (!latest.ready || latest.revision !== state.revision || latest.snapshot?.id !== state.snapshot.id || Date.now() - state.snapshot.createdAt > maxAge) throw Error('standby_invalidated');
   const h = new Headers(response.headers); h.set('X-Rss-Origin', 'standby'); h.set('Cache-Control', 'no-store'); h.set('X-Rss-Replica-Age', String(Math.ceil(Math.max(0, Date.now() - state.snapshot.createdAt) / 1000)));
   let body = response.body;
-  if (request.method === 'GET' && request.headers.get('X-Rss-List') === 'reader-v1' && /\/entries$/.test(new URL(request.url).pathname)) {
+  if (response.status === 200 && request.method === 'GET' && request.headers.get('X-Rss-List') === 'reader-v1' && /\/entries$/.test(new URL(request.url).pathname)) {
     const data = await response.json();
     data.entries = data.entries.map(({content, assets, stats, signals, rewriteReady, rewriteStatus, ...metadata}) => metadata);
     body = JSON.stringify(data); h.delete('Content-Length'); h.delete('Content-Encoding'); h.delete('ETag'); h.set('Vary', 'Accept-Encoding, X-Rss-List');
   }
-  return new Response(body, {status:200, headers:h});
+  return new Response(body, {status:response.status, headers:h});
+}
+async function outageResponse(request, env, fetcher) {
+  const deadline = Date.now() + 5000;
+  for (let attempt=0;;attempt++) {
+    try {return await replicaResponse(request,env,fetcher,Number(env.MAX_SNAPSHOT_AGE_MS || 86400000),Math.max(1,deadline-Date.now()));}
+    catch(error) {
+      // Receiver promotion precedes publication. Re-read the gate after this brief
+      // generation race; a pending deletion still fails closed on the next check.
+      if (attempt>=2 || deadline-Date.now()<150 || !['standby_generation_mismatch','standby_invalidated'].includes(error.message)) throw error;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+  }
 }
 export async function handle(request, env, fetcher = fetch) {
   const u = new URL(request.url);
+  // HTTP-01 must reach nginx's webroot rather than the application behind HTTPS.
+  if (['GET','HEAD'].includes(request.method) && /^\/\.well-known\/acme-challenge\/[A-Za-z0-9_-]+$/.test(u.pathname)) {
+    const target = new URL(u.pathname, env.PRIMARY_ORIGIN); target.protocol = 'http:';
+    return fetcher(target, {method:request.method,redirect:'manual'});
+  }
+  if (u.protocol === 'http:') {u.protocol='https:';return Response.redirect(u.href,308);}
   if (u.pathname.startsWith('/__dr/')) {
     if (!env.CONTROL_KEY || request.headers.get('Authorization') !== 'Bearer ' + env.CONTROL_KEY) return json({ error: 'forbidden' }, 403);
+    if (u.pathname === '/__dr/preview') {
+      if (u.hostname !== 'rss-dr.qiaomu.ai' || !['GET','POST'].includes(request.method)) return json({error:'forbidden'},403);
+      return gate(env, request.method === 'POST' ? 'preview-set' : 'preview-status', request.method === 'POST' ? await request.json() : undefined);
+    }
     if (u.pathname === '/__dr/drill') {
       if (u.hostname !== 'rss-dr.qiaomu.ai' || request.method !== 'POST') return json({ error: 'forbidden' }, 403);
       const { path, mode } = await request.json();
       const probe = new Request(new URL(path, 'https://rss.qiaomu.ai'));
-      if (!publicRead(probe) || !['500', 'timeout', 'invalid-json'].includes(mode)) return json({ error: 'invalid_drill' }, 400);
+      if ((!publicRead(probe) && !siteRead(probe)) || !['500', 'timeout', 'invalid-json'].includes(mode)) return json({ error: 'invalid_drill' }, 400);
       return handle(probe, env, (target, options) => {
         if (new URL(target.url || target.href || target).origin !== env.PRIMARY_ORIGIN) return fetcher(target, options);
         if (mode === 'timeout') return new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(Error('drill_timeout')), { once: true }));
@@ -116,14 +153,54 @@ export async function handle(request, env, fetcher = fetch) {
       const list = await env.BACKUPS.list({ prefix: 'hourly/', limit: 1000 });
       return json({ objects: list.objects.map(o => ({ key: o.key, size: o.size, uploaded: o.uploaded })), truncated: list.truncated });
     }
-    return gate(env, u.pathname.slice('/__dr/'.length), request.method === 'POST' ? await request.json() : undefined);
+    const op=u.pathname.slice('/__dr/'.length);
+    if (!['status','begin','start','finish','publish'].includes(op)) return json({error:'not_found'},404);
+    return gate(env, op, request.method === 'POST' ? await request.json() : undefined);
   }
-  if (!publicRead(request)) {
+  // Failure scenarios affect only this isolated hostname and expire after two minutes.
+  if (u.hostname === 'rss-dr.qiaomu.ai') {
+    const preview = await (await gate(env, 'preview-status')).json();
+    if (preview.mode !== 'normal') {
+      const realFetch = fetcher;
+      fetcher = (target, options = {}) => {
+        if (new URL(target.url || target.href || target).origin !== env.PRIMARY_ORIGIN) return realFetch(target, options);
+        if (preview.mode === 'timeout') return new Promise((_, reject) => (options.signal || target.signal).addEventListener('abort', () => reject(Error('preview_timeout')), {once:true}));
+        return Promise.resolve(preview.mode === '500' ? json({error:'preview'},500) : new Response('broken', {headers:{'Content-Type':'application/json'}}));
+      };
+    }
+  }
+  if (u.pathname === '/__rss_failover/client.js' && ['GET','HEAD'].includes(request.method)) {
+    return new Response(request.method === 'HEAD' ? null : statusClient, {headers:{'Content-Type':'application/javascript; charset=utf-8','Cache-Control':'no-store'}});
+  }
+  if (u.pathname === '/__rss_failover/health' && ['GET','HEAD'].includes(request.method)) {
+    let healthy = false;
+    try {
+      const probe = new Request(new URL('/api/health', request.url));
+      healthy = (await originJson(probe, env.PRIMARY_ORIGIN, env.ORIGIN_KEY, Number(env.PRIMARY_TIMEOUT_MS || 2500), fetcher)).status === 200;
+    } catch { /* Report reading availability separately from writer availability. */ }
+    if (healthy) return json({mode:'primary'});
+    try {
+      await outageResponse(new Request(new URL('/api/sources', request.url)), env, fetcher);
+      return json({mode:'read-only'});
+    } catch { return json({mode:'unavailable'},503); }
+  }
+  const anonymous = anonymousRequest(request);
+  const readable = publicRead(anonymous) || siteRead(request);
+  if (!readable) {
     const target = new URL(u.pathname + u.search, env.PRIMARY_ORIGIN);
     const headers = new Headers(request.headers); headers.set('X-Rss-Origin-Key', env.ORIGIN_KEY); headers.set('X-Forwarded-Host', 'rss.qiaomu.ai');
-    return fetcher(new Request(target, { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body, duplex: 'half', redirect: 'manual' }));
+    // Writes are attempted once. A timeout may mean the primary accepted the write;
+    // never replay it on any server and never claim that it was rolled back.
+    const controller = new AbortController();
+    const timeout = ['GET','HEAD'].includes(request.method) ? Number(env.PRIMARY_TIMEOUT_MS || 2500) : Number(env.PRIVATE_TIMEOUT_MS || 120000);
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await bounded(fetcher(new Request(target, { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body, signal:controller.signal, duplex: 'half', redirect: 'manual' })), timeout);
+      return response;
+    } catch { return json({error:'主站暂时不可用；若刚提交了操作，请恢复后核对结果。',code:'primary_unavailable'},503); }
+    finally {clearTimeout(timer);}
   }
-  if (preferReplica(request, env)) {
+  if (publicRead(request) && preferReplica(request, env)) {
     try {
       const response = await replicaResponse(request, env, fetcher, Math.min(90000, Math.max(1, Number(env.READ_REPLICA_MAX_AGE_MS || 90000))), 1200);
       response.headers.set('X-Rss-Route', 'replica-first'); return response;
@@ -132,13 +209,13 @@ export async function handle(request, env, fetcher = fetch) {
   let primary;
   try { primary = await originJson(request, env.PRIMARY_ORIGIN, env.ORIGIN_KEY, Number(env.PRIMARY_TIMEOUT_MS || 5000), fetcher); }
   catch { primary = json({ error: 'primary_unavailable' }, 503); }
-  if (![500, 502, 503, 504, 520, 521, 522, 523, 524].includes(primary.status)) {
+  if (!failed(primary.status)) {
     const h = new Headers(primary.headers); h.set('X-Rss-Origin', 'primary'); h.set('Cache-Control', 'no-store');
-    return new Response(primary.body, { status: primary.status, headers: h });
+    return injectStatusClient(new Response(primary.body, { status: primary.status, headers: h }), request);
   }
   try {
-    const response = await replicaResponse(request, env, fetcher, Number(env.MAX_SNAPSHOT_AGE_MS || 86400000), 5000);
-    response.headers.set('X-Rss-Route', 'failover'); return response;
+    const response = await outageResponse(request, env, fetcher);
+    response.headers.set('X-Rss-Route', 'failover'); return injectStatusClient(response, request);
   } catch { return json({ error: 'service_unavailable' }, 503); }
 }
 export async function retainBackups(env, now=Date.now()) {
