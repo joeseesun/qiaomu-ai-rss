@@ -3,7 +3,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
-from standby import connect, query, encode_response, public_file
+from standby import connect, query, encode_response, public_file, snapshot_root
 
 class StandbyTests(unittest.TestCase):
     def setUp(self):
@@ -88,5 +88,17 @@ class StandbyTests(unittest.TestCase):
         outside=self.root/'secret';outside.write_text('private')
         (web/'app.js').unlink();(web/'app.js').symlink_to(outside)
         with self.assertRaises(ValueError):public_file(web,'/app.js')
+
+    def test_published_previous_generation_remains_readable_before_publication_catches_up(self):
+        generations=self.root/'generations';generations.mkdir()
+        for identifier in ['sold','snew']:
+            p=generations/identifier;p.mkdir();(p/'manifest.json').write_text(json.dumps({'id':identifier}))
+        current=self.root/'current';current.symlink_to(generations/'snew')
+        self.assertEqual(snapshot_root(current),(generations/'snew').resolve())
+        self.assertEqual(snapshot_root(current,'sold'),(generations/'sold').resolve())
+        self.assertEqual(snapshot_root(current,'snew'),(generations/'snew').resolve())
+        with self.assertRaises(ValueError):snapshot_root(current,'../private')
+        (generations/'sold'/'manifest.json').write_text(json.dumps({'id':'wrong'}))
+        with self.assertRaises(ValueError):snapshot_root(current,'sold')
 
 if __name__ == '__main__': unittest.main()

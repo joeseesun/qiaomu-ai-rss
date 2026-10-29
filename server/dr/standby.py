@@ -23,6 +23,19 @@ WEB_FILES = {'/', '/index.html', '/app.js', '/styles.css', '/request-json.js',
              '/web-collection.js', '/web-collection.css', '/workbench.js', '/workbench.css',
              '/lucide-icons.js', '/purify.min.js', '/podscribe.js', '/podscribe.css', '/favicon.svg', '/privacy.html', '/support.html'}
 
+def snapshot_root(current, expected=''):
+    root = current.resolve(strict=True)
+    if not expected: return root
+    if not re.fullmatch(r'[a-z0-9-]+', expected): raise ValueError('invalid_snapshot')
+    if json.loads((root/'manifest.json').read_text()).get('id') != expected:
+        generations = (current.parent/'generations').resolve(strict=True)
+        candidate = generations/expected
+        if candidate.is_symlink(): raise ValueError('invalid_generation_link')
+        root = candidate.resolve(strict=True)
+        if root.parent != generations: raise ValueError('invalid_generation_path')
+    if json.loads((root/'manifest.json').read_text()).get('id') != expected: raise ValueError('snapshot_id_mismatch')
+    return root
+
 def public_file(web_root, path):
     article = re.fullmatch(r'/articles/[A-Za-z0-9_%~-]+(?:/(?:rewrite|translation))?/?', path)
     assets = re.fullmatch(r'/assets(?:/(?:rewrite|translation|comments|annotations|chat))?/?', path)
@@ -135,7 +148,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(403, {'error': 'forbidden'})
         u = urlsplit(self.path)
         try:
-            root = ROOT.resolve(strict=True)
+            root = snapshot_root(ROOT, self.headers.get('X-Rss-Expected-Snapshot', ''))
             web = public_file(WEB_ROOT, u.path)
             if web is not None:
                 body, mime, version = web
