@@ -5,6 +5,9 @@ import hashlib
 import hmac
 import json
 import os
+import mimetypes
+import html
+import unicodedata
 from pathlib import Path
 import re
 import sqlite3
@@ -14,6 +17,23 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 ROOT = Path(os.environ.get('RSS_DR_ROOT', '/var/lib/qiaomu-rss-standby/current'))
 KEY = os.environ.get('RSS_DR_ORIGIN_KEY', '')
+WEB_ROOT = Path(os.environ.get('RSS_DR_WEB_ROOT', '/opt/qiaomu-apps/qiaomu-rss-web/current'))
+WEB_FILES = {'/', '/index.html', '/app.js', '/styles.css', '/request-json.js',
+             '/ai-settings.js', '/ai-settings.css', '/ai-providers.js', '/provider-icons.js',
+             '/web-collection.js', '/web-collection.css', '/workbench.js', '/workbench.css',
+             '/lucide-icons.js', '/purify.min.js', '/podscribe.js', '/podscribe.css', '/favicon.svg', '/privacy.html', '/support.html'}
+
+def public_file(web_root, path):
+    article = re.fullmatch(r'/articles/[A-Za-z0-9_%~-]+(?:/(?:rewrite|translation))?/?', path)
+    assets = re.fullmatch(r'/assets(?:/(?:rewrite|translation|comments|annotations|chat))?/?', path)
+    vendor = re.fullmatch(r'/vendor/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:js|css|woff2?|svg|png)', path)
+    if path not in WEB_FILES and not article and not assets and not vendor: return None
+    base = web_root.resolve(strict=True)
+    file = (base / ('index.html' if path == '/' or article or assets else path.lstrip('/'))).resolve(strict=True)
+    if not file.is_relative_to(base) or not file.is_file() or file.stat().st_size > 12_000_000: raise ValueError('invalid_public_file')
+    version = (base/'frontend-version.txt').read_text().strip()
+    if not re.fullmatch(r'[a-f0-9]{40}', version): raise ValueError('invalid_frontend_version')
+    return file.read_bytes(), mimetypes.guess_type(file.name)[0] or 'application/octet-stream', version
 
 def connect(root):
     db = sqlite3.connect('file:' + str((root / 'public.sqlite').resolve()) + '?mode=ro&immutable=1', uri=True)
@@ -53,6 +73,18 @@ def query(root, path, params):
             sql = 'SELECT data,published,id FROM entries WHERE source IN (' + ','.join('?' for _ in chosen) + ')'
             args = chosen[:]
             if params.get('ready') == ['rewrite']: sql += ' AND rewrite_ready=1'
+            terms = unicodedata.normalize('NFKC', params.get('q', [''])[0][:100]).lower().split()
+            if terms:
+                source_map = {source['id']: source for source, _ in sources}
+                def matches(raw, sid):
+                    entry = json.loads(raw)
+                    source = source_map.get(sid, {})
+                    text = ' '.join(str(entry.get(k) or '') for k in ['title','titleZh','summary','summaryZh','content'])
+                    text += ' ' + str(source.get('name', '')) + ' ' + str(source.get('category', ''))
+                    text = unicodedata.normalize('NFKC', html.unescape(re.sub(r'<[^>]*>', ' ', text))).lower()
+                    return all(term in text for term in terms)
+                db.create_function('search_matches', 2, matches)
+                sql += ' AND search_matches(data,source)'
             cursor = params.get('cursor', [''])[0]
             c = re.fullmatch(r'(\d+):([A-Za-z0-9_-]+)', cursor)
             if match and c:
@@ -62,6 +94,8 @@ def query(root, path, params):
             args.append(limit + 1 if match else limit)
             rows = db.execute(sql, args).fetchall()
             entries = [{k: v for k, v in json.loads(row[0]).items() if k != 'content'} for row in rows[:limit]]
+            if params.get('summary', [''])[0] in ['minimal','compact']:
+                entries = [{k:v for k,v in entry.items() if k != 'assets'} for entry in entries]
             result = {'entries': entries}
             if match:
                 more = len(rows) > limit
@@ -70,6 +104,10 @@ def query(root, path, params):
         match = re.fullmatch(r'/api/entry/([^/]+)(?:/(rewrite|translation))?', path)
         if match:
             row = db.execute('SELECT data,rewrite,translation FROM entries WHERE id=?', [unquote(match[1])]).fetchone()
+            if not row and re.fullmatch(r'[A-Za-z0-9_-]{6,64}', unquote(match[1])):
+                prefix = unquote(match[1])
+                candidates = db.execute('SELECT data,rewrite,translation FROM entries WHERE substr(id,1,?)=? LIMIT 2', [len(prefix),prefix]).fetchall()
+                if len(candidates) == 1: row = candidates[0]
             if not row: return 404, {'error': 'entry not found'}, meta
             kind = match[2]
             if kind:
@@ -98,6 +136,15 @@ class Handler(BaseHTTPRequestHandler):
         u = urlsplit(self.path)
         try:
             root = ROOT.resolve(strict=True)
+            web = public_file(WEB_ROOT, u.path)
+            if web is not None:
+                body, mime, version = web
+                meta = json.loads((root/'manifest.json').read_text())
+                self.send_response(200); self.send_header('Content-Type', mime); self.send_header('X-Rss-Frontend-Version', version)
+                self.send_header('X-Rss-Snapshot',meta['id']); self.send_header('X-Rss-Revision',str(meta['revision']))
+                self.send_header('Cache-Control','no-store'); self.send_header('Content-Length',str(len(body))); self.end_headers()
+                if self.command != 'HEAD': self.wfile.write(body)
+                return
             if u.path.startswith('/media/wechat/'):
                 name = unquote(u.path.removeprefix('/media/wechat/'))
                 if not re.fullmatch(r'[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{22}', name): return self.respond(404, {'error': 'not_found'})

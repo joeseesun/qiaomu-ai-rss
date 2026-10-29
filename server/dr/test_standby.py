@@ -3,7 +3,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
-from standby import connect, query, encode_response
+from standby import connect, query, encode_response, public_file
 
 class StandbyTests(unittest.TestCase):
     def setUp(self):
@@ -59,5 +59,34 @@ class StandbyTests(unittest.TestCase):
     def test_unknown_routes_do_not_expose_data(self):
         self.assertEqual(query(self.root,'/api/me',{})[0],404)
         self.assertEqual(query(self.root,'/api/sources/disabled/entries',{})[0],404)
+
+    def test_website_search_filters_before_paging(self):
+        with sqlite3.connect(self.root/'public.sqlite') as db:
+            row = json.loads(db.execute('SELECT data FROM entries WHERE id="a0"').fetchone()[0])
+            row['titleZh'] = '中文搜索'; row['content'] = '<p>Needle body</p>'
+            db.execute('UPDATE entries SET data=? WHERE id="a0"', [json.dumps(row)])
+        result = query(self.root,'/api/entries',{'q':['中文搜索 needle'],'limit':['1'],'summary':['minimal']})[1]
+        self.assertEqual([row['id'] for row in result['entries']],['a0'])
+        self.assertEqual(query(self.root,'/api/entries',{'q':["' OR 1=1 --"]})[1]['entries'],[])
+
+    def test_article_url_short_id_resolves_only_a_unique_public_prefix(self):
+        with sqlite3.connect(self.root/'public.sqlite') as db:
+            db.execute('UPDATE entries SET id="abcdef123456" WHERE id="a0"')
+        self.assertEqual(query(self.root,'/api/entry/abcdef',{})[0],200)
+        with sqlite3.connect(self.root/'public.sqlite') as db:
+            db.execute('UPDATE entries SET id="abcdef999999" WHERE id="a1"')
+        self.assertEqual(query(self.root,'/api/entry/abcdef',{})[0],404)
+
+    def test_trusted_public_files_only_and_no_symlink_escape(self):
+        web=self.root/'web';web.mkdir()
+        (web/'frontend-version.txt').write_text('a'*40)
+        (web/'index.html').write_text('<head></head>')
+        (web/'app.js').write_text('window.reader=true;')
+        self.assertEqual(public_file(web,'/articles/title--abcdef/rewrite')[0],b'<head></head>')
+        self.assertIsNone(public_file(web,'/.env'))
+        self.assertIsNone(public_file(web,'/../app.js'))
+        outside=self.root/'secret';outside.write_text('private')
+        (web/'app.js').unlink();(web/'app.js').symlink_to(outside)
+        with self.assertRaises(ValueError):public_file(web,'/app.js')
 
 if __name__ == '__main__': unittest.main()

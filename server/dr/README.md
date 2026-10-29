@@ -99,3 +99,54 @@ Read-only detail responses include the article/rewrite bundle expected by curren
 
 Private backup downloads read in bounded chunks, retry transient GET failures, and stop each encrypted part at its manifest length. This avoids waiting indefinitely for connection closure and limits responses that keep trickling bytes. SHA256, HMAC, decryption and restored-database checks still run before success is recorded.
 Dedicated backup-only jobs always execute when their timer fires; the legacy completion-time throttle applies only to combined publication jobs, so an hourly timer does not silently skip every second hour.
+
+## Automatic whole-site public-reading failover (2026-10-29)
+
+The formal route is now `rss.qiaomu.ai/*`; its DNS record must be proxied. The
+primary and standby origin hostnames remain DNS-only and require `ORIGIN_KEY`.
+Normal reads use LA. A bounded primary failure (network/timeout, 5xx or invalid
+public response) falls back to the deletion-gated Japanese projection. A later
+healthy primary request returns to LA automatically; no database is promoted.
+`READ_REPLICA_CONTINENTS` is empty for this rollout: this is outage recovery,
+not geographical load balancing.
+
+Public API fallback accepts the website's `q` and `summary` list parameters and
+unique article short IDs. A logged-in visitor may receive the public projection
+when the primary fails: Cookie, Authorization and user AI headers are stripped
+before any standby request. Private query selectors and private API paths remain
+primary-only. Writes are attempted once, with no replay; an ambiguous timeout
+asks the user to check the result after recovery. Accounts, favorites, comments,
+AI generation and Podscribe transcription are not provided by the projection.
+
+Install the exact trusted backend release's `public/` tree at
+`/opt/qiaomu-apps/qiaomu-rss-web/releases/<backend SHA>/`, plus the locked
+DOMPurify package's `dist/purify.min.js` as `purify.min.js`. Verify the npm tarball
+against package-lock.json integrity. Add a `frontend-version.txt` containing the
+full backend commit SHA, and atomically point `current` to that directory. Set
+Worker `FRONTEND_VERSION` to the same SHA. The default Python web root is
+`/opt/qiaomu-apps/qiaomu-rss-web/current`; it can be overridden with
+`RSS_DR_WEB_ROOT`. Only an explicit set of public files, vendor assets and article
+shell paths can be served. The receiver database, secrets and arbitrary paths
+are never static files. A frontend mismatch fails closed.
+
+The original Reader UI is reused. An injected status client displays a read-only
+notice on failover and probes availability every 15 seconds while visible or
+degraded. It does not store/replay writes or reload the page unexpectedly.
+Missing channel favicon proxies fall back to the Reader's existing icon behavior.
+The public `/__rss_failover/health` reports reading mode separately from the
+business `/api/health` endpoint. HTTP-01 challenge requests go to primary nginx's
+HTTP webroot without the origin secret, preserving certificate renewal.
+
+For an isolated full-page drill, authorized POST
+`https://rss-dr.qiaomu.ai/__dr/preview` with JSON `{"mode":"500"}` (or `timeout`,
+`invalid-json`, `normal`). Scenarios apply only to the preview hostname and expire
+after two minutes. Reset to `normal` in a finally block. The existing single-path
+`/__dr/drill` also accepts public static paths. Production-domain injection remains
+forbidden. Verify cold HTML, all scripts including DOMPurify, public lists, detail,
+existing Chinese text, session-bearing reads, and recovery in a real browser.
+
+Before cutover, retain the previous Worker deployment version, routes, DNS record
+and standby implementation. Roll back by restoring the formal DNS record to
+DNS-only LA and restoring only this Worker's previous routes/version. Leave the
+control endpoint, backup store and deletion gate intact. Neither this rollout nor
+its fault drills stop the primary or alter Hostinger's other websites.
