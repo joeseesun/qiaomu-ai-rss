@@ -315,6 +315,9 @@
 .is-mobile .qrs-settings-tabs button { min-height:44px; }
 .qrs-settings-qr .setting-item-control img { width:160px; height:160px; object-fit:contain; border-radius:8px; }
 .is-mobile .qrs-settings-qr.setting-item { align-items:flex-start; }
+.qrs-settings-template.setting-item { flex-direction:column; align-items:stretch; gap:8px; }
+.qrs-settings-template .setting-item-control { width:100%; align-items:flex-start; gap:8px; }
+.qrs-settings-template textarea { flex:1 1 auto; min-height:88px; font-family:var(--font-monospace); font-size:var(--font-ui-smaller); }
 .qrs-channel-subsection { color:var(--text-muted); font-size:11px; font-weight:600; padding:10px 10px 4px; }
 .qrs-reading-setting[hidden] { display:none; }
 .qrs-welcome { width:min(100%,440px); margin:clamp(48px,14vh,160px) auto 48px; padding:0 28px; text-align:left; }
@@ -1013,6 +1016,7 @@ body:has(.workspace-leaf.mod-active > .workspace-leaf-content:is(
 .is-mobile .qrs-deleted-modal button { min-height:44px; }
 .qrs-deleted-modal button:not(.mod-cta) { background:transparent; color:var(--qrs-fg); box-shadow:0 0 0 1px var(--qrs-border-strong); }
 .qrs-deleted-modal button:not(.mod-cta):hover { background:var(--qrs-hover); }
+.qrs-prose::highlight(qrs-excerpt-target) { background-color:var(--text-highlight-bg); color:inherit; }
 
 /* Offline update notes shared by the Qiaomu plugin family. */
 .modal.qiaomu-update-notes { width: 520px; max-width: calc(100vw - 32px); padding: 28px; border: 1px solid var(--background-modifier-border); border-radius: 14px; background: var(--background-primary); color: var(--text-normal); }
