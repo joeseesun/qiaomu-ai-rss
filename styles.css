@@ -81,7 +81,7 @@
 .qrs-entry-title .qrs-unread-dot,.qrs-entry-title .qrs-read-dot { position:absolute; left:9px; margin-top:8px; }
 .qrs-bilingual-heading { min-width:0; flex:1; }
 .qrs-bilingual-heading h3 { margin-bottom:2px; }
-.qrs-original-title { color:var(--text-muted); font-size:12px; line-height:1.45; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.qrs-original-title { margin-top:3px; overflow-wrap:anywhere; color:var(--text-muted); font-size:12px; line-height:1.45; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
 .qrs-entry h3 { margin:0; font-size:15px; font-weight:600; line-height:22px; letter-spacing:.005em; color:var(--text-normal); overflow-wrap:anywhere; flex:1; overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
 .qrs-entry.qrs-no-summary h3 { -webkit-line-clamp:3; }
 /* Read rows step down one weight and a little ink, never to the summary grey. */

@@ -205,3 +205,9 @@ export function withServiceOrigin(state: State, baseUrl: string): State {
     cache: Object.fromEntries(Object.entries(state.cache).filter(([, bundle]) => bundle.entry.origin === 'local' || bundle.entry.origin === 'vault')),
     readIds: state.readIds.filter(id => id.startsWith('local-') || id.startsWith('vault:')) });
 }
+
+export function originalTitleOf(entry: Entry): string {
+  const title = entry.title.trim();
+  const translated = entry.titleZh?.trim() || '';
+  return translated && /[\u3400-\u9fff]/.test(translated) && translated !== title ? title : '';
+}

@@ -179,10 +179,11 @@ export default class QiaomuRssPlugin extends Plugin {
     if (this.apiClient && this.apiBase === base) return this.apiClient;
     this.apiClient?.dispose();
     this.apiBase = base;
-    this.apiClient = new RssApi(base, async url => {
+    this.apiClient = new RssApi(base, async (url, options) => {
       const headers: Record<string, string> = { Accept: 'application/json' };
       if (new URL(url).pathname.endsWith('/entries')) headers['X-Rss-List'] = 'reader-v1';
-      const response = await requestUrl({ url, method: 'GET', headers, throw: false });
+      if (options) headers['Content-Type'] = 'application/json';
+      const response = await requestUrl({ url, method: options?.method || 'GET', body: options?.body, headers, throw: false });
       return { status: response.status, text: response.text, headers: response.headers };
     });
     return this.apiClient;
