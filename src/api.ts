@@ -6,7 +6,7 @@ import { ReadBudget } from './read-budget';
 import { recoverRead, type ReadDiagnostic } from './read-request';
 const remoteEntrySchema = entrySchema.transform(entry => ({ ...entry, origin: 'qiaomu' as const, markdown: undefined, markdownPath: undefined }));
 export interface HttpResponse { status: number; text: string; headers?: Record<string, string> }
-export type Transport = (url: string) => Promise<HttpResponse>;
+export type Transport = (url: string, options?: { method: 'POST'; body: string }) => Promise<HttpResponse>;
 class ApiStatusError extends Error {
   constructor(readonly status: number) { super(t('error.serviceUnavailable', { status })); }
 }
@@ -83,6 +83,16 @@ export class RssApi {
     const result = await this.get('/api/sources', z.object({ sources: z.array(sourceSchema) }));
     this.catalog = { expires: Date.now() + 60_000, sources: result.sources };
     return { sources: z.array(sourceSchema).parse(result.sources) };
+  }
+  async refreshTitles(ids: string[], start = false) {
+    const selected = [...new Set(ids)].slice(0, 40);
+    const schema = z.object({ titles: z.array(z.object({ id: z.string(), title: z.string(), titleZh: z.string().nullable() })), pending: z.boolean() });
+    if (!start) return this.get('/api/title-translations?ids=' + encodeURIComponent(selected.join(',')), schema);
+    // AI generation always goes to the configured primary; never retry a POST
+    // through the read-only recovery routes.
+    const response = await this.budget.run(2, Date.now() + 20_000, () => this.transport(this.base + '/api/title-translations', { method: 'POST', body: JSON.stringify({ ids: selected }) }));
+    if (response.status < 200 || response.status >= 300) throw new ApiStatusError(response.status);
+    return schema.parse(JSON.parse(response.text));
   }
   deletedEntries(ids: string[]) { return this.get('/api/lab/entries/deleted?ids=' + encodeURIComponent(ids.join(',')), z.object({ deletedIds: z.array(z.string()) })); }
   entries(source = '', cursor = '', limit = source ? 40 : 100) {

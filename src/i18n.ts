@@ -17,6 +17,7 @@ export function locale(): Locale {
 // Columns: key, 简体中文, English, 繁體中文, 日本語, 한국어, Español, Français, Deutsch
 // Exported so tests can assert that every message has all eight translations.
 export const M = [
+["updates.bilingualTitles", "列表和文章统一显示中文标题与英文原题，覆盖所有已有中文译名的来源。", "Show Chinese headings above their English originals in lists and articles across all sources with translated titles.", "清單和文章統一顯示中文標題與英文原題，涵蓋所有已有中文譯名的來源。", "翻訳済みの全ソースで、中国語の見出しの下に英語の原題を表示します。", "번역된 모든 소스의 목록과 글에서 중국어 제목 아래에 영어 원제를 표시합니다.", "Muestra el título chino sobre el original inglés en listas y artículos de todas las fuentes con traducción.", "Affiche le titre chinois au-dessus de l’original anglais dans les listes et articles de toutes les sources traduites.", "Chinesische Titel stehen in Listen und Artikeln aller übersetzten Quellen über dem englischen Original."],
   ["updates.title","更新内容","What’s new","更新內容","新着情報","업데이트 내용","Novedades","Nouveautés","Neuerungen"],
   ["updates.view","查看更新内容","View what’s new","查看更新內容","更新内容を見る","업데이트 내용 보기","Ver novedades","Voir les nouveautés","Neuerungen ansehen"],
   ["updates.done","知道了","Got it","知道了","確認","확인","Entendido","Compris","Verstanden"],

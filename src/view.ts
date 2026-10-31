@@ -29,7 +29,7 @@ import { AudioDock, pauseVideos, renderMedia, stopMedia, videoEmbedUrl } from '.
 import { uniqueRemoteEntries, wechatArticleKey, xiaoyuzhouEpisodeKey } from './wechat-articles';
 import { platformOf, PLATFORMS, type LinkPlatform } from './platform';
 import { featuredPodcasts, mergeFeaturedPodcasts, qiaomuChannelDivider, qiaomuDividerIcons, qiaomuDividers, qiaomuFeaturedEntries } from './discovery';
-import { articleNoteKey, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, safeUrl, titleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
+import { articleNoteKey, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, safeUrl, titleOf, originalTitleOf, type ChannelState, type Bundle, type Entry, type Mode } from './model';
 import { dividerLabel, relativeTime, t } from './i18n';
 import { agentAvailable, articleSnapshot, askAgent } from './agent-bridge';
 import { notifyContextChanged, type ContextSnapshot } from './qiaomu-context';
@@ -600,6 +600,28 @@ export class ReaderView extends ItemView {
     const entries = this.collectionScope() ? this.collectionItems.filter(job => (!job.entryId || !this.plugin.articleHidden(this.collectionEntry(job))) && job.status === 'complete' && job.entryId && `${job.title} ${job.url} ${job.submitter || ''}`.toLocaleLowerCase().includes(query)).map(job => ({ id: job.entryId!, sourceId: 'user-submitted', origin: 'qiaomu' as const, title: job.title || job.url, link: job.url })) : this.visibleEntries(); const index = entries.findIndex(entry => entry.id === this.bundle?.entry.id);
     const next = entries[index + direction]; if (next) void this.openArticle(next);
   }
+  private async syncVisibleTitles(version: number) {
+    const state = this.plugin.state, source = this.source;
+    const current = () => !this.closed && this.listVersion === version && this.source === source && this.plugin.state === state;
+    try {
+    const ids = this.visibleEntries().filter(entry => entry.origin !== 'local' && entry.origin !== 'vault' && !entry.titleZh && /[A-Za-z]{3}/.test(entry.title)).slice(0, 40).map(entry => entry.id);
+    if (!ids.length) return;
+      let result = await this.plugin.api().refreshTitles(ids, true);
+      for (let attempt = 0; attempt < 60 && current(); attempt++) {
+        let changed = false;
+        for (const item of result.titles) {
+          if (!item.titleZh) continue;
+          for (const entry of this.entries) if (entry.id === item.id && entry.title === item.title && entry.titleZh !== item.titleZh) { entry.titleZh = item.titleZh; changed = true; }
+          if (this.bundle?.entry.id === item.id && this.bundle.entry.title === item.title) { this.bundle.entry.titleZh = item.titleZh; }
+        }
+        if (changed) { this.renderList(); this.renderReader(true); await this.plugin.persist(); }
+        if (!result.pending) break;
+        await new Promise(resolve => window.setTimeout(resolve, 2000));
+        if (!current()) return;
+        result = await this.plugin.api().refreshTitles(ids);
+      }
+    } catch { /* Originals remain usable with old servers or unavailable AI. */ }
+  }
   private async loadEntries(more = false, force = false) {
     if (this.loading && more) return;
     const version = ++this.listVersion; this.loading = true; this.status.setText(''); this.refreshButton.addClass('is-loading');
@@ -685,7 +707,9 @@ export class ReaderView extends ItemView {
       if (this.closed || version !== this.listVersion) return;
       this.status.setText(`${error instanceof Error ? error.message : t('error.networkUnavailable')}${this.entries.length ? t('reader.showingCached') : t('reader.refreshRetry')}`);
     } finally {
-      if (!this.closed && version === this.listVersion) { this.loading = false; this.refreshButton.removeClass('is-loading'); this.renderList(); }
+      if (!this.closed && version === this.listVersion) { this.loading = false; this.refreshButton.removeClass('is-loading'); this.renderList();
+        if (force && !more && !this.personalScope() && !this.vaultScope() && !this.collectionScope()) void this.syncVisibleTitles(version);
+      }
     }
   }
   private catalogFeedback(message: string, retry: () => Promise<void>) {
@@ -941,11 +965,10 @@ export class ReaderView extends ItemView {
       const title = copy.createDiv('qrs-entry-title');
       title.createSpan({ cls: read ? 'qrs-read-dot' : 'qrs-unread-dot', attr: { 'aria-hidden': 'true' } });
       title.createSpan({ cls: 'qrs-visually-hidden', text: read ? t('reader.read') : t('reader.unread') });
-      const bilingual = (entry.sourceId === 'podscribe-all-in-with-chamath-jason-sacks-friedberg' || entry.sourceId === 'podscribe-the-joe-rogan-experience') &&
-        !!entry.titleZh?.trim() && entry.titleZh.trim() !== entry.title.trim();
+      const bilingual = originalTitleOf(entry);
       const heading = bilingual ? title.createDiv('qrs-bilingual-heading') : title;
       heading.createEl('h3', { text: titleOf(entry) });
-      if (bilingual) heading.createDiv({ cls: 'qrs-original-title', text: entry.title });
+      if (bilingual) heading.createDiv({ cls: 'qrs-original-title', text: bilingual, attr: { lang: 'en' } });
       if (relatedIds.some(id => this.plugin.state.favorites[id])) setIcon(title.createSpan('qrs-bookmarked'), 'bookmark');
       if (summary) copy.createEl('p', { text: summary, cls: 'qrs-summary' }); else row.addClass('qrs-no-summary');
       this.renderThumbnail(row, entry);
@@ -1266,10 +1289,9 @@ export class ReaderView extends ItemView {
       link.onclick = event => { event.preventDefault(); void this.app.workspace.openLinkText(bundle.entry.markdownPath!, '', true); };
     } else if (originalUrl) title.createEl('a', { text: titleOf(bundle.entry), href: originalUrl, cls: 'qrs-title-link', attr: { target: '_blank', rel: 'noopener noreferrer' } });
     else title.setText(titleOf(bundle.entry));
-    if ((bundle.entry.sourceId === 'podscribe-all-in-with-chamath-jason-sacks-friedberg' || bundle.entry.sourceId === 'podscribe-the-joe-rogan-experience' || bundle.entry.sourceId === 'user-submitted') &&
-      bundle.entry.titleZh?.trim() && bundle.entry.titleZh.trim() !== bundle.entry.title.trim()) {
+    if (originalTitleOf(bundle.entry)) {
       title.addClass('qrs-bilingual-title');
-      article.createDiv({ cls: 'qrs-article-original-title', text: bundle.entry.title });
+      article.createDiv({ cls: 'qrs-article-original-title', text: originalTitleOf(bundle.entry), attr: { lang: 'en' } });
     }
     if (podcast) {
       const episode = bundle.entry;
