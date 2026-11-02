@@ -1,8 +1,10 @@
 import { t } from './i18n';
 import type { HttpResponse } from './api';
+import { ReadRoutes } from './read-route';
 
 /** One service client shares admission and retry limits across all panes. */
 export class ReadBudget {
+  readonly routes = new ReadRoutes();
   private active = 0;
   private closed = false;
   dispose() {

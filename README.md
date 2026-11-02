@@ -178,3 +178,5 @@ Use the speaker button in an article, or select text and choose Read aloud. Paus
 Qiaomu Audio is optional. Both plugins can read independently; when installed together they pause each other on playback. Copy preferences explicitly once and reuse downloaded local models without coupling plugin installation. Mac system speech automatically finds installed enhanced voices; auditioning preserves your reading sentence.
 
 Online speech sends the spoken text to the provider you choose; paid services bill your account by usage. Native Mac speech and local models synthesize on the device. Browser system voices may require a network connection.
+
+公开阅读连接失败时可自动尝试 `rss-edge.qiaomu.ai`（Cloudflare 备用入口），仅发送与主阅读接口相同的公开 GET 请求；不转发账号凭据、自定义服务、AI 调用或写操作。

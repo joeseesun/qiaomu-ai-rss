@@ -41,8 +41,9 @@ it('uses a shared retry budget instead of retrying every failing source', async 
   vi.useFakeTimers();
   const counts = new Map<string,number>();
   const transport = vi.fn(async (url: string) => {
-    counts.set(url,(counts.get(url)||0)+1);
-    return counts.get(url)===1 ? {status:502,text:''} : {status:200,text:'{"entries":[]}'};
+    const path = new URL(url).pathname;
+    counts.set(path,(counts.get(path)||0)+1);
+    return counts.get(path)===1 ? {status:502,text:''} : {status:200,text:'{"entries":[]}'};
   });
   const api=new RssApi('https://rss.qiaomu.ai',transport);
   for(let i=0;i<5;i++) {

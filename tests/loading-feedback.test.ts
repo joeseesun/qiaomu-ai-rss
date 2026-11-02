@@ -26,7 +26,7 @@ function fixture() {
   const view = Object.assign(Object.create(ReaderView.prototype), {
     plugin, closed: false, source: 'simonwillison', listVersion: 0, articleVersion: 0, entries: [entry], loading: false,
     status: element(), reader: element(), contentEl: element(), refreshButton: element('button'),
-    renderChannel: vi.fn(), renderFilters: vi.fn(), renderList: vi.fn(), renderReader: vi.fn(), expandWindowTo: vi.fn(), stopRestoring: vi.fn(),
+    syncVisibleTitles: vi.fn(), renderChannel: vi.fn(), renderFilters: vi.fn(), renderList: vi.fn(), renderReader: vi.fn(), expandWindowTo: vi.fn(), stopRestoring: vi.fn(),
   });
   return { view, api, plugin };
 }
@@ -94,4 +94,21 @@ describe('loading feedback and cached reading', () => {
     expect(view.mode).toBe('original');
     expect(api.article).toHaveBeenCalledTimes(2);
   });
+});
+
+it('updates translated headings as refresh results arrive without a second refresh', async () => {
+  const { view, api, plugin } = fixture();
+  const original={id:'translated-later',sourceId:'hackernews',title:'New English headline'};
+  view.entries=[original];view.source='hackernews';view.visibleEntries=()=>view.entries;
+  // Exercise the real sync method even though the unrelated loading fixture stubs it.
+  const sync=ReaderView.prototype as unknown as {syncVisibleTitles:(this:unknown,version:number)=>Promise<void>};
+  const transport=api as unknown as {refreshTitles:ReturnType<typeof vi.fn>};
+  let finish!: (value:unknown)=>void;
+  transport.refreshTitles=vi.fn(()=>new Promise(resolve=>finish=resolve));
+  const task=sync.syncVisibleTitles.call(view,view.listVersion);
+  expect(view.entries[0].titleZh).toBeUndefined();
+  finish({titles:[{id:original.id,title:original.title,titleZh:'新英文标题的中文翻译'}],pending:false});
+  await task;
+  expect(view.entries[0].titleZh).toBe('新英文标题的中文翻译');
+  expect(view.renderList).toHaveBeenCalled();expect(plugin.persist).toHaveBeenCalled();
 });

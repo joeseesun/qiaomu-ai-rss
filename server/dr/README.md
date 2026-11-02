@@ -8,9 +8,11 @@ The primary Reader remains the only writer. Vultr runs a separate standard-libra
 
 The production origin names are deliberately DNS-only to avoid Worker recursion. Both require the origin secret. Only `rss.qiaomu.ai/api/*` and `/media/wechat/*` are Worker routes; static website, private identity and other backend dependencies retain their own availability. The formal hostname must have proxied DNS for Worker routes ([Cloudflare documentation](https://developers.cloudflare.com/workers/configuration/routing/routes/)). TLS certificates renew via certbot HTTP webroot.
 
-Primary service: `qiaomu-rss-sync.timer` starts a sync 300 seconds after the preceding job finishes. Snapshot/export takes approximately 30 seconds before transfer/backup. Hourly encrypted full backup goes to private R2, is downloaded, authenticated, decrypted and SQLite checked before `last-backup.json` is updated. The public replica stores current and previous generation; private R2 retention keeps 24 hours, 14 daily points and eight weekly points. R2 chunks are 48 MiB, below the documented Worker request-body limit ([limits](https://developers.cloudflare.com/workers/platform/limits/)). The backup password also exists on the operator Mac under `~/.config/qiaomu-rss-dr/backup-pass`; keep an independent secure copy for total primary loss.
+Primary service: `qiaomu-rss-sync.timer` starts a sync 300 seconds after the preceding job finishes. Hourly encrypted full backup runs before public export, so an export timeout cannot suppress the private backup. It goes to private R2 and is downloaded, authenticated, decrypted and SQLite checked before `last-backup.json` is updated. The public export uses page-sized hydration with Reader 1.0.14 or newer and retains compatibility with older Readers; its 600-second budget remains bounded. The public replica stores current and previous generation; private R2 retention keeps 24 hours, 14 daily points and eight weekly points. R2 chunks are 48 MiB, below the documented Worker request-body limit ([limits](https://developers.cloudflare.com/workers/platform/limits/)). The backup password also exists on the operator Mac under `~/.config/qiaomu-rss-dr/backup-pass`; keep an independent secure copy for total primary loss.
 
 `capacity-install.sh` installs bounded logs and 15-minute disk/freshness checks. Disk warnings are emitted at 85% or less than 5 GiB free; export refuses below 2 GiB. Checks record systemd failures; no external message destination is configured. A failed sync leaves the previous ready generation in place unless invalidated by a mutation. Failover refuses snapshots older than 24 hours.
+
+Private archives use gzip level 1 to reduce CPU contention with live reading. A bounded 32 MiB source-data sample used about 69% less CPU than level 9, with an 18% larger compressed result; whole-backup ratios vary. Encryption, part checksums, HMAC verification and the download/decrypt/SQLite restore check remain mandatory. A corrupt downloaded part must leave the successful-backup marker unchanged.
 
 ## Validation and fault drills
 
@@ -31,9 +33,13 @@ Load the private primary environment and point `RSS_DR_BACKUP_PASSWORD_FILE` to 
 python3 restore.py hourly/<snapshot>/manifest.json /new/isolated/directory
 ```
 
-The destination must not exist. The tool verifies part checksums and encrypt-then-MAC before decrypting, safely extracts and validates the original SQLite. It does not activate a writer. Restored files contain private accounts/configuration: keep them mode-0700. Install matching Node/dependencies from the included lockfile; restore the `code` tree, `dr` implementation and configuration at their documented absolute locations. SSH private key and backup password are deliberately outside the archive. Provision a new restricted sync key if the primary is lost. Production systemd environment paths are evidence for reconstruction, not a portable install script.
+The destination must not exist. The tool verifies part checksums and encrypt-then-MAC before decrypting, safely extracts and validates the original SQLite. It does not activate a writer. Restored files contain private accounts/configuration: keep them mode-0700. Install matching Node/dependencies from the included lockfile; restore the `code` tree, `dr` implementation and configuration at their documented absolute locations. New backups also include `external-state/qmreader-{podcast,podscribe,youtube}-notes`; restore these private archives to their configured `QMREADER_*_NOTES_DIR` paths with the service's ownership and permissions. Interrupted `.tmp` and `.lock` files are excluded. These archives are never added to the public projection. SSH private key and backup password are deliberately outside the archive. Provision a new restricted sync key if the primary is lost. Production systemd environment paths are evidence for reconstruction, not a portable install script.
 
 Before activating a new writer, isolate the old primary, reconcile accepted writes since the backup, restore images and JSON state, test privately, then change origin routing. Never automatically promote the read-only projection into a writer. Do not restore an old projection and label it with a current revision: it could resurrect deleted data.
+
+## Snapshot time budget
+
+Public export has a finite 600-second budget. The sync service allows 1500 seconds for private backup verification, export, and atomic network publication together. Existing installations must update their systemd timeout as well as `snapshot.py`. The lock and five-minute-after-completion timer prevent overlapping runs. A timeout never writes a successful public-sync marker; private backups retain their independent restore-verification marker.
 
 ## Deletion coordination
 
@@ -74,3 +80,88 @@ QMREADER_MODULES=/path/to/qmreader node --test server/prepared-list-http.integra
 ```
 
 `verify.py --allow-view-counter-drift` ignores only the detail's view count, last-view timestamp and statistics update timestamp. It still fails on any list/order/content difference. Ongoing ingestion can legitimately make a live origin newer than the exported snapshot; investigate the added IDs and timestamps instead of declaring strict parity or weakening assertions silently.
+
+## Incremental public generation
+
+With Reader 1.0.14 or newer, only new or changed entries are hydrated. Unchanged rows are copied from the previously published projection inside SQLite. The input fingerprints track source rows, Chinese rewrites/translations, contributions, statistics, reactions (including indirect comment/chat/annotation references), queue status, cached original bodies, and the entry's private transcript files. Images are reconciled separately so arriving or evicted image bytes do not require article hydration. Disabled sources and deleted articles are omitted from the new generation. Raw input scanning and consistent database capture still run each time; this is not a database change-log protocol or zero-work sync.
+
+Fingerprints stay private under the primary's mode-0700 work directory. `projection-current` atomically pairs `public.sqlite` with `state.json`, and advances only after promotion and deletion-gate publication succeed. Failed exports/publications keep the last accepted cache for retry. Missing, corrupt or mismatched cache, schema/code/environment changes, and the daily full reconciliation trigger a full rebuild. `RSS_DR_FORCE_FULL=1` also forces a full rebuild. Each run logs generated/reused/deleted counts. Deploy `incremental.cjs` together with `export.cjs` and `snapshot.py`.
+
+The anonymous projection currently does not read sessions, OAuth accounts, API tokens, notifications, follows, submission requests, or refresh job records. These tables are excluded from invalidation; review this list if projection dependencies change. All other tables with `entry_id` are tracked per article, and unknown tables without an article key conservatively invalidate all rows. Private hourly backups remain complete, encrypted and restore-tested.
+
+## Independent backups and shadow replicas
+
+Set `RSS_DR_SKIP_BACKUP=1` on the public publication job. Run a separate job with `RSS_DR_BACKUP_ONLY=1` and `RSS_DR_SKIP_BACKUP=0`; give that job its own EnvironmentFile so an inherited file cannot override the intended flags. The jobs use separate locks. Private backups consistently capture the Reader, AI-spend and co-located Podscribe SQLite databases, external notes, service environment files and GetNote configuration, then download, authenticate, decrypt and integrity-check the restored databases. `RSS_DR_BACKUP_KEY_ID` labels password rotations; retain previous password files privately for historical restores.
+
+`RSS_DR_NODE` selects the trusted Node executable. `RSS_DR_EXTRA_TARGETS` is a JSON list of additional restricted `rss-sync@host` receivers. One public projection is transferred independently to each target and results are written to `replicas.json`. The existing router still serves only `RSS_DR_SSH_TARGET`; additional targets are shadow copies until a router validates each replica's snapshot, revision and freshness. A failed routed target prevents publication even if a shadow target succeeds.
+
+Read-only detail responses include the article/rewrite bundle expected by current readers. Missing snapshot assets return settled `unavailable` state with no polling delay; a snapshot never claims a live AI generation job. Verification compares published content separately from this intentional read-only availability policy.
+
+Private backup downloads read in bounded chunks, retry transient GET failures, and stop each encrypted part at its manifest length. This avoids waiting indefinitely for connection closure and limits responses that keep trickling bytes. SHA256, HMAC, decryption and restored-database checks still run before success is recorded.
+Dedicated backup-only jobs always execute when their timer fires; the legacy completion-time throttle applies only to combined publication jobs, so an hourly timer does not silently skip every second hour.
+
+## Automatic whole-site public-reading failover (2026-10-29)
+
+The formal route is now `rss.qiaomu.ai/*`; its DNS record must be proxied. The
+primary and standby origin hostnames remain DNS-only and require `ORIGIN_KEY`.
+Normal reads use LA. A bounded primary failure (network/timeout, 5xx or invalid
+public response) falls back to the deletion-gated Japanese projection. A later
+healthy primary request returns to LA automatically; no database is promoted.
+`READ_REPLICA_CONTINENTS` is empty for this rollout: this is outage recovery,
+not geographical load balancing.
+
+Public API fallback accepts the website's `q` and `summary` list parameters and
+unique article short IDs. A logged-in visitor may receive the public projection
+when the primary fails: Cookie, Authorization and user AI headers are stripped
+before any standby request. Private query selectors and private API paths remain
+primary-only. Writes are attempted once, with no replay; an ambiguous timeout
+asks the user to check the result after recovery. Accounts, favorites, comments,
+AI generation and Podscribe transcription are not provided by the projection.
+
+Install the exact trusted backend release's `public/` tree at
+`/opt/qiaomu-apps/qiaomu-rss-web/releases/<backend SHA>/`, plus the locked
+DOMPurify package's `dist/purify.min.js` as `purify.min.js`. Verify the npm tarball
+against package-lock.json integrity. Add a `frontend-version.txt` containing the
+full backend commit SHA, and atomically point `current` to that directory. Set
+Worker `FRONTEND_VERSION` to the same SHA. The default Python web root is
+`/opt/qiaomu-apps/qiaomu-rss-web/current`; it can be overridden with
+`RSS_DR_WEB_ROOT`. Only an explicit set of public files, vendor assets and article
+shell paths can be served. The receiver database, secrets and arbitrary paths
+are never static files. A frontend mismatch fails closed.
+
+The original Reader UI is reused. An injected status client displays a read-only
+notice on failover and probes availability every 15 seconds while visible or
+degraded. It does not store/replay writes or reload the page unexpectedly.
+Missing channel favicon proxies fall back to the Reader's existing icon behavior.
+The public `/__rss_failover/health` reports reading mode separately from the
+business `/api/health` endpoint. HTTP-01 challenge requests go to primary nginx's
+HTTP webroot without the origin secret, preserving certificate renewal.
+
+For an isolated full-page drill, authorized POST
+`https://rss-dr.qiaomu.ai/__dr/preview` with JSON `{"mode":"500"}` (or `timeout`,
+`invalid-json`, `normal`). Scenarios apply only to the preview hostname and expire
+after two minutes. Reset to `normal` in a finally block. The existing single-path
+`/__dr/drill` also accepts public static paths. Production-domain injection remains
+forbidden. Verify cold HTML, all scripts including DOMPurify, public lists, detail,
+existing Chinese text, session-bearing reads, and recovery in a real browser.
+
+Before cutover, retain the previous Worker deployment version, routes, DNS record
+and standby implementation. Roll back by restoring the formal DNS record to
+DNS-only LA and restoring only this Worker's previous routes/version. Leave the
+control endpoint, backup store and deletion gate intact. Neither this rollout nor
+its fault drills stop the primary or alter Hostinger's other websites.
+
+Replica reads send `X-Rss-Expected-Snapshot` from the safety coordinator. The
+receiver may already have promoted a newer generation while another target is
+still syncing; the standby serves the retained published generation by ID during
+this window. The router still checks revision, age and the gate after the complete
+body, and never falls back to an arbitrary generation. This closes the handoff gap
+without allowing deleted data to reappear. Missing/invalid generations fail closed.
+
+When proxying the formal hostname, preserve API client compatibility: use a
+hostname- and `/api/`-scoped configuration rule with `bic=false` if Cloudflare
+Browser Integrity Check rejects default library user agents. This does not skip
+application authentication or change security settings for other websites. Keep
+the previous rule configuration and verify unauthenticated private routes remain
+401/403. Operator control/backup clients identify themselves with a descriptive
+User-Agent.

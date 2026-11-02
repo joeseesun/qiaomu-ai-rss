@@ -11,20 +11,18 @@ pattern = "rss-dr.qiaomu.ai"
 custom_domain = true
 
 [[routes]]
-pattern = "rss.qiaomu.ai/api/*"
-zone_name = "qiaomu.ai"
-
-[[routes]]
-pattern = "rss.qiaomu.ai/media/wechat/*"
+pattern = "rss.qiaomu.ai/*"
 zone_name = "qiaomu.ai"
 
 [vars]
 PRIMARY_ORIGIN = "https://rss-origin.qiaomu.ai"
 STANDBY_ORIGIN = "https://rss-standby.qiaomu.ai"
-PRIMARY_TIMEOUT_MS = "5000"
+PRIMARY_TIMEOUT_MS = "2500"
+PRIVATE_TIMEOUT_MS = "120000"
+FRONTEND_VERSION = "0d43b2c7eafced44c5b05ae0a9672b4ace63f51e"
 STANDBY_TIMEOUT_MS = "4000"
 MAX_SNAPSHOT_AGE_MS = "86400000"
-READ_REPLICA_CONTINENTS = "AS,OC"
+READ_REPLICA_CONTINENTS = ""
 READ_REPLICA_MAX_AGE_MS = "90000"
 
 [[durable_objects.bindings]]
