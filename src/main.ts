@@ -601,13 +601,19 @@ export default class QiaomuRssPlugin extends Plugin {
       }
     }
   }
+  private savedArticleRequest = 0;
   async openSavedArticle(id: string, mode: string, section = '', quote = '') {
+    const request = ++this.savedArticleRequest;
     const bundle = this.state.savedArticles[id];
     if (!bundle) throw new Error('Missing saved article');
+    // Saved metadata is restored without its sharded body after a restart.
+    const entry = await this.hydrateEntry(bundle.entry).catch(() => bundle.entry);
+    if (request !== this.savedArticleRequest || this.collectionStopped) return;
     await this.openReader();
+    if (request !== this.savedArticleRequest || this.collectionStopped) return;
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
     if (!(view instanceof ReaderView)) throw new Error('Reader unavailable');
-    view.showSavedArticle(bundle, modeSchema.catch('original').parse(mode), section, quote);
+    view.showSavedArticle({ ...bundle, entry }, modeSchema.catch('original').parse(mode), section, quote);
   }
   private cleanNoteMarkers(file: TFile) {
     this.dailyNoteWrite = this.dailyNoteWrite.catch(() => undefined).then(async () => {
