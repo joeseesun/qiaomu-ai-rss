@@ -207,6 +207,54 @@ describe('untrusted remote content', () => {
     expect(block).not.toContain('javascript:'); expect(block).not.toContain(':~:');
     expect(block).toContain('obsidian://open?');
   });
+  it('keeps standalone source and located excerpt links inside their article group', () => {
+    const quote = { type: 'TextQuoteSelector' as const, exact: 'First' };
+    const options = { vault: 'QA', article: 'a', mode: 'original' as const, section: 'Chapter', quote,
+      excerpt: 'First', template: '{{source}}\n\n{{excerpt_link}}\n\n{{content}}' };
+    const first = appendDailyNoteLink('', bundle.entry, options);
+    expect(appendDailyNoteLink(first.content, bundle.entry, options)).toEqual({ content: first.content, added: false });
+    const other = { ...bundle.entry, id: 'other', title: 'Other', link: 'https://example.com/other' };
+    const combined = appendDailyNoteLink(first.content, other, { vault: 'QA', article: 'b', excerpt: 'Other excerpt' }).content;
+    const next = appendDailyNoteLink(combined, bundle.entry, { ...options, excerpt: 'Second', quote: { ...quote, exact: 'Second' } });
+    expect(next.content.indexOf('Second')).toBeLessThan(next.content.indexOf('[Other]'));
+    expect(appendDailyNoteLink(next.content, bundle.entry, options).added).toBe(false);
+  });
+  it.each(['{{source}}', '{{section_link}}', '{{excerpt_link}}', '{{original_link}}', '{{link}}'])('deduplicates standalone template link %s', token => {
+    const options = { vault: 'QA', article: 'a', section: 'Chapter', excerpt: 'Body', mode: 'original' as const,
+      quote: { type: 'TextQuoteSelector' as const, exact: 'Body' }, textFragment: 'text=Body', template: token + '\n\n{{content}}' };
+    const first = appendDailyNoteLink('', bundle.entry, options);
+    expect(appendDailyNoteLink(first.content, bundle.entry, options)).toEqual({ content: first.content, added: false });
+  });
+  it.each(['{{section_link}}', '{{excerpt_link}}'])('does not upgrade a template link without location parameters: %s', token => {
+    const options = { vault: 'QA', article: 'a', excerpt: 'Body', template: token + '\n\n{{content}}' };
+    const first = appendDailyNoteLink('', bundle.entry, options);
+    expect(appendDailyNoteLink(first.content, bundle.entry, options)).toEqual({ content: first.content, added: false });
+  });
+  it('does not mistake an external article query for an internal saved article', () => {
+    const content = '[Unrelated](<https://example.com/?article=a>)\n\nPersonal note\n\n';
+    const next = appendDailyNoteLink(content, bundle.entry, { vault: 'QA', article: 'a', excerpt: 'Body' });
+    expect(next.content).toBe(content + dailyNoteLink(bundle.entry, { vault: 'QA', article: 'a' }) + '\n\nBody\n\n');
+  });
+  it('preserves the existing grouped reading mode when appending a different mode', () => {
+    const options = { vault: 'QA', article: 'a', mode: 'rewrite' as const, excerpt: 'First' };
+    const first = appendDailyNoteLink('', bundle.entry, options);
+    const next = appendDailyNoteLink(first.content, bundle.entry, { ...options, mode: 'original', excerpt: 'Second' });
+    expect(next.content.split('\n')[0]).toBe(first.content.split('\n')[0]);
+    expect(next.content).toContain('Second');
+  });
+  it('deduplicates a captured excerpt across timestamp changes and legacy plain captures', () => {
+    const options = { vault: 'QA', article: 'a', excerpt: 'Same [excerpt]', template: '> {{content}}\n> {{date}} {{time}}' };
+    const captured = dailyNoteLink(bundle.entry, options) + '\n\n' + excerptBlock(options.excerpt, bundle.entry, options, { format: () => 'older' }) + '\n\n';
+    expect(appendDailyNoteLink(captured, bundle.entry, options)).toEqual({ content: captured, added: false });
+    const legacy = appendDailyNoteLink('', bundle.entry, { ...options, template: '' });
+    expect(appendDailyNoteLink(legacy.content, bundle.entry, options)).toEqual({ content: legacy.content, added: false });
+    expect(appendDailyNoteLink(captured, bundle.entry, { ...options, excerpt: 'Different [excerpt]' }).added).toBe(true);
+  });
+  it('preserves replacement metacharacters in template titles', () => {
+    const title = '$& $$ $`';
+    expect(renderDailyNoteTemplate('{{title}}', title)).toBe(title);
+    expect(excerptBlock('Body', { ...bundle.entry, title }, { template: '{{title}}' })).toBe('$& $$ $\\`\n\nBody');
+  });
   it('respects daily-note folders, formats and common template tokens', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;
     expect(dailyNotePath({ folder: 'Daily', format: 'YYYY/MM/DD', template: '' }, now)).toBe('Daily/2026/09/07.md');

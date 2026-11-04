@@ -80,6 +80,12 @@ describe('outline navigation and lifecycle', () => {
     expect(f.scroller.scrollTop).toBe(42);
     expect(f.beforeJump).not.toHaveBeenCalled();
   });
+  it('does not guess a section when the saved heading matches multiple sections', () => {
+    const f = fixture(); f.outline.dispose(); f.scroller.scrollTop = 42;
+    jumpToArticleSection({ title: 'Article', loading: false, prose: f.scroller.querySelector('.qrs-prose'), scroller: f.scroller, beforeJump: f.beforeJump }, 'Same');
+    expect(f.scroller.scrollTop).toBe(42);
+    expect(f.beforeJump).not.toHaveBeenCalled();
+  });
   it('jumps to the exact duplicate heading below the toolbar and follows scrolling without remeasuring each frame', () => {
     const f = fixture(); f.flush();
     expect(f.selected).toHaveBeenLastCalledWith(0);
