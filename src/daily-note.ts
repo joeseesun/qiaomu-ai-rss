@@ -1,6 +1,7 @@
 import { moment, normalizePath, type Vault } from 'obsidian';
 import { safeUrl, titleOf, type Entry, type Mode } from './model';
 import { fail, t } from './i18n';
+import type { TextQuoteSelector } from './excerpt-anchor';
 
 export interface DailyNoteSettings { folder: string; format: string; template: string }
 export interface DateFormatter { format(pattern: string): string }
@@ -34,18 +35,36 @@ export function dailyNotePath(settings: DailyNoteSettings, now: DateFormatter = 
   return normalizePath(`${settings.folder ? `${settings.folder}/` : ''}${dated}.md`);
 }
 
-export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string }
-export function articleNoteUrl(options: CaptureOptions): string {
+export interface CaptureOptions { vault?: string; article?: string; mode?: Mode; excerpt?: string; template?: string; section?: string; quote?: TextQuoteSelector; textFragment?: string }
+export function articleNoteUrl(options: CaptureOptions, section = '', quote?: TextQuoteSelector): string {
   const params = new URLSearchParams({ vault: options.vault || '', article: options.article || '', mode: options.mode || 'original' });
+  const heading = section.replace(/\s+/g, ' ').trim();
+  if (heading) params.set('section', heading);
+  if (quote) params.set('quote', JSON.stringify(quote));
   return `obsidian://qiaomu-ai-rss?${params.toString().replace(/\+/g, '%20')}`;
 }
 export function markdownText(text: string): string { return text.replace(/([\\`*_{}[\]()<>#+.!|~-])/g, '\\$1'); }
+function noteTitle(entry: Entry): string { return markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || t('untitled.article')); }
+function readingLink(entry: Entry, options: CaptureOptions): string | null {
+  if (options.article) return articleNoteUrl(options);
+  return entry.link ? safeUrl(entry.link) : null;
+}
+function originalUrl(entry: Entry, options: CaptureOptions): string | null {
+  return (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
+}
+function originalLink(url: string, options: CaptureOptions): string {
+  if (options.mode === 'original' && options.textFragment && safeUrl(url)) {
+    const target = new URL(url);
+    target.hash = target.hash.split(':~:')[0] + ':~:' + options.textFragment;
+    return `[${t('capture.originalLocated')}](<${target.href}>)`;
+  }
+  return `[${t('mode.original')} ↗](<${url}>)`;
+}
 export function dailyNoteLink(entry: Entry, options: CaptureOptions = {}): string {
-  const link = options.article ? articleNoteUrl(options) : entry.link ? safeUrl(entry.link) : null;
+  const link = readingLink(entry, options);
   if (!link) fail('error.noArticleLink');
-  const title = markdownText(titleOf(entry).replace(/\s+/g, ' ').trim() || t('untitled.article'));
-  const original = (entry.link ? safeUrl(entry.link) : null) || (entry.origin === 'vault' && entry.markdownPath && options.vault ? `obsidian://open?vault=${encodeURIComponent(options.vault)}&file=${encodeURIComponent(entry.markdownPath)}` : null);
-  return `[${title}](<${link}>)` + (options.article && original ? ` · [原文](<${original}>)` : '');
+  const original = originalUrl(entry, options);
+  return `[${noteTitle(entry)}](<${link}>)` + (options.article && original ? ` · [原文](<${original}>)` : '');
 }
 export function repairArticleLinks(content: string): string {
   return content.replace(/obsidian:\/\/qiaomu-ai-rss\?[^\s<>)]*/g, url => url.replace(/\+/g, '%20'));
@@ -53,30 +72,105 @@ export function repairArticleLinks(content: string): string {
 export function cleanCaptureMarkers(content: string): string {
   return content.replace(/^[ \t]*<!-- qrs-article:[^\r\n]*?-->[ \t]*(?:\r?\n)?/gm, '');
 }
+
+const contentToken = /\{\{\s*content\s*\}\}/gi;
+const listPrefix = /^\s*(?:[-*+]|\d+[.)])\s/;
+const quotePrefix = /^\s*(?:>\s*)+/;
+/** Keeps later excerpt paragraphs inside the list item or quote the template puts the content in. */
+function continuation(prefix: string): string {
+  return quotePrefix.exec(prefix)?.[0] ?? (listPrefix.test(prefix) ? ' '.repeat(prefix.length) : '');
+}
+/** Renders one captured excerpt through the template; an empty template keeps the escaped plain paragraph. */
+export function excerptBlock(excerpt: string, entry: Entry, options: CaptureOptions = {}, now: DateFormatter = currentMoment()): string {
+  const text = markdownText(excerpt.trim());
+  const template = options.template?.trim();
+  if (!template) return text;
+  const url = originalUrl(entry, options) ?? readingLink(entry, options) ?? '';
+  const filled = template.split('\n').map(line => {
+    const at = line.search(contentToken);
+    if (at < 0) return line;
+    const prefix = continuation(line.slice(0, at));
+    const value = prefix ? text.split('\n').map((part, index) => index && (part.trim() || quotePrefix.test(prefix)) ? prefix + part : part).join('\n') : text;
+    return line.replace(contentToken, () => value);
+  }).join('\n');
+  const title = noteTitle(entry);
+  const section = markdownText(options.section?.replace(/\s+/g, ' ').trim() || '');
+  const rendered = renderDailyNoteTemplate(filled
+    .replace(/\{\{\s*source\s*\}\}/gi, () => `[${title}](<${url}>)`)
+    .replace(/\{\{\s*section\s*\}\}/gi, () => section ? ` · ${section}` : '')
+    .replace(/\{\{\s*section_link\s*\}\}/gi, () => `[${section || title}](<${options.article ? articleNoteUrl(options, options.section) : readingLink(entry, options) || ''}>)`)
+    .replace(/\{\{\s*excerpt_link\s*\}\}/gi, () => `[${section || title}](<${options.article ? articleNoteUrl(options, options.section, options.quote) : readingLink(entry, options) || ''}>)`)
+    .replace(/\{\{\s*original_link\s*\}\}/gi, () => originalLink(url, options))
+    .replace(/\{\{\s*link\s*\}\}/gi, () => dailyNoteLink(entry, options))
+    .replace(/\{\{\s*url\s*\}\}/gi, () => url), title, now);
+  return template.search(contentToken) >= 0 ? rendered : `${rendered}\n\n${text}`;
+}
+function savedArticle(url: string): { id: string; located: boolean } | undefined {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'obsidian:' || parsed.hostname !== 'qiaomu-ai-rss') return;
+    const id = parsed.searchParams.get('article');
+    if (id) return { id, located: parsed.searchParams.has('section') || parsed.searchParams.has('quote') };
+  } catch { /* Other Markdown links are not saved-article headers. */ }
+}
+function matchesCaptureLine(line: string, parts: string[]): boolean {
+  if (parts.length === 1) return line === parts[0];
+  const last = parts.at(-1)!;
+  const end = line.length - last.length;
+  let offset = parts[0].length;
+  if (offset > end || !line.startsWith(parts[0]) || !line.endsWith(last)) return false;
+  for (const part of parts.slice(1, -1)) {
+    const next = line.indexOf(part, offset);
+    if (next < 0 || next + part.length > end) return false;
+    offset = next + part.length;
+  }
+  return true;
+}
+function hasExcerpt(section: string, excerpt: string, entry: Entry, options: CaptureOptions): boolean {
+  const enclosed = '\n\n' + section.trim() + '\n\n';
+  // Preserve deduplication of plain excerpts written before templates were supported.
+  if (enclosed.includes('\n\n' + markdownText(excerpt) + '\n\n')) return true;
+  // Timestamp placeholders match within a single line. Literal matching avoids regex backtracking
+  // when a user repeats several date or time tokens in one template.
+  const marker = '\0qrs-capture-time\0';
+  const pattern = excerptBlock(excerpt, entry, options, { format: () => marker });
+  if (!pattern.includes(marker)) return enclosed.includes('\n\n' + pattern + '\n\n');
+  const lines = section.trim().split('\n');
+  const expected = pattern.split('\n').map(line => line.split(marker));
+  for (let start = 0; start + expected.length <= lines.length; start++) {
+    if ((start && lines[start - 1] !== '') || (lines[start + expected.length] ?? '') !== '') continue;
+    if (expected.every((parts, index) => matchesCaptureLine(lines[start + index], parts))) return true;
+  }
+  return false;
+}
 export function appendDailyNoteLink(content: string, entry: Entry, options: CaptureOptions = {}): { content: string; added: boolean } {
   content = cleanCaptureMarkers(repairArticleLinks(content));
   const title = dailyNoteLink(entry, options);
   const excerpt = options.excerpt?.trim();
-  const text = excerpt ? markdownText(excerpt) : '';
+  const text = excerpt ? excerptBlock(excerpt, entry, options) : '';
   // Upgrade an existing capture's header without changing its title or reading-version link.
   const originalSuffix = title.slice(title.indexOf('>)') + 2);
-  if (options.article && originalSuffix) {
-    content = content.replace(/^(\[[^\n]*?\]\(<(obsidian:\/\/qiaomu-ai-rss\?[^\n>]+)>\))(?! · \[原文\])/gm, (whole: string, header: string, url: string) => {
-      try { return new URL(url).searchParams.get('article') === options.article ? header + originalSuffix : whole; } catch { return whole; }
-    });
-  }
   // Recognize 0.9.0 captures, including its form-encoded spaces and other reading modes.
   const links = [...content.matchAll(/^\[[^\n]*?\]\(<([^\n>]+)>\)(?: · \[原文\]\(<[^\n>]+>\))?$/gm)];
   const existing = links.find(match => {
     if (!options.article) return match[0] === title;
-    try { return new URL(match[1]).searchParams.get('article') === options.article; } catch { return false; }
+    const saved = savedArticle(match[1]);
+    return saved !== undefined && saved.id === options.article && !saved.located;
   });
   if (existing?.index !== undefined) {
-    const next = links.find(match => match.index > existing.index)?.index ?? content.length;
+    const header = options.article && originalSuffix && !existing[0].includes(' · [原文](') ? existing[0] + originalSuffix : existing[0];
+    // Only another saved-article header ends a saved-article group. Standalone web links
+    // and location links can appear anywhere in a custom excerpt template.
+    const next = links.find(match => {
+      if (match.index <= existing.index) return false;
+      if (!options.article) return match[0] !== title;
+      const saved = savedArticle(match[1]);
+      return saved !== undefined && saved.id !== options.article && !saved.located;
+    })?.index ?? content.length;
     const section = content.slice(existing.index + existing[0].length, next).trim();
-    const added = !!text && !('\n\n' + section.trim() + '\n\n').includes('\n\n' + text + '\n\n');
-    if (!added) return { content, added };
-    const updated = title + '\n\n' + section + (added ? '\n\n' + text : '') + '\n\n';
+    const added = !!excerpt && !hasExcerpt(section, excerpt, entry, options);
+    if (!added) return { content: content.slice(0, existing.index) + header + content.slice(existing.index + existing[0].length), added };
+    const updated = header + '\n\n' + section + (added ? '\n\n' + text : '') + '\n\n';
     return { content: content.slice(0, existing.index) + updated + content.slice(next), added };
   }
   const block = text ? `${title}\n\n${text}` : title;
@@ -88,5 +182,5 @@ export function renderDailyNoteTemplate(template: string, title: string, now: Da
   return template
     .replace(/{{\s*date(?::([^}]+))?\s*}}/gi, (_, format: string | undefined) => now.format(format?.trim() || 'YYYY-MM-DD'))
     .replace(/{{\s*time(?::([^}]+))?\s*}}/gi, (_, format: string | undefined) => now.format(format?.trim() || 'HH:mm'))
-    .replace(/{{\s*title\s*}}/gi, title);
+    .replace(/{{\s*title\s*}}/gi, () => title);
 }

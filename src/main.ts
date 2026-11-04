@@ -20,8 +20,9 @@ import { EditorView } from '@codemirror/view';
 import { MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, type App, type SettingDefinitionItem, type SettingGroupItem } from 'obsidian';
 import { requestUrl } from 'obsidian';
 import { RssApi } from './api';
-import { folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type LocalDeletion, type Mode, type State } from './model';
+import { DEFAULT_EXCERPT_TEMPLATE, folderPath, initialState, renameArticleNotes, modeLabel, modeSchema, readingFontSchema, readingThemeSchema, splitContentCache, stripFeedBodies, type Bundle, type Entry, type LocalDeletion, type Mode, type State } from './model';
 import { cleanCaptureMarkers, repairArticleLinks, appendDailyNoteLink, captureMoment, dailyNotePath, readDailyNoteSettings, renderDailyNoteTemplate } from './daily-note';
+import type { TextQuoteSelector } from './excerpt-anchor';
 import { ReaderView, VIEW_TYPE } from './view';
 import { OutlineView, OUTLINE_VIEW_TYPE } from './outline-view';
 import { contextProvider } from './agent-bridge';
@@ -164,13 +165,13 @@ export default class QiaomuRssPlugin extends Plugin {
       const url = new URL(repairArticleLinks(href));
       if (url.searchParams.get('vault') !== this.app.vault.getName()) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      void this.openSavedArticle(url.searchParams.get('article') || '', url.searchParams.get('mode') || 'original')
+      void this.openSavedArticle(url.searchParams.get('article') || '', url.searchParams.get('mode') || 'original', url.searchParams.get('section') || '', url.searchParams.get('quote') || '')
         .catch(() => new Notice(t('notice.localCopyMissing')));
     }, { capture: true });
     registerLinks(document);
     this.registerEvent(this.app.workspace.on('window-open', (_window, win) => registerLinks(win.document)));
     this.registerObsidianProtocolHandler('qiaomu-ai-rss', params => {
-      void this.openSavedArticle(params.article || '', params.mode || 'original').catch(() => new Notice(t('notice.localCopyMissingShort')));
+      void this.openSavedArticle(params.article || '', params.mode || 'original', params.section || '', params.quote || '').catch(() => new Notice(t('notice.localCopyMissingShort')));
     });
   }
   onunload() { this.moveArticleModal?.close(); this.deletedArticlesModal?.close(); this.deletionNotice?.hide(); this.speechSettings?.close(); this.speech?.dispose(); this.apiClient?.dispose(); this.images?.dispose(); this.subscriptions?.dispose(); this.collectionStopped = true; this.labSettings?.close(); this.center?.close(); this.fonts.dispose(); }
@@ -600,22 +601,32 @@ export default class QiaomuRssPlugin extends Plugin {
       }
     }
   }
-  async openSavedArticle(id: string, mode: string) {
+  private savedArticleRequest = 0;
+  async openSavedArticle(id: string, mode: string, section = '', quote = '') {
+    const request = ++this.savedArticleRequest;
     const bundle = this.state.savedArticles[id];
     if (!bundle) throw new Error('Missing saved article');
+    // Saved metadata is restored without its sharded body after a restart.
+    const entry = await this.hydrateEntry(bundle.entry).catch(() => bundle.entry);
+    if (request !== this.savedArticleRequest || this.collectionStopped) return;
     await this.openReader();
+    if (request !== this.savedArticleRequest || this.collectionStopped) return;
     const view = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]?.view;
     if (!(view instanceof ReaderView)) throw new Error('Reader unavailable');
-    view.showSavedArticle(bundle, modeSchema.catch('original').parse(mode));
+    view.showSavedArticle({ ...bundle, entry }, modeSchema.catch('original').parse(mode), section, quote);
+  }
+  private noteEditor(file: TFile): MarkdownView | undefined {
+    // A preview leaf exposes an editor object too, but saving that hidden buffer does not write the note.
+    return this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
+      .find((view): view is MarkdownView => view instanceof MarkdownView && view.file === file && view.getMode() === 'source');
   }
   private cleanNoteMarkers(file: TFile) {
     this.dailyNoteWrite = this.dailyNoteWrite.catch(() => undefined).then(async () => {
       // file-open fires before the editor has finished loading its new buffer.
       await new Promise<void>(resolve => window.setTimeout(resolve, 0));
       if (this.app.vault.getAbstractFileByPath(file.path) !== file) return;
-      const view = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
-        .find(view => view instanceof MarkdownView && view.file === file);
-      if (view instanceof MarkdownView) {
+      const view = this.noteEditor(file);
+      if (view) {
         const content = view.editor.getValue();
         const matches = [...content.matchAll(/^[ \t]*<!-- qrs-article:[^\r\n]*?-->[ \t]*(?:\r?\n)?/gm)];
         for (const match of matches.reverse()) view.editor.replaceRange('', view.editor.offsetToPos(match.index), view.editor.offsetToPos(match.index + match[0].length));
@@ -630,7 +641,7 @@ export default class QiaomuRssPlugin extends Plugin {
     const file = this.app.workspace.getActiveViewOfType(MarkdownView)?.file ?? this.lastNote;
     return file && this.app.vault.getAbstractFileByPath(file.path) === file ? file : null;
   }
-  async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original', target?: TFile): Promise<{ file: TFile; added: boolean }> {
+  async appendToDailyNote(entry: Entry, excerpt = '', mode: Mode = 'original', target?: TFile, section = '', quote?: TextQuoteSelector, textFragment?: string): Promise<{ file: TFile; added: boolean }> {
     const now = captureMoment();
     let result!: { file: TFile; added: boolean };
     const write = async () => {
@@ -639,7 +650,7 @@ export default class QiaomuRssPlugin extends Plugin {
       const bundle = this.state.cache[entry.id] || this.state.favorites[entry.id] || { entry, rewrite: entry.rewrite || null, translation: null, fetchedAt: Date.now() };
       this.state.savedArticles[id] = bundle;
       await this.persist();
-      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt };
+      const options = { vault: this.app.vault.getName(), article: id, mode, excerpt, section, quote, textFragment, template: excerpt ? this.state.settings.excerptTemplate : '' };
       if (target && this.app.vault.getAbstractFileByPath(target.path) !== target) throw new Error(t('error.targetNoteMissing'));
       const settings = target ? { folder: '', format: '', template: '' } : await readDailyNoteSettings(this.app.vault);
       const path = target?.path ?? dailyNotePath(settings, now);
@@ -662,9 +673,8 @@ export default class QiaomuRssPlugin extends Plugin {
       }
       if (!(existing instanceof TFile)) throw new Error(t('error.cannotCreateDailyNote'));
       if (!added) {
-        const view = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
-          .find(view => view instanceof MarkdownView && view.file === existing);
-        if (view instanceof MarkdownView) {
+        const view = this.noteEditor(existing);
+        if (view) {
           // Read the editor buffer so a pending autosave cannot erase a user's draft.
           const content = view.editor.getValue();
           const next = appendDailyNoteLink(content, entry, options); added = next.added;
@@ -687,10 +697,10 @@ export default class QiaomuRssPlugin extends Plugin {
     await this.dailyNoteWrite;
     return result;
   }
-  async noteArticle(entry: Entry, excerpt = '', mode: Mode = 'original'): Promise<{ file: TFile; added: boolean }> {
+  async noteArticle(entry: Entry, excerpt = '', mode: Mode = 'original', section = '', quote?: TextQuoteSelector, textFragment?: string): Promise<{ file: TFile; added: boolean }> {
     const reader = this.app.workspace.getLeavesOfType(VIEW_TYPE).find(leaf => leaf === this.app.workspace.getMostRecentLeaf())
       ?? this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-    const result = await this.appendToDailyNote(entry, excerpt, mode);
+    const result = await this.appendToDailyNote(entry, excerpt, mode, undefined, section, quote, textFragment);
     let leaf = this.app.workspace.getLeavesOfType('markdown').find(candidate => candidate.view instanceof MarkdownView && candidate.view.file?.path === result.file.path
       && (!reader || (candidate.parent !== reader.parent && candidate.getRoot() === reader.getRoot())));
     if (!leaf) leaf = reader ? this.app.workspace.createLeafBySplit(reader, 'vertical') : this.app.workspace.getLeaf('split', 'vertical');
@@ -828,6 +838,18 @@ class RssSettings extends PluginSettingTab {
       setting.addText(text => { text.setValue(settings[key]); text.inputEl.addEventListener('change', () => { void save(text.getValue()).then(() => text.setValue(settings[key])); }); });
       setting.addButton(button => button.setButtonText(t('settings.choose')).onClick(() => new VaultFolderPicker(this.app, folder => { if (key === 'articleFolder' || folder.path !== '/') void save(folder.path).then(() => this.update()); else new Notice(t('notice.pickVaultFolder')); }).open()));
     } });
+    // Excerpt template: a multiline field saved when it loses focus, like the folder fields.
+    const templateSetting: SettingDefinitionItem = { name: t('settings.excerptTemplate.name'), desc: t('settings.excerptTemplate.desc'), render: setting => {
+      setting.settingEl.addClass('qrs-settings-template');
+      setting.addTextArea(area => {
+        area.setValue(settings.excerptTemplate).setPlaceholder(DEFAULT_EXCERPT_TEMPLATE);
+        area.inputEl.rows = 4;
+        area.inputEl.addEventListener('change', () => { settings.excerptTemplate = area.getValue().slice(0, 4000); void this.plugin.persist(); });
+      });
+      setting.addButton(button => button.setButtonText(t('settings.excerptTemplate.reset')).onClick(async () => {
+        settings.excerptTemplate = DEFAULT_EXCERPT_TEMPLATE; await this.plugin.persist(); this.update();
+      }));
+    } };
     const definitions: SettingDefinitionItem[] = [
       { type: 'group', heading: t('settings.groupReading'), items: [
         { name: t('settings.selectionPopup.name'), desc: t('settings.selectionPopup.desc'), render: setting => {
@@ -914,7 +936,7 @@ class RssSettings extends PluginSettingTab {
       } }, definitions[2], definitions[1], { name: t('localDelete.title'), desc: t('localDelete.description'), render: setting => {
         setting.addButton(button => button.setButtonText(t('localDelete.manage')).onClick(() => this.plugin.openDeletedArticles()));
       } }],
-      excerpt: [definitions[3], excerpt, definitions[7]],
+      excerpt: [definitions[3], excerpt, templateSetting, definitions[7]],
       lab: [{ name: t('lab.collection'), desc: t('lab.entryDescription'), render: setting => {
         setting.addButton(button => button.setButtonText(t('lab.manage')).onClick(() => this.plugin.openCollectionSettings()));
       } }],
