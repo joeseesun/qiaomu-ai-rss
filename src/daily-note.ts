@@ -113,23 +113,35 @@ function savedArticle(url: string): { id: string; located: boolean } | undefined
     if (id) return { id, located: parsed.searchParams.has('section') || parsed.searchParams.has('quote') };
   } catch { /* Other Markdown links are not saved-article headers. */ }
 }
-function withoutTextFragment(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const heading = parsed.hash.split(':~:')[0];
-    parsed.hash = heading === '#' ? '' : heading;
-    return parsed.href;
-  } catch { return url; }
+function matchesCaptureLine(line: string, parts: string[]): boolean {
+  if (parts.length === 1) return line === parts[0];
+  const last = parts.at(-1)!;
+  const end = line.length - last.length;
+  let offset = parts[0].length;
+  if (offset > end || !line.startsWith(parts[0]) || !line.endsWith(last)) return false;
+  for (const part of parts.slice(1, -1)) {
+    const next = line.indexOf(part, offset);
+    if (next < 0 || next + part.length > end) return false;
+    offset = next + part.length;
+  }
+  return true;
 }
 function hasExcerpt(section: string, excerpt: string, entry: Entry, options: CaptureOptions): boolean {
   const enclosed = '\n\n' + section.trim() + '\n\n';
   // Preserve deduplication of plain excerpts written before templates were supported.
   if (enclosed.includes('\n\n' + markdownText(excerpt) + '\n\n')) return true;
-  // Capture timestamps describe the first save; they must not make a repeat capture distinct.
+  // Timestamp placeholders match within a single line. Literal matching avoids regex backtracking
+  // when a user repeats several date or time tokens in one template.
   const marker = '\0qrs-capture-time\0';
-  const pattern = excerptBlock(excerpt, entry, options, { format: () => marker })
-    .split(marker).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^\r\n]*?');
-  return new RegExp('\n\n' + pattern + '\n\n').test(enclosed);
+  const pattern = excerptBlock(excerpt, entry, options, { format: () => marker });
+  if (!pattern.includes(marker)) return enclosed.includes('\n\n' + pattern + '\n\n');
+  const lines = section.trim().split('\n');
+  const expected = pattern.split('\n').map(line => line.split(marker));
+  for (let start = 0; start + expected.length <= lines.length; start++) {
+    if ((start && lines[start - 1] !== '') || (lines[start + expected.length] ?? '') !== '') continue;
+    if (expected.every((parts, index) => matchesCaptureLine(lines[start + index], parts))) return true;
+  }
+  return false;
 }
 export function appendDailyNoteLink(content: string, entry: Entry, options: CaptureOptions = {}): { content: string; added: boolean } {
   content = cleanCaptureMarkers(repairArticleLinks(content));
@@ -147,10 +159,14 @@ export function appendDailyNoteLink(content: string, entry: Entry, options: Capt
   });
   if (existing?.index !== undefined) {
     const header = options.article && originalSuffix && !existing[0].includes(' · [原文](') ? existing[0] + originalSuffix : existing[0];
-    const source = originalUrl(entry, options);
-    // Template links to this article or its source belong to the current capture group.
-    const next = links.find(match => match.index > existing.index && (!source || withoutTextFragment(match[1]) !== withoutTextFragment(source)) &&
-      (options.article ? savedArticle(match[1])?.id !== options.article : match[0] !== title))?.index ?? content.length;
+    // Only another saved-article header ends a saved-article group. Standalone web links
+    // and location links can appear anywhere in a custom excerpt template.
+    const next = links.find(match => {
+      if (match.index <= existing.index) return false;
+      if (!options.article) return match[0] !== title;
+      const saved = savedArticle(match[1]);
+      return saved !== undefined && saved.id !== options.article && !saved.located;
+    })?.index ?? content.length;
     const section = content.slice(existing.index + existing[0].length, next).trim();
     const added = !!excerpt && !hasExcerpt(section, excerpt, entry, options);
     if (!added) return { content: content.slice(0, existing.index) + header + content.slice(existing.index + existing[0].length), added };

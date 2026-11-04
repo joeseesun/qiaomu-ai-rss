@@ -250,6 +250,18 @@ describe('untrusted remote content', () => {
     expect(appendDailyNoteLink(legacy.content, bundle.entry, options)).toEqual({ content: legacy.content, added: false });
     expect(appendDailyNoteLink(captured, bundle.entry, { ...options, excerpt: 'Different [excerpt]' }).added).toBe(true);
   });
+  it('keeps custom external and located links before the next actual article group', () => {
+    const options = { vault: 'QA', article: 'a', excerpt: 'First', template: '[Reference](<https://example.net/help>)\n\n{{content}}' };
+    const first = appendDailyNoteLink('', bundle.entry, options);
+    const located = '[Other excerpt](<obsidian://qiaomu-ai-rss?vault=QA&article=b&section=Heading>)';
+    const note = first.content + located + '\n\n';
+    const other = { ...bundle.entry, id: 'other', title: 'Another article on the same page' };
+    const combined = appendDailyNoteLink(note, other, { vault: 'QA', article: 'b' }).content;
+    expect(appendDailyNoteLink(combined, bundle.entry, options)).toEqual({ content: combined, added: false });
+    const next = appendDailyNoteLink(combined, bundle.entry, { ...options, excerpt: 'Second' });
+    expect(next.content.indexOf(located)).toBeLessThan(next.content.indexOf('Second'));
+    expect(next.content.indexOf('Second')).toBeLessThan(next.content.indexOf('[Another article'));
+  });
   it('preserves replacement metacharacters in template titles', () => {
     const title = '$& $$ $`';
     expect(renderDailyNoteTemplate('{{title}}', title)).toBe(title);
