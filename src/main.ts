@@ -615,14 +615,18 @@ export default class QiaomuRssPlugin extends Plugin {
     if (!(view instanceof ReaderView)) throw new Error('Reader unavailable');
     view.showSavedArticle({ ...bundle, entry }, modeSchema.catch('original').parse(mode), section, quote);
   }
+  private noteEditor(file: TFile): MarkdownView | undefined {
+    // A preview leaf exposes an editor object too, but saving that hidden buffer does not write the note.
+    return this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
+      .find((view): view is MarkdownView => view instanceof MarkdownView && view.file === file && view.getMode() === 'source');
+  }
   private cleanNoteMarkers(file: TFile) {
     this.dailyNoteWrite = this.dailyNoteWrite.catch(() => undefined).then(async () => {
       // file-open fires before the editor has finished loading its new buffer.
       await new Promise<void>(resolve => window.setTimeout(resolve, 0));
       if (this.app.vault.getAbstractFileByPath(file.path) !== file) return;
-      const view = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
-        .find(view => view instanceof MarkdownView && view.file === file);
-      if (view instanceof MarkdownView) {
+      const view = this.noteEditor(file);
+      if (view) {
         const content = view.editor.getValue();
         const matches = [...content.matchAll(/^[ \t]*<!-- qrs-article:[^\r\n]*?-->[ \t]*(?:\r?\n)?/gm)];
         for (const match of matches.reverse()) view.editor.replaceRange('', view.editor.offsetToPos(match.index), view.editor.offsetToPos(match.index + match[0].length));
@@ -669,9 +673,8 @@ export default class QiaomuRssPlugin extends Plugin {
       }
       if (!(existing instanceof TFile)) throw new Error(t('error.cannotCreateDailyNote'));
       if (!added) {
-        const view = this.app.workspace.getLeavesOfType('markdown').map(leaf => leaf.view)
-          .find(view => view instanceof MarkdownView && view.file === existing);
-        if (view instanceof MarkdownView) {
+        const view = this.noteEditor(existing);
+        if (view) {
           // Read the editor buffer so a pending autosave cannot erase a user's draft.
           const content = view.editor.getValue();
           const next = appendDailyNoteLink(content, entry, options); added = next.added;
