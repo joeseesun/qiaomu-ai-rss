@@ -2,6 +2,7 @@ import { FeedIndex } from './feed-index';
 import { ListWindow } from './list-window';
 import { LazyThumbnails } from './lazy-thumbnails';
 import { ToolbarTips } from './toolbar-tips';
+import { ConfirmAction } from './subscription-ui';
 import { jumpToArticleSection, type OutlineContext } from './article-outline';
 import { curatedChannels, curatedCommunityChannels, curatedPageEntries, loadCuratedPages, filterCuratedEntries, keepCuratedEntry, pickNewCuratedSources, pickedSources } from './curated-sources';
 import type { RssApi } from './api';
@@ -341,6 +342,7 @@ export class ReaderView extends ItemView {
     this.addIconButton(tools, 'plus', t('reader.discover'), () => { void this.plugin.openDiscovery(); });
     this.addIconButton(tools, 'search', t('reader.searchTooltip'), () => this.toggleSearch());
     this.addIconButton(tools, 'list-filter', t('pick.title'), () => this.plugin.pickCuratedSources());
+    this.addIconButton(tools, 'check-check', t('reader.markAllRead'), () => this.confirmMarkAllRead());
     this.refreshButton = this.addIconButton(tools, 'refresh-cw', t('reader.refresh'), () => { void this.loadEntries(false, true); });
     this.collectionSettingsButton = this.addIconButton(tools, 'settings', t('reader.pluginSettings'), () => this.plugin.openCollectionSettings());
     this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group' } });
@@ -758,6 +760,30 @@ export class ReaderView extends ItemView {
       }
     };
     await apply();
+  }
+  private confirmMarkAllRead() {
+    const entries = this.visibleEntries();
+    const entryIds = [...new Set(entries.map(entry => entry.id))];
+    const overflow = new Set([...this.plugin.state.readIds, ...entryIds]).size > 5000;
+    const description = t('reader.markAllReadConfirm') + (overflow ? ' ' + t('reader.markAllReadLimit') : '');
+    new ConfirmAction(this.plugin, t('reader.markAllRead'), description, async () => {
+      const previous = this.plugin.state.readIds;
+      if (!overflow && new Set([...previous, ...entryIds]).size > 5000) { this.confirmMarkAllRead(); return; }
+      const selected = new Set(entryIds);
+      const updated = [...previous.filter(id => !selected.has(id)), ...entryIds].slice(-5000);
+      this.plugin.state.readIds = updated;
+      try { await this.plugin.persist(); } catch (error) {
+        const current = this.plugin.state.readIds;
+        if (current === updated) this.plugin.state.readIds = previous;
+        else {
+          const before = new Set(previous), bulk = new Set(updated);
+          const concurrent = current.filter(id => !bulk.has(id) || before.has(id));
+          this.plugin.state.readIds = [...new Set([...previous.filter(id => !bulk.has(id)), ...concurrent])].slice(-5000);
+        }
+        throw error;
+      }
+      this.unreadSession.clear(); this.renderList(); this.renderReader(true);
+    }).open();
   }
   private contentKey(entry: Entry) { const key = wechatArticleKey(entry.link) || xiaoyuzhouEpisodeKey(entry.link); return key ? `${entry.sourceId}:${key}` : ''; }
   private visibleEntries(): Entry[] {
