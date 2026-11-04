@@ -97,3 +97,10 @@ export class ArticleOutline {
     this.win.removeEventListener('resize', this.onResize);
   }
 }
+
+export function jumpToArticleSection(context: OutlineContext | null, section: string): void {
+  if (!section || !context?.prose) return;
+  const outline = new ArticleOutline(context, () => undefined);
+  try { outline.jump(outline.items.findIndex(item => item.text === section.replace(/\s+/g, ' ').trim())); }
+  finally { outline.dispose(); }
+}

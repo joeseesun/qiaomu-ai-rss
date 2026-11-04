@@ -1,6 +1,18 @@
 import { setIcon } from 'obsidian';
 import { markdownText } from './daily-note';
 export interface CaptureAction { label: string; icon: string; disabled?: boolean; save: (text: string, range: Range) => Promise<void> }
+export function selectionSection(prose: HTMLElement | null | undefined, range: Range | undefined, title = ''): string {
+  if (!prose || !range || !prose.contains(range.startContainer) || !prose.contains(range.endContainer)) return '';
+  const start = range.cloneRange(); start.collapse(true);
+  const articleTitle = title.replace(/\s+/g, ' ').trim();
+  let section = '';
+  for (const heading of prose.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
+    if (start.comparePoint(heading, 0) > 0) break;
+    const text = heading.textContent?.replace(/\s+/g, ' ').trim() || '';
+    if (text && text !== articleTitle) section = text;
+  }
+  return section;
+}
 /** A selection action, shown only after an explicit text selection. */
 export class SelectionCapture {
   private popup?: HTMLElement;

@@ -2,8 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RssApi } from '../src/api';
 import { articleFragment } from '../src/content';
-import { articleNoteUrl, appendDailyNoteLink, dailyNoteLink, dailyNotePath, renderDailyNoteTemplate } from '../src/daily-note';
-import { folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle } from '../src/model';
+import { articleNoteUrl, appendDailyNoteLink, dailyNoteLink, dailyNotePath, excerptBlock, renderDailyNoteTemplate } from '../src/daily-note';
+import { DEFAULT_EXCERPT_TEMPLATE, folderPath, initialState, withServiceOrigin, safeUrl, serviceUrl, type Bundle } from '../src/model';
 const bundle: Bundle = {
   entry: { id: 'abc123', sourceId: 'example', title: 'Title: "quotes"\n---', link: 'https://example.com/news', content: '<h2>Original</h2><p>Full text</p>' },
   rewrite: { body: '# Title\n\n**Hello** [source](/path)\n\n```dataviewjs\nthrow Error("never execute");\n```' },
@@ -131,6 +131,82 @@ describe('untrusted remote content', () => {
     const link = dailyNoteLink(entry, { vault: 'Qiaomu RSS QA', article: 'vault:file' });
     expect(link).toContain('[原文](<obsidian://open?vault=Qiaomu%20RSS%20QA&file=Clippings%2FMy%20article.md>)');
   });
+  it('renders excerpts with a linked section and an original link', () => {
+    const entry = { ...bundle.entry, title: 'Plain title' };
+    const options = { vault: 'QA', article: 'a', excerpt: 'First line\n\nSecond line', template: DEFAULT_EXCERPT_TEMPLATE };
+    const first = appendDailyNoteLink('', entry, options);
+    expect(first.content).toContain('> First line\n> \n> Second line\n>\n> ↳ [Plain title](<' + articleNoteUrl(options) + '>) · [原文 ↗](<https://example.com/news>)');
+    expect(appendDailyNoteLink(first.content, entry, options).added).toBe(false);
+    expect(appendDailyNoteLink(first.content, entry, { ...options, excerpt: 'Third' }).added).toBe(true);
+  });
+  it('keeps excerpts inert inside custom templates, passes HTML through and never drops the text', () => {
+    const now = { format: (format: string) => ({ 'YYYY-MM-DD': '2026-10-24', 'HH:mm': '09:05' })[format] || format } as never;
+    expect(excerptBlock('<script>bold</script>', bundle.entry, { template: '<div>{{content}}</div>' }, now)).toBe('<div>\\<script\\>bold\\</script\\></div>');
+    expect(excerptBlock('A\nB', bundle.entry, { template: '> {{content}}\n> — {{date}} {{time}}' }, now)).toBe('> A\n> B\n> — 2026-10-24 09:05');
+    expect(excerptBlock('Body', bundle.entry, { template: '## 摘录' }, now)).toBe('## 摘录\n\nBody');
+    expect(excerptBlock('Body', bundle.entry, {}, now)).toBe('Body');
+  });
+  it.each([
+    ['- {{CONTENT}}\n\n> {{ content }}', '- A\n\n  B\n\n> A\n> \n> B'],
+    ['1. {{content}}', '1. A\n\n   B'],
+    ['Before {{content}}', 'Before A\n\nB'],
+    ['{{unknown}}', '{{unknown}}\n\nA\n\nB'],
+    ['   ', 'A\n\nB'],
+  ])('preserves excerpt formatting for template %j', (template, expected) => {
+    expect(excerptBlock('A\n\nB', bundle.entry, { template })).toBe(expected);
+  });
+  it('expands link, url and title tokens with the saved reading link', () => {
+    const block = excerptBlock('Quote', bundle.entry, { vault: 'QA', article: 'a', template: '{{content}}\n\n-- {{title}} · {{link}} · {{url}}' });
+    expect(block).toContain('-- Title: "quotes" \\-\\-\\- · [Title: "quotes" \\-\\-\\-](<obsidian://qiaomu-ai-rss?');
+    expect(block).toContain('https://example.com/news');
+  });
+  it('adds an escaped section suffix only when the selection has a section heading', () => {
+    const template = '— {{source}}{{section}}';
+    const source = excerptBlock('Body', bundle.entry, { template });
+    expect(source).not.toContain(' · ');
+    expect(source).not.toContain('{{section}}');
+    expect(excerptBlock('Body', bundle.entry, { template, section: '  Small\n plots <script> [x] {{date}}  ' })).toBe(source.replace('\n\nBody', ' · Small plots \\<script\\> \\[x\\] \\{\\{date\\}\\}\n\nBody'));
+    expect(excerptBlock('Body', bundle.entry, { template, section: '   ' })).toBe(source);
+  });
+  it('links section text to the selected reading mode without changing the grouped article header', () => {
+    const options = { vault: 'QA 中文', article: 'a/b', mode: 'rewrite' as const, section: ' 跑分\n对比 [A] ', template: '{{section_link}}\n\n{{content}}' };
+    const link = articleNoteUrl(options, options.section);
+    const params = new URL(link).searchParams;
+    expect(params.get('section')).toBe('跑分 对比 [A]');
+    expect(params.get('mode')).toBe('rewrite');
+    expect(params.get('vault')).toBe('QA 中文');
+    expect(excerptBlock('Body', bundle.entry, options)).toBe('[跑分 对比 \\[A\\]](<' + link + '>)\n\nBody');
+    expect(new URL(articleNoteUrl(options)).searchParams.has('section')).toBe(false);
+    expect(excerptBlock('Body', { ...bundle.entry, title: 'Article' }, { ...options, section: '' })).toBe('[Article](<' + articleNoteUrl(options) + '>)\n\nBody');
+  });
+  it('embeds a text quote only in excerpt links, keeping section links and headers unchanged', () => {
+    const quote = { type: 'TextQuoteSelector' as const, exact: '测试 + emoji 😀 <script>', prefix: 'before ', suffix: ' after' };
+    const options = { vault: 'QA', article: 'a', mode: 'rewrite' as const, section: 'Heading', quote };
+    const url = articleNoteUrl(options, options.section, quote);
+    expect(JSON.parse(new URL(url).searchParams.get('quote')!)).toEqual(quote);
+    expect(url).not.toContain('+');
+    expect(excerptBlock('Body', bundle.entry, { ...options, template: '{{excerpt_link}}' })).toBe('[Heading](<' + url + '>)\n\nBody');
+    expect(excerptBlock('Body', bundle.entry, { ...options, template: '{{section_link}}' })).not.toContain('quote=');
+    expect(dailyNoteLink(bundle.entry, options)).not.toContain('quote=');
+    expect(excerptBlock('Body', { ...bundle.entry, title: 'Article' }, { ...options, section: '', template: '{{excerpt_link}}' })).toBe('[Article](<' + articleNoteUrl(options, '', quote) + '>)\n\nBody');
+  });
+  it('adds browser text fragments only to external original-mode source links and preserves heading anchors', () => {
+    const entry = { ...bundle.entry, link: 'https://example.com/post?q=1#chapter:~:text=old' };
+    const options = { mode: 'original' as const, template: '{{content}}\n\n{{original_link}}', textFragment: 'text=First%20part,Last%20part' };
+    expect(excerptBlock('Body', entry, options)).toBe('Body\n\n[原文定位 ↗](<https://example.com/post?q=1#chapter:~:text=First%20part,Last%20part>)');
+    for (const mode of ['rewrite', 'translation'] as const) {
+      expect(excerptBlock('Body', entry, { ...options, mode })).toBe('Body\n\n[原文 ↗](<https://example.com/post?q=1#chapter:~:text=old>)');
+    }
+    expect(excerptBlock('Body', bundle.entry, options)).toContain('https://example.com/news#:~:text=First%20part,Last%20part');
+    expect(excerptBlock('Body', bundle.entry, { ...options, textFragment: undefined })).toBe('Body\n\n[原文 ↗](<https://example.com/news>)');
+    expect(excerptBlock('Body', bundle.entry, { ...options, template: '{{url}}' })).toBe('https://example.com/news\n\nBody');
+  });
+  it('never adds browser text fragments to unsafe URLs or vault note links', () => {
+    const entry = { ...bundle.entry, origin: 'vault' as const, link: 'javascript:alert(1)', markdownPath: 'Source.md' };
+    const block = excerptBlock('Body', entry, { vault: 'QA', article: 'vault:a', mode: 'original', template: '{{original_link}}', textFragment: 'text=Body' });
+    expect(block).not.toContain('javascript:'); expect(block).not.toContain(':~:');
+    expect(block).toContain('obsidian://open?');
+  });
   it('respects daily-note folders, formats and common template tokens', () => {
     const now = { format: (format: string) => ({ 'YYYY/MM/DD': '2026/09/07', 'YYYY-MM-DD': '2026-09-07', 'HH:mm': '12:30' })[format] || format } as never;
     expect(dailyNotePath({ folder: 'Daily', format: 'YYYY/MM/DD', template: '' }, now)).toBe('Daily/2026/09/07.md');
@@ -159,6 +235,7 @@ describe('paths and persistence', () => {
   });
   it('defaults the selection popup on and persists folder sources and opt-in', () => {
     expect(initialState({}).settings.selectionPopup).toBe(true);
+    expect(initialState({}).settings.excerptTemplate).toBe(DEFAULT_EXCERPT_TEMPLATE);
     const state = initialState({ settings: { selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] } });
     expect(initialState(JSON.parse(JSON.stringify(state))).settings).toMatchObject({ selectionPopup: true, markdownFolders: ['Clippings', 'Articles'] });
   });

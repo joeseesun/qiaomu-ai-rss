@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SelectionCapture } from '../src/selection';
+import { SelectionCapture, selectionSection } from '../src/selection';
 
 // The fixture implements only Obsidian's DOM conveniences, never touches a vault.
 function createEl(this: HTMLElement, tag: string, options: { cls?: string; text?: string; attr?: Record<string, string> } = {}) {
@@ -17,6 +17,43 @@ Object.assign(HTMLElement.prototype, {
   setCssProps(this: HTMLElement, values: Record<string, string>) { for (const [key, value] of Object.entries(values)) this.style.setProperty(key, value); },
 });
 Object.assign(Range.prototype, { getBoundingClientRect: () => ({ left: 100, bottom: 100, width: 100 }) });
+
+describe('excerpt section heading', () => {
+  const fixture = () => {
+    const prose = document.createElement('article');
+    prose.innerHTML = '<h1>Article title</h1><p>Introduction</p><h2>First section</h2><p>First paragraph</p><h3>Nested <em>heading</em></h3><p>Nested paragraph</p><h2>Next section</h2><p>Next paragraph</p>';
+    return prose;
+  };
+  it.each([[0, ''], [1, 'First section'], [2, 'Nested heading'], [3, 'Next section']])('uses the heading before paragraph %s without repeating the article title', (index, expected) => {
+    const prose = fixture(), range = document.createRange();
+    range.selectNodeContents(prose.querySelectorAll('p')[index]);
+    expect(selectionSection(prose, range, 'Article title')).toBe(expected);
+  });
+  it('uses the start section when the range spans sections, including a backward selection', () => {
+    const prose = fixture(), paragraphs = prose.querySelectorAll('p'), range = document.createRange();
+    range.setStart(paragraphs[1].firstChild!, 0); range.setEnd(paragraphs[3].firstChild!, 4);
+    expect(selectionSection(prose, range, 'Article title')).toBe('First section');
+    document.body.append(prose);
+    const selection = document.getSelection()!;
+    selection.setBaseAndExtent(paragraphs[3].firstChild!, 4, paragraphs[1].firstChild!, 0);
+    expect(selectionSection(prose, selection.getRangeAt(0), 'Article title')).toBe('First section');
+    selection.removeAllRanges(); prose.remove();
+  });
+  it('returns empty for missing headings, missing ranges and selections outside the article', () => {
+    const prose = document.createElement('article'), range = document.createRange();
+    prose.innerHTML = '<p>Only text</p>'; range.selectNodeContents(prose.firstChild!);
+    expect(selectionSection(prose, range)).toBe('');
+    expect(selectionSection(prose, undefined)).toBe('');
+    expect(selectionSection(null, range)).toBe('');
+    expect(selectionSection(fixture(), range)).toBe('');
+  });
+  it('respects element-offset selection boundaries and collapses heading whitespace', () => {
+    const prose = document.createElement('article'), range = document.createRange();
+    prose.innerHTML = '<h2>First\n  section</h2><p>Text</p><h2>Later</h2><p>Later text</p>';
+    range.setStart(prose, 1); range.setEnd(prose, 2);
+    expect(selectionSection(prose, range)).toBe('First section');
+  });
+});
 
 describe('selection capture dismissal', () => {
   let capture: SelectionCapture, prose: HTMLElement, outside: HTMLElement, save: ReturnType<typeof vi.fn>;
