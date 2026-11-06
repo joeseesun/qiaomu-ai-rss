@@ -44,14 +44,21 @@ export function videoEmbedUrl(link: string | null | undefined): string | null {
 }
 
 export function stopMedia(root: HTMLElement): void {
-  for (const audio of root.querySelectorAll('audio')) {
-    audio.pause(); audio.removeAttribute('src'); audio.load();
+  for (const audio of root.querySelectorAll<HTMLMediaElement>('audio,video')) {
+    audio.pause(); audio.removeAttribute('src');
+    for (const source of audio.querySelectorAll('source')) source.removeAttribute('src');
+    audio.load();
   }
   for (const frame of root.querySelectorAll('iframe.qrs-video-frame')) frame.removeAttribute('src');
 }
 
 // Pause embedded YouTube players while the reader is hidden, e.g. after returning to the list on a phone.
 export function pauseVideos(root: HTMLElement): void {
+  for (const media of root.querySelectorAll<HTMLMediaElement>('audio,video')) media.pause();
+  for (const inline of root.querySelectorAll('.qrs-inline-video')) {
+    inline.querySelector('iframe')?.remove();
+    const button = inline.querySelector('button'); if (button) button.hidden = false;
+  }
   for (const frame of root.querySelectorAll('iframe.qrs-video-frame')) {
     (frame as HTMLIFrameElement).contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), 'https://www.youtube.com');
   }

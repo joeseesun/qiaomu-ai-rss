@@ -2,8 +2,9 @@ import createDOMPurify from 'dompurify';
 import { Marked } from 'marked';
 import { safeUrl, type Bundle, type Mode } from './model';
 import { fail, t } from './i18n';
+import { prepareInlineMedia } from './inline-media';
 import { wechatProxyArticle } from './wechat-articles';
-const tags = ['p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 's', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'div', 'span', 'sup', 'sub'];
+const tags = ['p', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'em', 'b', 'i', 's', 'del', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'a', 'img', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'figure', 'figcaption', 'div', 'span', 'sup', 'sub', 'audio', 'video', 'source', 'track', 'iframe'];
 // Some cached AI rewrites contain an extra opening bracket in image alt text.
 // A block extension repairs only standalone HTTP(S) images; fenced/inline code,
 // valid Markdown and Obsidian embeds keep the standard parser's behavior.
@@ -32,7 +33,7 @@ export function articleFragment(bundle: Bundle, mode: Mode, doc: Document, image
   let html: string;
   if (mode === 'rewrite') {
     if (!bundle.rewrite?.body.trim()) return null;
-    html = rewriteMarkdown.parse(bundle.rewrite.body, { async: false });
+    html = bundle.rewrite.bodyHtml?.trim() || rewriteMarkdown.parse(bundle.rewrite.body, { async: false });
   } else if (mode === 'translation') {
     if (!bundle.translation?.content?.length) return null;
     html = bundle.translation.content.map(pair => {
@@ -57,8 +58,9 @@ export function articleFragment(bundle: Bundle, mode: Mode, doc: Document, image
   }
   const fragment = purifier.sanitize(html, {
     RETURN_DOM_FRAGMENT: true, ALLOWED_TAGS: images ? tags : tags.filter(tag => tag !== 'img'),
-    ALLOWED_ATTR: ['href', 'src', 'alt'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'poster', 'type', 'kind', 'srclang', 'label'], ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
   });
+  prepareInlineMedia(fragment, bundle.entry.link || undefined, images);
   for (const element of fragment.querySelectorAll('a, img')) {
     const attr = element.tagName === 'A' ? 'href' : 'src';
     const raw = element.getAttribute(attr);
