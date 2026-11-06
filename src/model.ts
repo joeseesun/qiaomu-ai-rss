@@ -13,7 +13,7 @@ export type ReadingTheme = z.infer<typeof readingThemeSchema>;
 export const readingFontSchema = z.enum(['serif', 'sans', 'sourceHanSerif', 'sourceHanSans', 'wenkai', 'zhenkai', 'fangsong', 'custom']);
 export type ReadingFont = z.infer<typeof readingFontSchema>;
 const optionalText = z.string().nullish();
-export const rewriteSchema = z.object({ title: optionalText, body: z.string() });
+export const rewriteSchema = z.object({ title: optionalText, body: z.string(), bodyHtml: optionalText });
 export const translationSchema = z.object({
   titleZh: optionalText, summaryZh: optionalText,
   content: z.array(z.object({ source: optionalText, target: optionalText, sourceHtml: optionalText, targetHtml: optionalText })).nullish(),
@@ -131,20 +131,21 @@ export function titleOf(entry: Entry): string { return entry.titleZh?.trim() || 
 // In-memory entries always carry content; split/attach convert only at the storage boundary.
 export function splitContentCache(state: State, collectBodies = true): { slim: State; cache: Record<string, string> } {
   const cache: Record<string, string> = {};
-  const strip = (entry: Entry): Entry => {
-    if (entry.content) { if (collectBodies) cache[entry.id] = entry.content; return { ...entry, content: undefined }; }
+  const priorities = new Map<string, number>();
+  const strip = (entry: Entry, priority = 0): Entry => {
+    if (entry.content) { if (collectBodies && priority >= (priorities.get(entry.id) ?? -1)) { cache[entry.id] = entry.content; priorities.set(entry.id, priority); } return { ...entry, content: undefined }; }
     return entry;
   };
   const mapBundles = (record: Record<string, Bundle>): Record<string, Bundle> =>
-    Object.fromEntries(Object.entries(record).map(([key, bundle]) => [key, { ...bundle, entry: strip(bundle.entry) }]));
+    Object.fromEntries(Object.entries(record).map(([key, bundle]) => [key, { ...bundle, entry: strip(bundle.entry, bundle.fetchedAt) }]));
   return {
     slim: {
       ...state,
-      subscriptions: state.subscriptions.map(feed => ({ ...feed, entries: feed.entries.map(strip) })),
+      subscriptions: state.subscriptions.map(feed => ({ ...feed, entries: feed.entries.map(entry => strip(entry)) })),
       channelStates: Object.fromEntries(Object.entries(state.channelStates).map(([key, cs]) => [key, {
-        ...cs, entries: cs.entries.map(strip), bundle: cs.bundle ? { ...cs.bundle, entry: strip(cs.bundle.entry) } : cs.bundle,
+        ...cs, entries: cs.entries.map(entry => strip(entry)), bundle: cs.bundle ? { ...cs.bundle, entry: strip(cs.bundle.entry) } : cs.bundle,
       }])),
-      entries: state.entries.map(strip),
+      entries: state.entries.map(entry => strip(entry)),
       personalArticles: Object.fromEntries(Object.entries(state.personalArticles).map(([key, item]) => [key, { ...item, bundle: { ...item.bundle, entry: strip(item.bundle.entry) } }])),
       cache: mapBundles(state.cache), favorites: mapBundles(state.favorites), savedArticles: mapBundles(state.savedArticles),
     },

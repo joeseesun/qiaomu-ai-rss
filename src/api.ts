@@ -159,7 +159,7 @@ export class RssApi {
     const notify = () => { if (readable) onContent?.({ ...readable, rewrite: earlyRewrite ?? readable.rewrite, translation: earlyTranslation }); };
     // Optional versions must not delay a readable original or a primary error.
     // Attach rejection handlers immediately, even if detail fails first.
-    const detailRequest = this.get(path, z.object({ entry: remoteEntrySchema }));
+    const detailRequest = this.get(path, z.object({ entry: remoteEntrySchema, rewrite: rewriteSchema.nullish() }));
     const versions = Promise.allSettled([
       this.get(`${path}/rewrite`, z.object({ rewrite: rewriteSchema.nullable() })).then(result => { earlyRewrite = result.rewrite; notify(); return result; }),
       this.get(`${path}/translation`, z.object({ translation: translationSchema.nullable() })).then(result => { earlyTranslation = result.translation; notify(); return result; }),
@@ -167,7 +167,7 @@ export class RssApi {
     const detail = await detailRequest;
     const entry = detail.entry;
     const needsTranscript = entry.sourceId === 'allin' || entry.sourceId === 'joerogan' || entry.sourceId.startsWith('podscribe-');
-    if (!needsTranscript) { readable = bundleSchema.parse({ entry, rewrite: entry.rewrite ?? null, translation: null, fetchedAt: Date.now() }); notify(); }
+    if (!needsTranscript) { readable = bundleSchema.parse({ entry, rewrite: detail.rewrite ?? entry.rewrite ?? null, translation: null, fetchedAt: Date.now() }); notify(); }
     const [rewrite, translation] = await versions;
     const warnings: string[] = [];
     if (rewrite.status === 'rejected') warnings.push(t('warning.rewriteUnavailable'));
@@ -192,7 +192,7 @@ export class RssApi {
       warnings.push(t('warning.shownotesOnly'));
     }
     const bundle = bundleSchema.parse({ entry,
-      rewrite: (rewrite.status === 'fulfilled' ? rewrite.value.rewrite : null) ?? entry.rewrite ?? null,
+      rewrite: (rewrite.status === 'fulfilled' ? rewrite.value.rewrite : null) ?? detail.rewrite ?? entry.rewrite ?? null,
       translation: translation.status === 'fulfilled' ? translation.value.translation : null, fetchedAt: Date.now() });
     return { bundle, warnings };
   }

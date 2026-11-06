@@ -1040,3 +1040,10 @@ button.qiaomu-update-notes-link:hover { background: var(--background-modifier-ho
 
 .qrs-pick-modal .qrs-pick-lead { color: var(--qrs-muted); font-size: 13px; overflow-wrap: anywhere; }
 .qrs-pick-modal input[type="radio"] { accent-color: var(--qrs-fg); }
+
+/* Embedded publisher media stays within the reading column. */
+.qrs-prose video, .qrs-prose audio { display: block; width: 100%; max-width: 100%; margin: 1em 0; }
+.qrs-prose video { height: auto; }
+.qrs-inline-video { margin: 1.2em 0; }
+.qrs-inline-video > button { margin-right: 1em; color: var(--qrs-fg); background: var(--qrs-bg); }
+.qrs-media-link { font-size: 0.85em; }

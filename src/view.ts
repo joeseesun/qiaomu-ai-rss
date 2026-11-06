@@ -91,7 +91,7 @@ export class ReaderView extends ItemView {
     this.searchInput.value = this.query; this.searchBox.toggleClass('is-hidden', !this.query);
     this.contentEl.toggleClass('qrs-has-article', !!this.bundle);
     this.renderFilters(); this.renderList(); this.renderReader(); this.restoreOffsets();
-    if (this.bundle && (saved.articlePending || !this.bundle.entry.content && this.bundle.entry.origin === 'local')) void this.openArticle(this.bundle.entry, saved);
+    if (this.bundle && (saved.articlePending || this.bundle.entry.sourceId === 'xnews' && (!this.bundle.rewrite?.bodyHtml || !this.bundle.entry.content) || !this.bundle.entry.content && this.bundle.entry.origin === 'local')) void this.openArticle(this.bundle.entry, saved);
   }
   private markdownComponent?: Component;
   private selectionCapture?: SelectionCapture;
@@ -341,7 +341,7 @@ export class ReaderView extends ItemView {
     this.addIconButton(tools, 'plus', t('reader.discover'), () => { void this.plugin.openDiscovery(); });
     this.addIconButton(tools, 'search', t('reader.searchTooltip'), () => this.toggleSearch());
     this.addIconButton(tools, 'list-filter', t('pick.title'), () => this.plugin.pickCuratedSources());
-    this.refreshButton = this.addIconButton(tools, 'refresh-cw', t('reader.refresh'), () => { void this.loadEntries(false, true); });
+    this.refreshButton = this.addIconButton(tools, 'refresh-cw', t('reader.refresh'), () => { void this.refreshCurrent(); });
     this.collectionSettingsButton = this.addIconButton(tools, 'settings', t('reader.pluginSettings'), () => this.plugin.openCollectionSettings());
     this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group' } });
     this.renderFilters();
@@ -630,6 +630,13 @@ export class ReaderView extends ItemView {
         result = await this.plugin.api().refreshTitles(ids);
       }
     } catch { /* Originals remain usable with old servers or unavailable AI. */ }
+  }
+  private async refreshCurrent() {
+    const articleVersion = this.articleVersion;
+    await this.loadEntries(false, true);
+    if (this.closed || articleVersion !== this.articleVersion || !this.bundle) return;
+    this.saveChannel();
+    await this.openArticle(this.bundle.entry, this.plugin.state.channelStates[this.channelKey()], this.mode);
   }
   private async loadEntries(more = false, force = false) {
     if (this.loading && more) return;
