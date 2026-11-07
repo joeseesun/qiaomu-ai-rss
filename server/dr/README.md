@@ -165,3 +165,34 @@ application authentication or change security settings for other websites. Keep
 the previous rule configuration and verify unauthenticated private routes remain
 401/403. Operator control/backup clients identify themselves with a descriptive
 User-Agent.
+
+
+## Origin latency and availability notices (2026-11-07)
+
+Public reads, private GETs and primary health probes have a bounded 5-second
+origin budget. Writes retain their existing 120-second budget, are attempted
+once, and are never replayed against a replica. Snapshot revision, deletion,
+age and frontend-version gates remain mandatory.
+
+`ORIGIN_LOGS=true` emits structured `rss_origin` records to Workers Logs.
+Failures are all logged; `ORIGIN_SUCCESS_SAMPLE_RATE=0.1` samples successes.
+Invocation logs are disabled. Records contain route classes (not URLs),
+method, edge colo when available, role, status, safe failure code, elapsed
+milliseconds and, for buffered public responses, header latency and bytes.
+No queries, article IDs, cookies, authorization or raw error messages are
+logged. `origin_timeout` with null `headersMs` means headers did not arrive;
+non-null headers with a timeout indicate the complete body missed the deadline.
+Authenticated fault drills are marked `traffic=drill` to distinguish them from
+real failures. Neither a client query nor a header can enable this marker.
+
+One fallback read shows a reading-specific notice; it does not assert account
+writes failed. The independent health probe can report primary connection
+trouble. Two consecutive successful probes clear the notice, failed probes
+reset the streak, and a newer fallback invalidates an older in-flight success.
+This stabilizes the notice without retaining stale replica data after recovery.
+
+Validate with `node --test server/dr/*.check.mjs`, the isolated `rss-dr.qiaomu.ai`
+500/timeout/invalid-JSON drills, a real browser recovery check, and repeated
+production GET probes. Production failure injection is prohibited. Preserve
+Cloudflare settings and deployment version before changing the Worker; rollback
+must restore the old timeout and observability settings as well as source.

@@ -27,6 +27,8 @@ test('served browser source executes without bundler helpers and clears notice a
   await new Promise(setImmediate);
   assert.equal(document.documentElement.dataset.rssReadOnly,'true');assert.equal(banner.hidden,false);
   mode='primary';poll();await new Promise(setImmediate);
+  assert.equal(banner.hidden,false,'one successful probe must not clear a degraded notice');
+  poll();await new Promise(setImmediate);
   assert.equal(document.documentElement.dataset.rssReadOnly,'false');assert.equal(banner.hidden,true);
 });
 test('certificate challenges reach HTTP nginx without origin credentials, other HTTP requests redirect',async()=>{
@@ -116,4 +118,31 @@ test('router pins standby reads to the published snapshot instead of an unpublis
     return Response.json({entries:[{id:'published-old'}]},{headers});
   });
   assert.equal(r.status,200);assert.equal((await r.json()).entries[0].id,'published-old');
+});
+
+test('one failed public read does not assert that account writes are unavailable',async()=>{
+  let poll,banner;
+  const document={body:{appendChild:x=>{banner=x;}},documentElement:{dataset:{}},hidden:false,createElement:()=>({setAttribute(){},style:{}})};
+  const window={fetch:async input=>String(input).includes('/health') ? Response.json({mode:'primary'}) : Response.json({entries:[]},{headers:{'X-Rss-Route':'failover'}})};
+  new vm.Script(statusClient).runInNewContext({window,document,URL,AbortController,location:{href:url('/'),origin:'https://rss.qiaomu.ai'},setTimeout,clearTimeout,setInterval:fn=>{poll=fn;}});
+  await new Promise(setImmediate);
+  await window.fetch('/api/entries');
+  assert.equal(banner.hidden,false);
+  assert.doesNotMatch(banner.textContent,/登录、收藏和生成新内容暂不可用/);
+  poll();await new Promise(setImmediate);assert.equal(banner.hidden,false);
+  poll();await new Promise(setImmediate);assert.equal(banner.hidden,true);
+});
+
+test('late successful health response cannot clear a newer fallback, and failed probes reset recovery',async()=>{
+ let mode='read-only',poll,banner,resolveHealth;
+ const document={body:{appendChild:x=>{banner=x;}},documentElement:{dataset:{}},hidden:false,createElement:()=>({setAttribute(){},style:{}})};
+ const window={fetch:async input=>String(input).includes('/health') ? (mode==='pending'?new Promise(resolve=>{resolveHealth=resolve;}):Response.json({mode})) : Response.json({entries:[]},{headers:{'X-Rss-Route':'failover'}})};
+ new vm.Script(statusClient).runInNewContext({window,document,URL,AbortController,location:{href:url('/'),origin:'https://rss.qiaomu.ai'},setTimeout,clearTimeout,setInterval:fn=>{poll=fn;}});
+ await new Promise(setImmediate);mode='primary';poll();await new Promise(setImmediate);
+ mode='pending';poll();await window.fetch('/api/entries');resolveHealth(Response.json({mode:'primary'}));await new Promise(setImmediate);
+ assert.equal(banner.hidden,false);
+ mode='primary';poll();await new Promise(setImmediate);assert.equal(banner.hidden,false);
+ mode='unavailable';poll();await new Promise(setImmediate);
+ mode='primary';poll();await new Promise(setImmediate);assert.equal(banner.hidden,false);
+ poll();await new Promise(setImmediate);assert.equal(banner.hidden,true);
 });
