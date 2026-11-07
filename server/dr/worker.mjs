@@ -1,5 +1,6 @@
 import { siteRead, siteType, anonymousRequest, injectStatusClient } from './site.mjs';
 import statusClient from './failover-client.mjs';
+import { emitOrigin, failureCode } from './telemetry.mjs';
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 const failed = status => [500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 530].includes(status);
 export function publicRead(request) {
@@ -39,8 +40,10 @@ export class SafetyGate {
   }
 }
 const gate = (env, op, body) => env.SAFETY.get(env.SAFETY.idFromName('rss')).fetch(new Request('https://gate/' + op, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }));
-export async function originJson(request, origin, secret, timeout, fetcher = fetch) {
+export async function originJson(request, origin, secret, timeout, fetcher = fetch, observe = () => {}) {
   const u = new URL(request.url), target = new URL(u.pathname + u.search, origin);
+  const started = Date.now();
+  let status = null, headersMs = null, bytesRead = 0, reason = 'ok';
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const headers = new Headers(request.headers); headers.set('X-Rss-Origin-Key', secret); headers.delete('Host');
@@ -48,13 +51,15 @@ export async function originJson(request, origin, secret, timeout, fetcher = fet
     return await Promise.race([
       (async () => {
         const r = await fetcher(target, { method: 'GET', headers, signal: controller.signal, redirect: 'manual', cf: { cacheTtl: 0 } });
+        status = r.status; headersMs = Date.now() - started;
+        if (failed(status)) reason = 'http_' + status;
         if (r.status !== 200) return r;
         const image = u.pathname.startsWith('/media/wechat/'), site = siteRead(request);
         const validType = site ? siteType(u.pathname).test(r.headers.get('Content-Type') || '') : image ? /^image\/(png|jpeg|gif|webp)(?:;|$)/.test(r.headers.get('Content-Type') || '') : r.headers.get('Content-Type')?.includes('application/json');
         if (!validType) throw Error('invalid_content_type');
         if (Number(r.headers.get('Content-Length') || 0) > 12_000_000) throw Error('response_too_large');
         const reader = r.body.getReader(), chunks = []; let size = 0;
-        try { while (true) { const part = await reader.read(); if (part.done) break; size += part.value.length; if (size > 12_000_000) throw Error('response_too_large'); chunks.push(part.value); } }
+        try { while (true) { const part = await reader.read(); if (part.done) break; size += part.value.length; bytesRead = size; if (size > 12_000_000) throw Error('response_too_large'); chunks.push(part.value); } }
         finally { reader.releaseLock(); }
         const bytes = new Uint8Array(size); let offset = 0; for (const part of chunks) { bytes.set(part, offset); offset += part.length; }
         const decodedHeaders = new Headers(r.headers);
@@ -67,8 +72,15 @@ export async function originJson(request, origin, secret, timeout, fetcher = fet
       })(),
       new Promise((_, reject) => controller.signal.addEventListener('abort', () => reject(Error('origin_timeout')), { once: true })),
     ]);
-  } finally { clearTimeout(timer); }
+  } catch (error) { reason = failureCode(error); controller.abort(); throw error; }
+  finally {
+    clearTimeout(timer);
+    observe({status, reason, headersMs, elapsedMs: Date.now() - started, bytes: bytesRead, timeoutMs: timeout});
+  }
 }
+const observedOrigin = (request, env, role, timeout, fetcher, logRequest = request) => originJson(request,
+  role === 'primary' ? env.PRIMARY_ORIGIN : env.STANDBY_ORIGIN, env.ORIGIN_KEY, timeout, fetcher,
+  detail => emitOrigin(logRequest, env, {role, ...detail}));
 // Short-lived public list replicas share traffic; private reads and explicit refreshes remain authoritative.
 function preferReplica(request, env) {
   const continents = String(env.READ_REPLICA_CONTINENTS || '').split(',');
@@ -92,7 +104,7 @@ async function replicaResponse(request, env, fetcher, maxAge, deadlineMs) {
   if (!state.ready || !state.snapshot || !Number.isFinite(age) || age < -5000 || age > maxAge) throw Error('standby_not_ready');
   const pinned = anonymousRequest(request);
   pinned.headers.set('X-Rss-Expected-Snapshot', state.snapshot.id);
-  const response = await originJson(pinned, env.STANDBY_ORIGIN, env.ORIGIN_KEY, Math.min(remaining(), Number(env.STANDBY_TIMEOUT_MS || 4000)), fetcher);
+  const response = await observedOrigin(pinned, env, 'standby', Math.min(remaining(), Number(env.STANDBY_TIMEOUT_MS || 4000)), fetcher, request);
   if (![200,404].includes(response.status) || response.headers.get('X-Rss-Snapshot') !== state.snapshot.id || Number(response.headers.get('X-Rss-Revision')) !== state.revision) throw Error('standby_generation_mismatch');
   if (siteRead(request) && response.headers.get('X-Rss-Frontend-Version') !== env.FRONTEND_VERSION) throw Error('standby_frontend_mismatch');
   // Recheck after the complete body: a concurrent deletion invalidates the old snapshot.
@@ -138,7 +150,7 @@ export async function handle(request, env, fetcher = fetch) {
       const { path, mode } = await request.json();
       const probe = new Request(new URL(path, 'https://rss.qiaomu.ai'));
       if ((!publicRead(probe) && !siteRead(probe)) || !['500', 'timeout', 'invalid-json'].includes(mode)) return json({ error: 'invalid_drill' }, 400);
-      return handle(probe, env, (target, options) => {
+      return handle(probe, {...env, RSS_DIAGNOSTIC_SCENARIO: mode}, (target, options) => {
         if (new URL(target.url || target.href || target).origin !== env.PRIMARY_ORIGIN) return fetcher(target, options);
         if (mode === 'timeout') return new Promise((_, reject) => options.signal.addEventListener('abort', () => reject(Error('drill_timeout')), { once: true }));
         return Promise.resolve(mode === '500' ? json({ error: 'drill' }, 500) : new Response('broken', { headers: { 'Content-Type': 'application/json' } }));
@@ -163,6 +175,7 @@ export async function handle(request, env, fetcher = fetch) {
   if (u.hostname === 'rss-dr.qiaomu.ai') {
     const preview = await (await gate(env, 'preview-status')).json();
     if (preview.mode !== 'normal') {
+      env = {...env, RSS_DIAGNOSTIC_SCENARIO: preview.mode};
       const realFetch = fetcher;
       fetcher = (target, options = {}) => {
         if (new URL(target.url || target.href || target).origin !== env.PRIMARY_ORIGIN) return realFetch(target, options);
@@ -178,7 +191,7 @@ export async function handle(request, env, fetcher = fetch) {
     let healthy = false;
     try {
       const probe = new Request(new URL('/api/health', request.url));
-      healthy = (await originJson(probe, env.PRIMARY_ORIGIN, env.ORIGIN_KEY, Number(env.PRIMARY_TIMEOUT_MS || 2500), fetcher)).status === 200;
+      healthy = (await observedOrigin(probe, env, 'primary', Number(env.PRIMARY_TIMEOUT_MS || 5000), fetcher, request)).status === 200;
     } catch { /* Report reading availability separately from writer availability. */ }
     if (healthy) return json({mode:'primary'});
     try {
@@ -194,13 +207,18 @@ export async function handle(request, env, fetcher = fetch) {
     // Writes are attempted once. A timeout may mean the primary accepted the write;
     // never replay it on any server and never claim that it was rolled back.
     const controller = new AbortController();
-    const timeout = ['GET','HEAD'].includes(request.method) ? Number(env.PRIMARY_TIMEOUT_MS || 2500) : Number(env.PRIVATE_TIMEOUT_MS || 120000);
+    const timeout = ['GET','HEAD'].includes(request.method) ? Number(env.PRIMARY_TIMEOUT_MS || 5000) : Number(env.PRIVATE_TIMEOUT_MS || 120000);
+    const started = Date.now(); let status = null, reason = 'ok';
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
       const response = await bounded(fetcher(new Request(target, { method: request.method, headers, body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body, signal:controller.signal, duplex: 'half', redirect: 'manual' })), timeout);
+      status = response.status; if (failed(status)) reason = 'http_' + status;
       return response;
-    } catch { return json({error:'主站暂时不可用；若刚提交了操作，请恢复后核对结果。',code:'primary_unavailable'},503); }
-    finally {clearTimeout(timer);}
+    } catch (error) {
+      reason = controller.signal.aborted || error.message === 'replica_deadline' ? 'origin_timeout' : failureCode(error);
+      controller.abort();
+      return json({error:'主站暂时不可用；若刚提交了操作，请恢复后核对结果。',code:'primary_unavailable'},503);
+    } finally {clearTimeout(timer);emitOrigin(request,env,{role:'primary',status,reason,elapsedMs:Date.now()-started,timeoutMs:timeout});}
   }
   if (publicRead(request) && preferReplica(request, env)) {
     try {
@@ -209,7 +227,7 @@ export async function handle(request, env, fetcher = fetch) {
     } catch { /* A stale or slow replica must never prevent a live primary read. */ }
   }
   let primary;
-  try { primary = await originJson(request, env.PRIMARY_ORIGIN, env.ORIGIN_KEY, Number(env.PRIMARY_TIMEOUT_MS || 5000), fetcher); }
+  try { primary = await observedOrigin(request, env, 'primary', Number(env.PRIMARY_TIMEOUT_MS || 5000), fetcher); }
   catch { primary = json({ error: 'primary_unavailable' }, 503); }
   if (!failed(primary.status)) {
     const h = new Headers(primary.headers); h.set('X-Rss-Origin', 'primary'); h.set('Cache-Control', 'no-store');
@@ -218,7 +236,10 @@ export async function handle(request, env, fetcher = fetch) {
   try {
     const response = await outageResponse(request, env, fetcher);
     response.headers.set('X-Rss-Route', 'failover'); return injectStatusClient(response, request);
-  } catch { return json({ error: 'service_unavailable' }, 503); }
+  } catch (error) {
+    emitOrigin(request,env,{role:'standby-gate',status:503,reason:failureCode(error)});
+    return json({ error: 'service_unavailable' }, 503);
+  }
 }
 export async function retainBackups(env, now=Date.now()) {
   const objects=[];let cursor;

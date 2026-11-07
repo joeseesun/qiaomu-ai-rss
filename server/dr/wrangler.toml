@@ -3,6 +3,11 @@ main = "worker.mjs"
 compatibility_date = "2026-10-06"
 account_id = "d060d68463fc12fa91fa2aa216bbab02"
 
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = false
+
 [triggers]
 crons = ["17 * * * *"]
 
@@ -17,13 +22,15 @@ zone_name = "qiaomu.ai"
 [vars]
 PRIMARY_ORIGIN = "https://rss-origin.qiaomu.ai"
 STANDBY_ORIGIN = "https://rss-standby.qiaomu.ai"
-PRIMARY_TIMEOUT_MS = "2500"
+PRIMARY_TIMEOUT_MS = "5000"
 PRIVATE_TIMEOUT_MS = "120000"
 FRONTEND_VERSION = "0d43b2c7eafced44c5b05ae0a9672b4ace63f51e"
 STANDBY_TIMEOUT_MS = "4000"
 MAX_SNAPSHOT_AGE_MS = "86400000"
 READ_REPLICA_CONTINENTS = ""
 READ_REPLICA_MAX_AGE_MS = "90000"
+ORIGIN_LOGS = "true"
+ORIGIN_SUCCESS_SAMPLE_RATE = "0.1"
 
 [[durable_objects.bindings]]
 name = "SAFETY"
