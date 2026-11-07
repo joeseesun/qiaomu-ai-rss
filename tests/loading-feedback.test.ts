@@ -112,3 +112,25 @@ it('updates translated headings as refresh results arrive without a second refre
   expect(view.entries[0].titleZh).toBe('新英文标题的中文翻译');
   expect(view.renderList).toHaveBeenCalled();expect(plugin.persist).toHaveBeenCalled();
 });
+
+it('refresh updates the current article as well as the list, preserving its selected mode and scroll checkpoint', async () => {
+  const { view, plugin } = fixture();
+  view.bundle = plugin.state.cache[entry.id]; view.mode = 'original';
+  const checkpoint = { readerTop: 340, listTop: 80, mode: 'original' };
+  view.saveChannel = vi.fn(() => { plugin.state.channelStates[view.channelKey()] = checkpoint; });
+  view.openArticle = vi.fn(async () => {});
+  await view.refreshCurrent();
+  expect(view.openArticle).toHaveBeenCalledWith(entry, checkpoint, 'original');
+});
+it('a slow refresh cannot reopen the previous article after the user navigates', async () => {
+  const { view, api, plugin } = fixture();
+  view.bundle = plugin.state.cache[entry.id];
+  let finish!: (value: unknown) => void;
+  api.entries.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  view.openArticle = vi.fn(async () => {});
+  const refresh = view.refreshCurrent();
+  view.articleVersion++;
+  finish({ entries: [entry], hasMore: false });
+  await refresh;
+  expect(view.openArticle).not.toHaveBeenCalled();
+});

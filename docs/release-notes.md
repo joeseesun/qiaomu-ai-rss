@@ -1,11 +1,11 @@
 ## 中文
 
-- 摘录设置新增可自定义的 Markdown 模板，支持引用块、章节链接、原文链接和日期。留空可继续保存纯文本。
-- 从笔记跳回阅读器时，优先高亮唯一匹配的摘录；找不到时回到唯一匹配的章节，重名章节不会乱跳。外部网页文字定位仅在原文模式生成，是否定位取决于浏览器和网页内容。
-- 追加摘录时保留原有文章标题和阅读版本，模板链接不会拆散同篇文章，日期变化也不会让相同摘录重复保存。升级不批量改写已有笔记。
+- X News 的原文与乔木改写分别显示，刷新频道也会更新当前文章并保留阅读位置；旧保存副本不会覆盖新同步的正文。
+- 原文和改写保留内嵌图片、音频、视频及点击加载的 YouTube。切换文章或版本时停止媒体，并提供原始媒体入口。
+- 保留订阅、收藏、已读状态和现有笔记。
 
 ## English
 
-- Customize Markdown excerpt templates with blockquotes, section and original links, and dates. Leave the template empty to keep plain text.
-- Links back to the reader highlight a uniquely matching excerpt. When it cannot be located, the reader only jumps to a uniquely matching heading. External text location is available in original mode and depends on the browser and page content.
-- Appending excerpts preserves the existing article header and reading mode. Template links stay within the article group, and timestamp changes do not create duplicate excerpts. The update does not rewrite existing notes in bulk.
+- Keep X News originals and published Qiaomu rewrites separate. Refreshing also updates the open article while preserving the reading position. Older saved copies no longer overwrite newer synchronized bodies.
+- Preserve inline images, audio, video and click-to-load YouTube players in both versions. Switching articles or versions stops media; original media links remain available.
+- Preserve subscriptions, favorites, read state and existing notes.
