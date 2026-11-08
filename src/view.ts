@@ -343,7 +343,7 @@ export class ReaderView extends ItemView {
     this.addIconButton(tools, 'search', t('reader.searchTooltip'), () => this.toggleSearch());
     this.addIconButton(tools, 'list-filter', t('pick.title'), () => this.plugin.pickCuratedSources());
     this.addIconButton(tools, 'check-check', t('reader.markAllRead'), () => this.confirmMarkAllRead());
-    this.refreshButton = this.addIconButton(tools, 'refresh-cw', t('reader.refresh'), () => { void this.loadEntries(false, true); });
+    this.refreshButton = this.addIconButton(tools, 'refresh-cw', t('reader.refresh'), () => { void this.refreshCurrent(); });
     this.collectionSettingsButton = this.addIconButton(tools, 'settings', t('reader.pluginSettings'), () => this.plugin.openCollectionSettings());
     this.filters = sidebar.createDiv({ cls: 'qrs-filters', attr: { role: 'group' } });
     this.renderFilters();

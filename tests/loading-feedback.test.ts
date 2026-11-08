@@ -134,3 +134,20 @@ it('a slow refresh cannot reopen the previous article after the user navigates',
   await refresh;
   expect(view.openArticle).not.toHaveBeenCalled();
 });
+
+it('the toolbar refresh click reloads the selected article, not only the list', async () => {
+  const { view, plugin } = fixture();
+  view.bundle = plugin.state.cache[entry.id]; view.mode = 'original';
+  view.saveChannel = vi.fn(); view.openArticle = vi.fn(async () => {});
+  view.applyAppearance = vi.fn();
+  Object.assign(view.contentEl, { empty() {}, toggleClass() {}, setCssProps() {} });
+  let refresh!: () => void;
+  view.addIconButton = (_parent: unknown, icon: string, _label: string, action: () => void) => {
+    if (icon === 'settings') throw new Error('toolbar complete');
+    if (icon === 'refresh-cw') refresh = action;
+    return element('button');
+  };
+  expect(() => view.build()).toThrow('toolbar complete');
+  refresh();
+  await vi.waitFor(() => expect(view.openArticle).toHaveBeenCalledWith(entry, undefined, 'original'));
+});
