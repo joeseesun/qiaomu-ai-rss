@@ -1,11 +1,11 @@
 ## 中文
 
-- X News 的原文与乔木改写分别显示，刷新频道也会更新当前文章并保留阅读位置；旧保存副本不会覆盖新同步的正文。
-- 原文和改写保留内嵌图片、音频、视频及点击加载的 YouTube。切换文章或版本时停止媒体，并提供原始媒体入口。
-- 保留订阅、收藏、已读状态和现有笔记。
+- 可将当前列表中已加载、符合筛选条件的文章一次标为已读。确认前可取消；超过 5000 条已读记录时会先提示。
+- 批量保存失败时可重试；失败的标记不会随其他保存写入磁盘。
+- 刷新个人订阅时，当前打开的文章也会显示最新正文。
 
 ## English
 
-- Keep X News originals and published Qiaomu rewrites separate. Refreshing also updates the open article while preserving the reading position. Older saved copies no longer overwrite newer synchronized bodies.
-- Preserve inline images, audio, video and click-to-load YouTube players in both versions. Switching articles or versions stops media; original media links remain available.
-- Preserve subscriptions, favorites, read state and existing notes.
+- Mark all loaded articles that match the current list filters as read. You can cancel before confirming, and the reader warns when the 5,000-record limit would be exceeded.
+- Retry after a failed batch save. A failed batch no longer leaks into subsequent saves.
+- Refreshing a personal feed also updates the body of the open article.

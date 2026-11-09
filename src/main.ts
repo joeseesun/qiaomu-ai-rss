@@ -479,10 +479,15 @@ export default class QiaomuRssPlugin extends Plugin {
     }
     this.resetViews();
   }
-  persist(): Promise<void> {
-    applyCuratedPicks(this.state);
-    if (this.state.deletedEntries[this.state.settings.baseUrl]?.length) applyDeletedEntries(this.state, [], this.state.settings.baseUrl);
-    return this.saves.request();
+  persist(rollback?: () => void): Promise<void> {
+    try {
+      applyCuratedPicks(this.state);
+      if (this.state.deletedEntries[this.state.settings.baseUrl]?.length) applyDeletedEntries(this.state, [], this.state.settings.baseUrl);
+      return this.saves.request(rollback);
+    } catch (error) {
+      rollback?.();
+      throw error;
+    }
   }
   private personalSyncRunning = false;
   private async syncPersonalBackground() {
