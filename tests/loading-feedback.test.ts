@@ -122,6 +122,17 @@ it('refresh updates the current article as well as the list, preserving its sele
   await view.refreshCurrent();
   expect(view.openArticle).toHaveBeenCalledWith(entry, checkpoint, 'original');
 });
+it('reopens a local article using the refreshed subscription body instead of its displayed snapshot', async () => {
+  const { view } = fixture();
+  const opened = { ...entry, origin: 'local', content: '<p>Old body</p>' };
+  const refreshed = { ...opened, content: '<p>Updated body</p>' };
+  view.bundle = { entry: opened, rewrite: null, translation: null, fetchedAt: 1 };
+  view.mode = 'original'; view.saveChannel = vi.fn(); view.openArticle = vi.fn(async () => {});
+  view.loadEntries = vi.fn(async () => { view.entries = [refreshed]; });
+  await view.refreshCurrent();
+  expect(view.openArticle).toHaveBeenCalledWith(refreshed, undefined, 'original');
+});
+
 it('a slow refresh cannot reopen the previous article after the user navigates', async () => {
   const { view, api, plugin } = fixture();
   view.bundle = plugin.state.cache[entry.id];

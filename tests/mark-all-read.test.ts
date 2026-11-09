@@ -4,6 +4,7 @@ const modal = vi.hoisted(() => ({ action: undefined as undefined | (() => Promis
 vi.mock('obsidian', async original => ({ ...await original<object>(), Component: class {}, ItemView: class {}, Modal: class {}, FuzzySuggestModal: class {}, TFile: class {}, Notice: vi.fn(class {}), Platform: { isDesktopApp: false, isMobileApp: false } }));
 vi.mock('../src/subscription-ui', () => ({ ConfirmAction: class { constructor(_plugin: unknown, _title: string, description: string, action: () => Promise<void>) { modal.description = description; modal.action = action; } open() { modal.open(); } } }));
 import { ReaderView } from '../src/view';
+import { SaveQueue } from '../src/save-queue';
 
 it('confirms before marking only the loaded list and persists once', async () => {
   const plugin = { state: { readIds: ['old', 'already'] }, persist: vi.fn(async () => {}) };
@@ -18,7 +19,8 @@ it('confirms before marking only the loaded list and persists once', async () =>
 });
 
 it('handles an empty list and surfaces persistence failures', async () => {
-  const plugin = { state: { readIds: ['old'] }, persist: vi.fn().mockRejectedValue(new Error('save failed')) };
+  const queue = new SaveQueue(async () => { throw new Error('save failed'); });
+  const plugin = { state: { readIds: ['old'] }, persist: (rollback?: () => void) => queue.request(rollback) };
   const view = Object.assign(Object.create(ReaderView.prototype), { plugin, visibleEntries: () => [], unreadSession: new Set(), renderList: vi.fn(), renderReader: vi.fn() });
   view.confirmMarkAllRead();
   await expect(modal.action!()).rejects.toThrow('save failed');
@@ -40,19 +42,29 @@ it('warns and retains only 5000 IDs for a larger list', async () => {
 });
 
 it('preserves a concurrent addition while rolling back a failed batch', async () => {
+  const state = { readIds: ['old'] };
   let reject!: (error: Error) => void;
-  const plugin = { state: { readIds: ['old'] }, persist: vi.fn(() => new Promise<void>((_, r) => { reject = r; })) };
+  let onDisk = state.readIds;
+  const write = vi.fn<() => Promise<void>>()
+    .mockImplementationOnce(() => new Promise<void>((_, r) => { reject = r; }))
+    .mockImplementation(async () => { onDisk = [...state.readIds]; });
+  const queue = new SaveQueue(write);
+  const plugin = { state, persist: (rollback?: () => void) => queue.request(rollback) };
   const view = Object.assign(Object.create(ReaderView.prototype), { plugin, visibleEntries: () => [{ id: 'batch' }], unreadSession: new Set(), renderList: vi.fn(), renderReader: vi.fn() });
   view.confirmMarkAllRead();
-  const result = modal.action!();
-  plugin.state.readIds = [...plugin.state.readIds, 'concurrent'];
+  const failure = expect(modal.action!()).rejects.toThrow('save failed');
+  await Promise.resolve(); // The failed batch is already writing when the next change arrives.
+  state.readIds = [...state.readIds, 'concurrent'];
+  const saved = plugin.persist();
   reject(new Error('save failed'));
-  await expect(result).rejects.toThrow('save failed');
-  expect(plugin.state.readIds).toEqual(['old', 'concurrent']);
+  await Promise.all([failure, saved]);
+  expect(state.readIds).toEqual(['old', 'concurrent']);
+  expect(onDisk).toEqual(state.readIds);
 });
 
 it('restores previous state when persistence fails', async () => {
-  const plugin = { state: { readIds: ['old'] }, persist: vi.fn().mockRejectedValue(new Error('save failed')) };
+  const queue = new SaveQueue(async () => { throw new Error('save failed'); });
+  const plugin = { state: { readIds: ['old'] }, persist: (rollback?: () => void) => queue.request(rollback) };
   const view = Object.assign(Object.create(ReaderView.prototype), { plugin, visibleEntries: () => [{ id: 'new' }], unreadSession: new Set(), renderList: vi.fn(), renderReader: vi.fn() });
   view.confirmMarkAllRead();
   await expect(modal.action!()).rejects.toThrow('save failed');

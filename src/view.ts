@@ -637,8 +637,13 @@ export class ReaderView extends ItemView {
     const articleVersion = this.articleVersion;
     await this.loadEntries(false, true);
     if (this.closed || articleVersion !== this.articleVersion || !this.bundle) return;
+    const opened = this.bundle.entry;
+    // The refreshed subscription list has the latest local body; the open bundle is a snapshot.
+    const entry = opened.origin === 'local'
+      ? this.entries.find(item => item.id === opened.id && item.sourceId === opened.sourceId) ?? opened
+      : opened;
     this.saveChannel();
-    await this.openArticle(this.bundle.entry, this.plugin.state.channelStates[this.channelKey()], this.mode);
+    await this.openArticle(entry, this.plugin.state.channelStates[this.channelKey()], this.mode);
   }
   private async loadEntries(more = false, force = false) {
     if (this.loading && more) return;
@@ -779,7 +784,7 @@ export class ReaderView extends ItemView {
       const selected = new Set(entryIds);
       const updated = [...previous.filter(id => !selected.has(id)), ...entryIds].slice(-5000);
       this.plugin.state.readIds = updated;
-      try { await this.plugin.persist(); } catch (error) {
+      await this.plugin.persist(() => {
         const current = this.plugin.state.readIds;
         if (current === updated) this.plugin.state.readIds = previous;
         else {
@@ -787,8 +792,7 @@ export class ReaderView extends ItemView {
           const concurrent = current.filter(id => !bulk.has(id) || before.has(id));
           this.plugin.state.readIds = [...new Set([...previous.filter(id => !bulk.has(id)), ...concurrent])].slice(-5000);
         }
-        throw error;
-      }
+      });
       this.unreadSession.clear(); this.renderList(); this.renderReader(true);
     }).open();
   }
